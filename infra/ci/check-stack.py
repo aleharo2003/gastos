@@ -1,4 +1,4 @@
-"""Comprueba el recorrido HTTP por el proxy de desarrollo de Gastos."""
+"""Comprueba el contrato HTTP de Gastos mediante el proxy o la API directa."""
 
 import argparse
 import json
@@ -80,7 +80,7 @@ def main() -> int:
     try:
         if args.expected == "success":
             wait_for_success(args.url, args.wait_seconds)
-            print("OK: el proxy y el BFF devolvieron el mensaje de FastAPI.")
+            print("OK: HTTP 200 y mensaje de FastAPI correctos.")
         else:
             validate_response(*read_response(args.url), "unavailable")
             print("OK: el BFF devolvio su error controlado HTTP 502.")
