@@ -8,7 +8,7 @@ El recorrido funciona en desarrollo con Docker Compose. El CI ejecuta las prueba
 
 Todavía faltan la base de datos, autenticación, migraciones, datos iniciales y despliegue remoto.
 
-Los servidores configurados en `Dockerfile.dev` son servidores de desarrollo. La configuración de producción se incorporará por separado.
+Los servidores configurados en `Dockerfile.dev` son servidores de desarrollo. FastAPI dispone además de `apps/api/Dockerfile` para ejecutar la imagen sin recarga automática. La preparación de BFF y frontend para el entorno remoto sigue pendiente.
 
 ## Requisitos
 
@@ -121,6 +121,53 @@ docker compose restart web
 ```
 
 Los tiempos de espera actuales son para desarrollo local: cinco segundos entre BFF y API y diez segundos desde Angular. Se revisarán al configurar el entorno remoto y sus arranques en frío.
+
+## Imagen de FastAPI para el entorno remoto de prueba
+
+Construir la imagen desde la raíz:
+
+```bash
+docker build -t gastos-api-runtime:local -f apps/api/Dockerfile apps/api
+```
+
+Probarla en otro puerto, sin montar carpetas del repositorio:
+
+```bash
+docker run --detach --name gastos-api-runtime-local \
+  --env PORT=10000 \
+  --env RENDER_GIT_COMMIT=prueba-local \
+  --publish 127.0.0.1:18010:10000 \
+  gastos-api-runtime:local
+
+python3 infra/ci/check-stack.py success --url http://127.0.0.1:18010/
+```
+
+El mensaje de éxito del script es ahora `OK: HTTP 200 y mensaje de FastAPI correctos.`; puede comprobar el proxy completo o una API directa según la URL que se indique.
+
+Abrir las siguientes direcciones:
+
+| URL local | Respuesta esperada |
+|---|---|
+| `http://localhost:18010/` | `{"message":"Hola desde FastAPI"}` |
+| `http://localhost:18010/health` | `{"status":"ok"}` |
+| `http://localhost:18010/version` | `{"commit":"prueba-local"}` |
+
+`/health` comprueba que FastAPI responde; todavía no hay base de datos que verificar. `/version` devuelve solo el identificador del despliegue y desactiva su almacenamiento en caché.
+
+`prueba-local` es un valor de prueba, no un SHA del código. Al ejecutar en Render desde Git, el proveedor asigna `RENDER_GIT_COMMIT`. Si la variable no existe localmente, `commit` es `null`.
+
+El puerto se toma de `PORT`, con 8000 como valor predeterminado. El servidor escucha en `0.0.0.0` dentro del contenedor. El usuario de ejecución tiene UID 10001 y no es root.
+
+Después de la prueba:
+
+```bash
+docker stop gastos-api-runtime-local
+docker rm gastos-api-runtime-local
+```
+
+El trabajo de API del CI también construye esta imagen, la inicia sin montajes y verifica el saludo, la salud y el commit. Usa `curl` y `jq` del runner para validar los dos últimos JSON.
+
+La configuración prevista de Render y el orden del primer despliegue están en [la guía de test](docs/despliegue-test.md).
 
 ## Consultar y detener los servicios
 

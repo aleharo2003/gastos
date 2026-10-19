@@ -75,11 +75,14 @@ jobs:
         run: npm run build
 
   api:
-    name: API - dependencias y sintaxis
+    name: API - dependencias, sintaxis e imagen
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    env:
+      EXPECTED_COMMIT: ${{ github.sha }}
     defaults:
       run:
+        shell: bash
         working-directory: apps/api
     steps:
       - name: Descargar el codigo
@@ -98,6 +101,29 @@ jobs:
         run: python -m pip check
       - name: Comprobar sintaxis de la aplicacion
         run: python -m compileall -q app
+      - name: Construir la imagen para despliegue
+        run: docker build --tag gastos-api-runtime:ci --file Dockerfile .
+      - name: Iniciar la imagen sin montajes del repositorio
+        run: |
+          docker run --detach --name gastos-api-runtime-ci \
+            --env PORT=8000 \
+            --env RENDER_GIT_COMMIT="$EXPECTED_COMMIT" \
+            --publish 127.0.0.1:18000:8000 \
+            gastos-api-runtime:ci
+      - name: Comprobar el mensaje desde la imagen
+        run: python ../../infra/ci/check-stack.py success --url http://127.0.0.1:18000/
+      - name: Comprobar salud y commit de la imagen
+        run: |
+          curl --fail --silent --show-error --max-time 10 http://127.0.0.1:18000/health |
+            jq --exit-status '. == {"status":"ok"}'
+          curl --fail --silent --show-error --max-time 10 http://127.0.0.1:18000/version |
+            jq --exit-status --arg commit "$EXPECTED_COMMIT" '. == {"commit":$commit}'
+      - name: Mostrar los logs de la imagen de API
+        if: always()
+        run: docker logs --tail=100 gastos-api-runtime-ci
+      - name: Retirar el contenedor de API de esta comprobacion
+        if: always()
+        run: docker rm --force gastos-api-runtime-ci
 
   integration:
     name: Integracion HTTP con Docker
