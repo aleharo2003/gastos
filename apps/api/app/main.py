@@ -5,4 +5,4 @@ app = FastAPI(title="Gastos API")
 
 @app.get("/")
 async def root() -> dict[str, str]:
-    return {"message": "Hola desde FastAPI"}
+    return {"message": "respuesta desde FastAPI"}
