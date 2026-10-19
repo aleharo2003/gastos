@@ -48,11 +48,15 @@ jobs:
         run: npm run build
 
   bff:
-    name: BFF - pruebas y compilacion
+    name: BFF - pruebas, compilacion e imagen
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
+    env:
+      RENDER_GIT_COMMIT: ${{ github.sha }}
+      COMPOSE_PROJECT_NAME: gastos-runtime-ci
     defaults:
       run:
+        shell: bash
         working-directory: apps/bff
     steps:
       - name: Descargar el codigo
@@ -73,6 +77,35 @@ jobs:
         run: npm run test:e2e
       - name: Compilar
         run: npm run build
+      - name: Validar Compose de las imagenes para despliegue
+        run: docker compose --file ../../infra/ci/compose.runtime.yml config --quiet
+      - name: Construir e iniciar API y BFF sin montajes
+        run: docker compose --file ../../infra/ci/compose.runtime.yml up --detach --build
+      - name: Comprobar el recorrido de las imagenes
+        run: python3 ../../infra/ci/check-stack.py success --url http://127.0.0.1:18001/api/hello
+      - name: Comprobar salud y commit del BFF
+        run: |
+          curl --fail --silent --show-error --max-time 10 http://127.0.0.1:18001/health |
+            jq --exit-status '. == {"status":"ok"}'
+          curl --fail --silent --show-error --max-time 10 http://127.0.0.1:18001/version |
+            jq --exit-status --arg commit "$RENDER_GIT_COMMIT" '. == {"commit":$commit}'
+      - name: Detener la API de la prueba de imagenes
+        run: docker compose --file ../../infra/ci/compose.runtime.yml stop api
+      - name: Comprobar error controlado y salud independiente
+        run: |
+          python3 ../../infra/ci/check-stack.py unavailable --url http://127.0.0.1:18001/api/hello
+          curl --fail --silent --show-error --max-time 10 http://127.0.0.1:18001/health |
+            jq --exit-status '. == {"status":"ok"}'
+      - name: Recuperar la API y comprobar el recorrido
+        run: |
+          docker compose --file ../../infra/ci/compose.runtime.yml start api
+          python3 ../../infra/ci/check-stack.py success --url http://127.0.0.1:18001/api/hello
+      - name: Mostrar los logs de las imagenes
+        if: always()
+        run: docker compose --file ../../infra/ci/compose.runtime.yml logs --no-color --tail=100
+      - name: Retirar los contenedores de esta comprobacion
+        if: always()
+        run: docker compose --file ../../infra/ci/compose.runtime.yml down
 
   api:
     name: API - dependencias, sintaxis e imagen
