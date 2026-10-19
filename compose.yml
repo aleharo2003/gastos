@@ -1,0 +1,49 @@
+services:
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile.dev
+
+    init: true
+
+    ports:
+      - "127.0.0.1:8000:8000"
+
+    volumes:
+      - ./apps/api/app:/app/app:ro
+
+  bff:
+    build:
+      context: ./apps/bff
+      dockerfile: Dockerfile.dev
+
+    init: true
+
+    environment:
+      API_BASE_URL: "http://api:8000"
+
+    ports:
+      - "127.0.0.1:3000:3000"
+
+    volumes:
+      - ./apps/bff/src:/app/src:ro
+
+    depends_on:
+      - api
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile.dev
+
+    init: true
+
+    ports:
+      - "127.0.0.1:4200:4200"
+
+    volumes:
+      - ./apps/web/src:/app/src:ro
+      - ./apps/web/public:/app/public:ro
+
+    depends_on:
+      - bff

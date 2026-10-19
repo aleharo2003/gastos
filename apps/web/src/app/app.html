@@ -1,0 +1,23 @@
+<main>
+  <h1>Hello, {{ title() }}</h1>
+
+  <p>Primer recorrido de Gastos.</p>
+
+  <button
+    type="button"
+    (click)="loadMessage()"
+    [disabled]="loading()"
+  >
+    {{ loading() ? 'Consultando...' : 'Consultar mensaje' }}
+  </button>
+
+  @if (message()) {
+    <p>{{ message() }}</p>
+  }
+
+  @if (error()) {
+    <p role="alert">{{ error() }}</p>
+  }
+</main>
+
+<router-outlet />
