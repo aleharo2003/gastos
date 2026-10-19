@@ -1,0 +1,27 @@
+# Node y Angular
+node_modules/
+dist/
+.angular/
+coverage/
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Configuracion local
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Archivos temporales
+*.log
+.DS_Store
+Thumbs.db
+
+# Cache de TypeScript
+*.tsbuildinfo
