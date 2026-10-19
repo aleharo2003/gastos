@@ -6,9 +6,9 @@ Aplicación de finanzas personales para uso familiar, aprendizaje y enseñanza. 
 
 El recorrido funciona en desarrollo con Docker Compose. El CI ejecuta las pruebas y compilaciones de Angular y BFF, comprueba dependencias y sintaxis de Python, y construye los contenedores para probar la comunicación HTTP, la caída de FastAPI y la recuperación.
 
-Todavía faltan la base de datos, autenticación, migraciones, datos iniciales y despliegue remoto.
+FastAPI está publicada en el [entorno de prueba de Render](https://gastos-test-api.onrender.com). BFF y frontend todavía no están publicados. Faltan también la base de datos, autenticación, migraciones, datos iniciales y el CD automático.
 
-Los servidores configurados en `Dockerfile.dev` son servidores de desarrollo. FastAPI dispone además de `apps/api/Dockerfile` para ejecutar la imagen sin recarga automática. La preparación de BFF y frontend para el entorno remoto sigue pendiente.
+Los archivos `Dockerfile.dev` sirven para programar. FastAPI y BFF disponen además de un `Dockerfile` para ejecutar imágenes sin recarga automática. El CI prueba esas imágenes sin montar el código del equipo.
 
 ## Requisitos
 
@@ -120,7 +120,7 @@ Después de modificar el proxy de Docker, reiniciar el servidor de Angular:
 docker compose restart web
 ```
 
-Los tiempos de espera actuales son para desarrollo local: cinco segundos entre BFF y API y diez segundos desde Angular. Se revisarán al configurar el entorno remoto y sus arranques en frío.
+El BFF utiliza cinco segundos por defecto para consultar FastAPI. `API_TIMEOUT_MS` permite cambiar ese límite sin recompilar. Angular conserva diez segundos en desarrollo; su configuración remota se ajustará en el siguiente incremento para contemplar los arranques en frío.
 
 ## Imagen de FastAPI para el entorno remoto de prueba
 
@@ -167,7 +167,56 @@ docker rm gastos-api-runtime-local
 
 El trabajo de API del CI también construye esta imagen, la inicia sin montajes y verifica el saludo, la salud y el commit. Usa `curl` y `jq` del runner para validar los dos últimos JSON.
 
-La configuración prevista de Render y el orden del primer despliegue están en [la guía de test](docs/despliegue-test.md).
+La configuración de Render y el orden del despliegue están en [la guía de test](docs/despliegue-test.md).
+
+## Imágenes de API y BFF para el entorno de prueba
+
+El archivo `infra/ci/compose.runtime.yml` construye y ejecuta las dos imágenes para despliegue. No monta fuentes ni inicia servidores con recarga. Este archivo prueba los backends; Angular sigue en el entorno de desarrollo.
+
+Desde la raíz:
+
+```bash
+docker compose --project-name gastos-runtime-local --file infra/ci/compose.runtime.yml config --quiet
+docker compose --project-name gastos-runtime-local --file infra/ci/compose.runtime.yml up --detach --build
+python3 infra/ci/check-stack.py success --url http://127.0.0.1:18001/api/hello
+```
+
+Usa otro proyecto de Compose y otros puertos, de modo que puede convivir con el entorno habitual:
+
+| Dirección | Comprobación |
+|---|---|
+| `http://localhost:18000/` | Mensaje directo de FastAPI. |
+| `http://localhost:18001/` | Saludo inicial del BFF: `Hello World!`. |
+| `http://localhost:18001/api/hello` | BFF consultando FastAPI. |
+| `http://localhost:18001/health` | BFF activo: `{"status":"ok"}`. |
+| `http://localhost:18001/version` | Commit del BFF, o `null` sin la variable de despliegue. |
+
+El BFF usa `PORT=10000` en esta prueba. En su imagen se ejecuta como el usuario `node`, con dependencias de ejecución y el código compilado. Las herramientas de compilación quedan en la primera etapa del Dockerfile.
+
+Para comprobar caída y recuperación, ejecutar uno por uno:
+
+```bash
+docker compose --project-name gastos-runtime-local --file infra/ci/compose.runtime.yml stop api
+python3 infra/ci/check-stack.py unavailable --url http://127.0.0.1:18001/api/hello
+curl --fail http://127.0.0.1:18001/health
+
+docker compose --project-name gastos-runtime-local --file infra/ci/compose.runtime.yml start api
+python3 infra/ci/check-stack.py success --url http://127.0.0.1:18001/api/hello
+```
+
+Con FastAPI detenida, `/api/hello` devuelve el 502 controlado y `/health` del BFF sigue respondiendo 200. La salud del BFF indica que ese proceso atiende solicitudes; el recorrido completo se comprueba por separado.
+
+Al terminar:
+
+```bash
+docker compose --project-name gastos-runtime-local --file infra/ci/compose.runtime.yml down
+```
+
+El trabajo de BFF en CI ejecuta estas comprobaciones, valida su commit y conserva sus pruebas unitarias, HTTP y compilación. Las pruebas cubren también respuestas incorrectas de FastAPI y el vencimiento del tiempo de espera.
+
+La red interna de Compose utiliza HTTP. En Render los servicios Free se comunicarán por HTTPS público. Esta prueba local no comprueba TLS del proveedor ni los arranques tras reposo real.
+
+Para Render se prevé `API_TIMEOUT_MS=120000`. Es un límite de espera de dos minutos para la consulta del BFF, y no garantiza que todo arranque en frío termine con éxito. Si FastAPI devuelve HTML durante el despertar o falla la conexión, el BFF conserva su error controlado. CORS y la espera del navegador se configurarán al publicar Angular.
 
 ## Consultar y detener los servicios
 
@@ -194,7 +243,7 @@ apps/web/    Angular y sus proxies de desarrollo
 apps/bff/    NestJS: recibe las consultas del frontend
 apps/api/    FastAPI: API y futuras reglas financieras
 docs/        Documentación del proyecto
-infra/       Futura configuración de infraestructura
+infra/       Comprobaciones de CI y configuración de infraestructura
 compose.yml  Arranque conjunto del entorno local
 ```
 

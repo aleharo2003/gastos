@@ -1,0 +1,26 @@
+services:
+  api:
+    build:
+      context: ../../apps/api
+      dockerfile: Dockerfile
+    init: true
+    environment:
+      PORT: "8000"
+      RENDER_GIT_COMMIT:
+    ports:
+      - "127.0.0.1:${RUNTIME_API_PORT:-18000}:8000"
+
+  bff:
+    build:
+      context: ../../apps/bff
+      dockerfile: Dockerfile
+    init: true
+    environment:
+      PORT: "10000"
+      API_BASE_URL: "http://api:8000"
+      API_TIMEOUT_MS: "5000"
+      RENDER_GIT_COMMIT:
+    ports:
+      - "127.0.0.1:${RUNTIME_BFF_PORT:-18001}:10000"
+    depends_on:
+      - api

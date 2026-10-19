@@ -1,153 +1,154 @@
-# Primer despliegue de prueba en Render
+# Despliegue de prueba en Render
 
-Estado: preparación del primer servicio. La API todavía no se ha publicado. BFF, frontend y el CD automático se incorporarán en los siguientes pasos.
+La API ya está publicada. Esta entrega prepara la imagen del BFF y sus comprobaciones; el servicio del BFF se creará después de integrar el cambio y verificar CI en `main`. Angular y el CD automático siguen pendientes.
 
-Se aplica a US-005 y la primera entrega de US-009. El primer despliegue remoto usa datos ficticios y no incorpora todavía Supabase, autenticación o datos financieros.
+Se aplica a US-005 y la primera entrega de US-009. El entorno todavía usa un saludo de prueba, sin Supabase, autenticación ni datos financieros.
+
+## Estado del entorno
+
+| Componente | Estado |
+|---|---|
+| API | Publicada en `https://gastos-test-api.onrender.com`. |
+| BFF | Imagen y configuración preparadas en esta entrega. Pendiente de publicación. |
+| Angular | Pendiente de preparación y publicación. |
+| CI | Comprueba cada cambio; esta entrega incorpora la imagen del BFF y el recorrido entre las imágenes de ejecución. |
+| CD | Pendiente. Los despliegues actuales se controlan manualmente. |
+| Base de datos y autenticación | Pendientes de sus stories y ADR correspondientes. |
+
+En la primera publicación de la API se comprobaron `/`, `/health` y `/version`. La versión observada fue `619037c`, coincidente con el commit de `main` validado por [GitHub Actions](https://github.com/aleharo2003/gastos/actions/runs/39335126642). Es un registro de esa entrega: los siguientes despliegues tendrán su propio SHA.
+
+El servicio `gastos-test-api` tiene Auto-Deploy en Off. Un servicio activo continúa atendiendo solicitudes aunque se desactive el despliegue automático.
 
 ## Orden del trabajo
 
-1. Preparar y comprobar la imagen de FastAPI localmente.
-2. Subir el cambio, comprobar CI y fusionar el PR en main.
-3. Crear el servicio web gratuito de FastAPI desde ese main validado.
-4. Configurar y desplegar BFF y Angular.
-5. Automatizar los despliegues desde GitHub sobre el commit validado y probar desde celular.
+1. Sincronizar la copia local con `main` y crear una rama para el BFF.
+2. Ejecutar las pruebas del BFF y construir las imágenes de ejecución de API y BFF.
+3. Probar respuesta, caída de la API y recuperación usando esas imágenes, sin montajes del código local.
+4. Subir el cambio, comprobar CI y fusionar el PR en `main`.
+5. Esperar el CI de ese commit de `main` y recién entonces crear el servicio Free del BFF.
+6. Comprobar salud, versión y comunicación con la API publicada.
+7. Preparar Angular y probar el recorrido remoto completo, incluido el acceso desde celular y el comportamiento después del reposo.
+8. Incorporar el despliegue automático desde GitHub para un commit validado.
 
-El paso 3 es el bootstrap inicial del hosting. El CD automático aún no está implementado. Crear el servicio en Render ya inicia su primer build y despliegue; por eso el código debe estar preparado y validado antes.
+Crear un servicio en Render inicia su primer build y despliegue. Por eso el nuevo servicio se crea cuando el código ya está en `main` y su CI pasó. Configurar Auto-Deploy en Off evita que los siguientes cambios se publiquen por fuera del orden acordado.
 
 Cuando exista la base, el orden ordinario será CI, migraciones, despliegue y verificación. El saludo actual no requiere migraciones.
 
-## Cuenta y acceso
+## Imágenes para ejecutar la aplicación
 
-Crear una cuenta desde [Render](https://dashboard.render.com/register). Se puede usar el inicio de sesión con GitHub. Al conectar el repositorio, limitar el acceso al proyecto `aleharo2003/gastos` si el formulario ofrece la selección de repositorios.
+`Dockerfile.dev` conserva la recarga automática para programar. Los nuevos `Dockerfile` incluyen el código dentro de la imagen y arrancan los servidores sin recarga.
 
-El objetivo es usar un servicio con cómputo `Free`. El plan del workspace y el tipo de instancia son conceptos distintos: elegir un workspace gratuito no garantiza que una instancia elegida sea gratuita. Verificar el costo de los recursos en el formulario.
+La imagen del BFF se construye en dos etapas. La primera instala las dependencias y compila TypeScript. La segunda instala las dependencias necesarias para ejecutar el programa y copia el resultado compilado. Arranca con Node y un usuario sin privilegios de administrador.
 
-La cuenta puede prepararse mientras se revisa el PR. El servicio se crea cuando el commit de main ya pasó CI.
+El BFF escucha en `0.0.0.0` y utiliza el puerto indicado por `PORT`. Render proporciona esa variable; la aplicación conserva el puerto local predeterminado para desarrollo.
 
-## Archivos de esta entrega
+## Configuración del BFF
 
-| Archivo | Responsabilidad |
+| Variable | Uso |
 |---|---|
-| `apps/api/Dockerfile` | Imagen para ejecutar FastAPI sin recarga automática. |
-| `apps/api/app/main.py` | Conserva el saludo y agrega salud y versión. |
-| `.github/workflows/ci.yml` | Amplía el trabajo de API para construir y probar esa imagen. |
-| `infra/ci/check-stack.py` | Mantiene sus comprobaciones y utiliza un mensaje de éxito válido tanto para el proxy como para una API directa. |
-| `README.md` | Instrucciones de prueba local. |
-| `docs/despliegue-test.md` | Esta configuración y el orden del primer despliegue. |
+| `API_BASE_URL` | Dirección de FastAPI a la que consulta el BFF. En Render usa la URL HTTPS pública de la API. |
+| `API_TIMEOUT_MS` | Límite de espera de la llamada a FastAPI, en milisegundos. El valor predeterminado local es 5000; en Render se configura 120000. |
+| `PORT` | Puerto del servidor. Lo proporciona Render. |
+| `RENDER_GIT_COMMIT` | Commit que devuelve `/version`. Lo proporciona Render cuando construye desde Git. |
 
-La configuración de Compose y los Dockerfiles de desarrollo mantienen su función de desarrollo local.
+`API_TIMEOUT_MS` debe ser un entero positivo. El arranque debe señalar un valor inválido para poder corregir la configuración. No contiene una credencial.
 
-## Preparación guiada en Ubuntu
+El BFF valida el estado HTTP y el contenido de la respuesta de FastAPI. Un error de red, un timeout, un HTTP de error o un contenido inválido se convierten en su error controlado HTTP 502. Ampliar el tiempo de espera no garantiza que toda llamada durante un arranque en frío termine correctamente.
 
-Partiendo de main sincronizada y sin cambios pendientes:
+El BFF no reintenta automáticamente la solicitud en esta entrega. Si falla, el usuario puede volver a consultar cuando los servicios estén disponibles.
+
+## Salud y versión
+
+Ambos servidores exponen:
+
+- `/health`: devuelve HTTP 200 con `{"status":"ok"}` cuando ese proceso atiende solicitudes.
+- `/version`: devuelve el commit que informa `RENDER_GIT_COMMIT`. Sin esa variable, devuelve `{"commit":null}`. No publica las demás variables del servicio y solicita no guardar la respuesta en caché.
+
+La salud del BFF no consulta FastAPI. Esto permite distinguir un BFF funcionando de una API que está dormida o caída. La comunicación entre ambos se verifica por separado mediante `/api/hello`.
+
+## Prueba local de las imágenes de ejecución
+
+Ejecutar desde la raíz del repositorio:
 
 ```bash
-cd ~/projects/gastos
-git status --short --branch
-git switch -c feature/us-009-api-render
-mkdir -p docs
+docker compose --project-name gastos-runtime-local --file infra/ci/compose.runtime.yml config --quiet
+docker compose --project-name gastos-runtime-local --file infra/ci/compose.runtime.yml up --detach --build
 
-archivos_api="/mnt/c/Users/nalej/.codex/.chatgpt-projects/g-p-694076bb76ec81918d25a317c59f198a/output/us-009-api"
+python3 infra/ci/check-stack.py success --url http://127.0.0.1:18001/api/hello
 
-cp "$archivos_api/Dockerfile" apps/api/Dockerfile
-cp "$archivos_api/main.py" apps/api/app/main.py
-cp "$archivos_api/ci.yml" .github/workflows/ci.yml
-cp "$archivos_api/check-stack.py" infra/ci/check-stack.py
-cp "$archivos_api/README.md" README.md
-cp "$archivos_api/despliegue-test.md" docs/despliegue-test.md
+curl --fail --silent --show-error http://127.0.0.1:18001/health
+curl --fail --silent --show-error http://127.0.0.1:18001/version
 ```
 
-La variable `archivos_api` contiene la carpeta de los archivos preparados. No contiene credenciales.
+Esta configuración utiliza API en `127.0.0.1:18000` y BFF en `127.0.0.1:18001`, con puertos diferentes de los servicios habituales de desarrollo. No incluye Angular ni monta el código local. La primera consulta espera a que el recorrido HTTP esté listo; tener un contenedor iniciado no significa que ya atienda solicitudes.
 
-Leer los archivos y seguir la prueba de imagen que aparece en el README. Al guardar `main.py`, la API de desarrollo puede recargarse por el montaje de Compose; el saludo permanece igual.
+Sin `RENDER_GIT_COMMIT`, la versión local es `null`. En CI se asigna el SHA del workflow a ambos servicios para comprobar la versión ejecutada.
 
-La imagen nueva se prueba separada, en `localhost:18010`, para conservar los puertos habituales de desarrollo.
-
-## Qué hace el Dockerfile
-
-- Parte de la misma versión de Python utilizada en desarrollo.
-- Instala las dependencias fijadas en `requirements.txt`.
-- Copia el código dentro de la imagen.
-- Crea y utiliza un usuario sin privilegios de administrador.
-- Inicia Uvicorn con el puerto indicado por `PORT`.
-
-`Dockerfile.dev` usa el servidor con recarga para programar. El nuevo `Dockerfile` ejecuta el código que se incorporó a la imagen y no monta fuentes del equipo.
-
-En `CMD`, `sh` permite expandir `PORT` al iniciar el contenedor y `exec` hace que Uvicorn reciba directamente las señales de apagado.
-
-## Qué significan los endpoints nuevos
-
-- `/health`: responde HTTP 200 con `{"status":"ok"}`. Hoy indica que la API atiende solicitudes. Se revisará cuando tenga dependencias como PostgreSQL.
-- `/version`: responde el valor de `RENDER_GIT_COMMIT`. Permite comparar el código esperado con el despliegue observado. Solo devuelve ese identificador; no expone las demás variables del servicio.
-
-En una ejecución local sin esa variable, la versión devuelve `null`. En la prueba local se asigna `prueba-local` deliberadamente. Render proporciona el SHA del despliegue cuando el servicio se construye desde Git.
-
-## Qué verifica ahora el CI
-
-El trabajo de API conserva la instalación, `pip check` y la comprobación de sintaxis. Además:
-
-1. Construye `apps/api/Dockerfile`.
-2. Inicia un contenedor en el puerto de prueba 18000, sin montar el checkout.
-3. Comprueba el saludo.
-4. Consulta `/health` y `/version` con `curl`.
-5. Valida el JSON con `jq`, incluyendo que la versión coincida con el SHA del workflow.
-6. Muestra logs y retira el contenedor.
-
-El runner Ubuntu 24.04 incluye `curl` y `jq`. El shell Bash explícito del trabajo utiliza `pipefail`, para que un fallo de `curl` no quede oculto por el comando siguiente de la tubería.
-
-El trabajo de integración con los tres servicios sigue comprobando el recorrido de desarrollo y la caída y recuperación de FastAPI.
-
-## Guardar y subir
-
-Después de completar la prueba local y retirar el contenedor de prueba:
+Probar la caída y la recuperación:
 
 ```bash
-git diff --check
-git add apps/api/Dockerfile apps/api/app/main.py .github/workflows/ci.yml infra/ci/check-stack.py README.md docs/despliegue-test.md
-git diff --cached --check
-git diff --cached --stat
-git commit -m "feat: prepara FastAPI para el entorno de prueba en Render"
-git push -u origin feature/us-009-api-render
+docker compose --project-name gastos-runtime-local --file infra/ci/compose.runtime.yml stop api
+python3 infra/ci/check-stack.py unavailable --url http://127.0.0.1:18001/api/hello
+
+docker compose --project-name gastos-runtime-local --file infra/ci/compose.runtime.yml start api
+python3 infra/ci/check-stack.py success --url http://127.0.0.1:18001/api/hello
 ```
 
-Comprobar los cuatro trabajos en GitHub y abrir un PR hacia main. El trabajo de API ahora se llama `API - dependencias, sintaxis e imagen`.
+La prueba de indisponibilidad pasa cuando recibe el error esperado HTTP 502 del BFF. La recuperación debe funcionar sin reiniciar el BFF.
 
-## Configuración prevista del primer servicio
+Para retirar únicamente este entorno de prueba:
 
-Esta tabla registra la configuración; todavía no crea recursos. Los valores finales se comprueban en el formulario de Render antes de crear el servicio.
+```bash
+docker compose --project-name gastos-runtime-local --file infra/ci/compose.runtime.yml down
+```
 
-| Campo | Valor |
-|---|---|
-| Tipo | Web Service |
-| Origen | Git Provider conectado a GitHub |
-| Repositorio | `aleharo2003/gastos` |
-| Nombre propuesto | `gastos-test-api` |
-| Rama | `main` |
-| Runtime / Language | Docker |
-| Root Directory | Vacío: raíz del repositorio |
-| Dockerfile Path | `apps/api/Dockerfile` |
-| Docker Build Context Directory | `apps/api` |
-| Compute / Instance Type | Free |
-| Health Check Path | `/health` |
-| Auto-Deploy | Off |
-| Variables adicionales de aplicación | Ninguna en este paso |
+Si una comprobación falla, revisar los logs de este mismo proyecto y volver a iniciar la API antes de repetirla:
 
-La URL pública la asignará Render; registrar la dirección real, sin asumir que el nombre propuesto estará disponible.
+```bash
+docker compose --project-name gastos-runtime-local --file infra/ci/compose.runtime.yml logs --tail=100
+```
 
-El arranque usa `PORT`, que Render proporciona con valor predeterminado 10000. En el primer despliegue se verifican `/`, `/health` y `/version`, y se compara el commit con el de main que pasó CI.
+## Configuración de los servicios en Render
 
-## Límites del entorno gratuito
+La API ya existe. La tabla del BFF registra lo que deberá usarse después de integrar este incremento; no implica que el servicio ya esté creado.
 
-Render Free suspende servicios tras 15 minutos sin tráfico; el siguiente acceso puede tardar aproximadamente un minuto en despertarlos. Las 750 horas gratuitas se comparten entre los servicios del workspace.
+| Campo | API existente | BFF por crear |
+|---|---|---|
+| Tipo | Web Service | Web Service |
+| Origen | Git Provider | Git Provider |
+| Repositorio | `aleharo2003/gastos` | `aleharo2003/gastos` |
+| Nombre | `gastos-test-api` | `gastos-test-bff`, sujeto a disponibilidad |
+| Rama | `main` | `main` |
+| Runtime / Language | Docker | Docker |
+| Root Directory | Vacío | Vacío |
+| Dockerfile Path | `apps/api/Dockerfile` | `apps/bff/Dockerfile` |
+| Docker Build Context Directory | `apps/api` | `apps/bff` |
+| Instance Type | Free | Free |
+| Health Check Path | `/health` | `/health` |
+| Auto-Deploy | Off | Off |
+| Docker Command | Vacío: usa el Dockerfile | Vacío: usa el Dockerfile |
+| `API_BASE_URL` | No aplica | `https://gastos-test-api.onrender.com` |
+| `API_TIMEOUT_MS` | No aplica | `120000` |
 
-BFF y API se comunicarán por HTTPS público, porque los servicios Free no reciben tráfico privado. Los tiempos de espera locales actuales se ajustarán al preparar BFF y Angular para sus posibles arranques en frío consecutivos.
+Elegir el tipo de instancia Free y revisar el costo que muestra el formulario. El plan del workspace y el cómputo de un servicio son conceptos distintos.
 
-Este primer paso no habilita producción ni completa US-005/009. El recorrido remoto completo y la prueba en celular permanecen pendientes.
+Registrar la URL real que Render asigne al BFF. Comprobar `/health`, `/version` y `/api/hello`; comparar el SHA con el commit validado de `main`. La ruta `/` conserva el saludo propio del BFF y por sí sola no demuestra comunicación con FastAPI.
+
+## Límites y trabajo pendiente
+
+Render Free suspende cada servicio tras 15 minutos sin tráfico. El siguiente acceso puede requerir aproximadamente un minuto para despertarlo. Con BFF y API dormidos, las esperas pueden acumularse. Las 750 horas gratuitas se comparten entre los servicios del workspace; no se agrega un ping para mantenerlos activos.
+
+BFF y API se comunican mediante HTTPS público, porque los servicios Free no reciben tráfico por la red privada. La conexión del BFF a la API no necesita CORS.
+
+Angular todavía utiliza un tiempo de espera local de 10 segundos y su proxy de desarrollo. Antes de publicarlo deben resolverse su dirección de BFF, el acceso entre orígenes si corresponde y el tiempo de espera del recorrido completo. Este incremento no habilita CORS general ni garantiza que el primer acceso tras el reposo funcione sin reintentar.
+
+Las comprobaciones HTTP no abren un navegador ni ejecutan el botón de Angular. La publicación del frontend, la prueba desde celular y el CD siguen pendientes. US-005 y US-009 conservan sus criterios de aceptación restantes.
 
 ## Referencias
 
-- [Crear un servicio web y configurar el puerto](https://render.com/docs/web-services).
-- [Variables de Render, incluido RENDER_GIT_COMMIT](https://render.com/docs/environment-variables).
+- [Servicios web y configuración del puerto](https://render.com/docs/web-services).
+- [Rutas de Docker en un monorepo](https://render.com/docs/monorepo-support#root-relative-settings).
+- [Variables de Render](https://render.com/docs/environment-variables).
 - [Health checks](https://render.com/docs/health-checks).
 - [Límites de Free](https://render.com/docs/free).
-- [Herramientas del runner Ubuntu 24.04](https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2404-Readme.md).
+- [Configuración de Auto-Deploy](https://render.com/docs/deploys#configuring-auto-deploys).
