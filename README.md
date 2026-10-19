@@ -4,7 +4,9 @@ Aplicación de finanzas personales para uso familiar, aprendizaje y enseñanza. 
 
 ## Estado actual
 
-El recorrido funciona en desarrollo con Docker Compose. Todavía faltan la base de datos, autenticación, migraciones, datos iniciales, CI y despliegue remoto.
+El recorrido funciona en desarrollo con Docker Compose. El CI ejecuta las pruebas y compilaciones de Angular y BFF, comprueba dependencias y sintaxis de Python, y construye los contenedores para probar la comunicación HTTP, la caída de FastAPI y la recuperación.
+
+Todavía faltan la base de datos, autenticación, migraciones, datos iniciales y despliegue remoto.
 
 Los servidores configurados en `Dockerfile.dev` son servidores de desarrollo. La configuración de producción se incorporará por separado.
 
@@ -74,6 +76,28 @@ docker compose start api
 
 Esperar que FastAPI termine de iniciar y repetir la consulta. Debe recuperarse sin reiniciar Angular ni el BFF.
 
+## Prueba HTTP de integración
+
+El script `infra/ci/check-stack.py` utiliza solo la biblioteca estándar de Python. Desde otra terminal en la raíz del repositorio, con los contenedores iniciados:
+
+```bash
+python3 infra/ci/check-stack.py success
+docker compose stop api
+python3 infra/ci/check-stack.py unavailable
+docker compose start api
+python3 infra/ci/check-stack.py success
+```
+
+Ejecutar los comandos uno por uno. Si falla una comprobación, revisar el mensaje y los logs antes de continuar. Si FastAPI quedó detenido durante la prueba, iniciarlo otra vez con `docker compose start api`.
+
+La primera y última comprobación reintentan durante aproximadamente 120 segundos para que el recorrido responda HTTP 200 con el mensaje de FastAPI. Una solicitud en curso puede tardar hasta diez segundos adicionales. La comprobación intermedia exige el HTTP 502 y el JSON de error que genera el BFF; no acepta cualquier error del proxy.
+
+El script devuelve código de salida 0 cuando la comprobación pasa y 1 cuando falla. GitHub utiliza ese resultado para decidir si el paso pasó o falló. La dirección predeterminada es `http://127.0.0.1:4200/api/hello`; se puede cambiar con `--url`.
+
+El trabajo `Integracion HTTP con Docker` repite este recorrido en una máquina temporal de CI. Al finalizar muestra los logs y elimina sus contenedores y red con `docker compose down`.
+
+Esta prueba comprueba HTTP a través del servidor web, su proxy, el BFF y FastAPI. No ejecuta Angular en un navegador ni pulsa el botón. Las pruebas del navegador se incorporarán por separado.
+
 ## Editar y comprobar la recarga
 
 Editar desde VS Code conectado a WSL. Los montajes son de solo lectura para el contenedor; los archivos se editan normalmente desde Ubuntu.
@@ -130,8 +154,8 @@ compose.yml  Arranque conjunto del entorno local
 ## Próximas entregas
 
 - Completar las comprobaciones de recarga y recuperación del entorno local.
-- Incorporar CI y registrar sus resultados.
+- Ampliar CI con análisis de calidad, detección de secretos y pruebas en un navegador.
 - Incorporar Supabase local, migraciones y datos iniciales conforme a US-005/006/007 y los ADR.
 - Desplegar el primer recorrido en el entorno remoto de prueba y comprobarlo desde un celular.
 
-US-005 permanece abierta hasta cumplir sus criterios y la definición de terminado acordada para el primer incremento.
+US-005 y US-008 permanecen abiertas hasta cumplir sus criterios pendientes y la definición de terminado acordada para el primer incremento.

@@ -98,3 +98,37 @@ jobs:
         run: python -m pip check
       - name: Comprobar sintaxis de la aplicacion
         run: python -m compileall -q app
+
+  integration:
+    name: Integracion HTTP con Docker
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Descargar el codigo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Preparar Python para la comprobacion HTTP
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14.4'
+      - name: Validar Compose
+        run: docker compose config --quiet
+      - name: Construir e iniciar los tres servicios
+        run: docker compose up --detach --build
+      - name: Comprobar el recorrido con FastAPI disponible
+        run: python infra/ci/check-stack.py success
+      - name: Detener FastAPI
+        run: docker compose stop api
+      - name: Comprobar el error controlado del BFF
+        run: python infra/ci/check-stack.py unavailable
+      - name: Volver a iniciar FastAPI
+        run: docker compose start api
+      - name: Comprobar la recuperacion del recorrido
+        run: python infra/ci/check-stack.py success
+      - name: Mostrar los logs del entorno
+        if: always()
+        run: docker compose logs --no-color --tail=100
+      - name: Limpiar el entorno de esta ejecucion
+        if: always()
+        run: docker compose down
