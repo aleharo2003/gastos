@@ -6,7 +6,7 @@ Aplicación de finanzas personales para uso familiar, aprendizaje y enseñanza. 
 
 El recorrido funciona en desarrollo con Docker Compose. El CI ejecuta las pruebas y compilaciones de Angular y BFF, comprueba dependencias y sintaxis de Python, y construye los contenedores para probar la comunicación HTTP, la caída de FastAPI y la recuperación.
 
-FastAPI está publicada en el [entorno de prueba de Render](https://gastos-test-api.onrender.com). BFF y frontend todavía no están publicados. Faltan también la base de datos, autenticación, migraciones, datos iniciales y el CD automático.
+FastAPI y el BFF están publicados en el entorno de prueba: [API](https://gastos-test-api.onrender.com) y [BFF](https://gastos-test-bff.onrender.com). Angular tiene un build preparado para test y está pendiente de publicación. Faltan la base de datos, autenticación, migraciones, datos iniciales y el CD automático.
 
 Los archivos `Dockerfile.dev` sirven para programar. FastAPI y BFF disponen además de un `Dockerfile` para ejecutar imágenes sin recarga automática. El CI prueba esas imágenes sin montar el código del equipo.
 
@@ -120,7 +120,7 @@ Después de modificar el proxy de Docker, reiniciar el servidor de Angular:
 docker compose restart web
 ```
 
-El BFF utiliza cinco segundos por defecto para consultar FastAPI. `API_TIMEOUT_MS` permite cambiar ese límite sin recompilar. Angular conserva diez segundos en desarrollo; su configuración remota se ajustará en el siguiente incremento para contemplar los arranques en frío.
+El BFF utiliza cinco segundos por defecto para consultar FastAPI. `API_TIMEOUT_MS` permite cambiar ese límite sin recompilar. Angular conserva diez segundos en desarrollo y utiliza tres minutos en el build de test para dar margen a los arranques en frío.
 
 ## Imagen de FastAPI para el entorno remoto de prueba
 
@@ -216,7 +216,44 @@ El trabajo de BFF en CI ejecuta estas comprobaciones, valida su commit y conserv
 
 La red interna de Compose utiliza HTTP. En Render los servicios Free se comunicarán por HTTPS público. Esta prueba local no comprueba TLS del proveedor ni los arranques tras reposo real.
 
-Para Render se prevé `API_TIMEOUT_MS=120000`. Es un límite de espera de dos minutos para la consulta del BFF, y no garantiza que todo arranque en frío termine con éxito. Si FastAPI devuelve HTML durante el despertar o falla la conexión, el BFF conserva su error controlado. CORS y la espera del navegador se configurarán al publicar Angular.
+Para Render se prevé `API_TIMEOUT_MS=120000`. Es un límite de espera de dos minutos para la consulta del BFF, y no garantiza que todo arranque en frío termine con éxito. Si FastAPI devuelve HTML durante el despertar o falla la conexión, el BFF conserva su error controlado. El build de test de Angular amplía la espera del navegador. CORS se habilita en el BFF con `FRONTEND_ORIGIN`, usando el origen real del sitio una vez creado.
+
+## Angular como sitio estático de prueba
+
+Los archivos de configuración separan la ejecución local del entorno remoto:
+
+| Configuración | Dirección del BFF | Límite de espera |
+|---|---|---|
+| `src/environments/environment.ts` | Relativa: conserva `/api/hello` y el proxy local. | 10 segundos. |
+| `src/environments/environment.remote.ts` | `https://gastos-test-bff.onrender.com`. | 180 segundos. |
+
+Desde la carpeta del frontend, ejecutar cada comando por separado:
+
+```bash
+cd ~/projects/gastos/apps/web
+npm ci
+npm test -- --watch=false
+npm run build
+npm run build:test
+cat dist/gastos-web/browser/version.json
+cd ../..
+```
+
+`build:test` aplica las configuraciones `production,test`, en ese orden. Conserva las opciones optimizadas y reemplaza el archivo de entorno por el de test. La configuración Angular llamada `production` describe la compilación; el entorno que publicamos aquí sigue siendo test. El alojamiento de producción del proyecto todavía está pendiente.
+
+El sitio a publicar está en `apps/web/dist/gastos-web/browser`. Después del build, `infra/build/write-web-version.mjs` genera `version.json` con `RENDER_GIT_COMMIT`, `GITHUB_SHA` o `null` si ninguna variable existe. CI comprueba que coincida con el SHA del workflow.
+
+El JavaScript y `version.json` son públicos. Las direcciones y los tiempos de espera pueden estar allí; las credenciales de los servidores se configuran fuera del frontend.
+
+El navegador conserva el aviso de error y permite repetir la consulta. El margen de tres minutos no garantiza que un servicio dormido responda correctamente en el primer intento.
+
+### Acceso desde el sitio publicado
+
+El BFF habilita CORS cuando se configura `FRONTEND_ORIGIN` con el origen exacto del sitio: esquema, host y puerto si corresponde, sin ruta ni barra final. No usa comodines ni permite credenciales en este incremento. Si falta la variable, CORS permanece desactivado y el desarrollo local sigue utilizando su proxy.
+
+CORS controla qué respuestas puede leer el navegador desde otro origen. La autenticación y la autorización de usuarios se incorporarán en sus stories.
+
+El sitio de Angular se creará después de integrar el PR y comprobar CI en main. Render asignará su URL real; con ese origen se configurará y desplegará el BFF. El orden completo y los campos del Static Site están en [la guía de despliegue de test](docs/despliegue-test.md).
 
 ## Consultar y detener los servicios
 

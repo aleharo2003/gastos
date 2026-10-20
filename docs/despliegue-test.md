@@ -1,154 +1,167 @@
-# Despliegue de prueba en Render
+# Despliegue del entorno de prueba en Render
 
-La API ya está publicada. Esta entrega prepara la imagen del BFF y sus comprobaciones; el servicio del BFF se creará después de integrar el cambio y verificar CI en `main`. Angular y el CD automático siguen pendientes.
+La API y el BFF ya están publicados. Esta entrega prepara Angular como sitio estático, configura su acceso al BFF e incorpora las comprobaciones correspondientes en CI. La creación del sitio y su prueba desde el celular se harán después de integrar el PR y comprobar el CI de `main`.
 
-Se aplica a US-005 y la primera entrega de US-009. El entorno todavía usa un saludo de prueba, sin Supabase, autenticación ni datos financieros.
+Este entorno ejecuta un saludo de prueba. Supabase, autenticación y datos financieros pertenecen a los siguientes incrementos. US-005 y US-009 conservan sus criterios de aceptación pendientes.
 
 ## Estado del entorno
 
 | Componente | Estado |
 |---|---|
 | API | Publicada en `https://gastos-test-api.onrender.com`. |
-| BFF | Imagen y configuración preparadas en esta entrega. Pendiente de publicación. |
-| Angular | Pendiente de preparación y publicación. |
-| CI | Comprueba cada cambio; esta entrega incorpora la imagen del BFF y el recorrido entre las imágenes de ejecución. |
+| BFF | Publicado en `https://gastos-test-bff.onrender.com`. |
+| Angular | Configuración preparada en este incremento; sitio pendiente de creación. |
+| CI | Comprueba aplicaciones, imágenes de ejecución, comunicación HTTP y configuración del build de prueba de Angular. |
 | CD | Pendiente. Los despliegues actuales se controlan manualmente. |
-| Base de datos y autenticación | Pendientes de sus stories y ADR correspondientes. |
+| Base de datos y autenticación | Pendientes de sus stories y ADR. |
 
-En la primera publicación de la API se comprobaron `/`, `/health` y `/version`. La versión observada fue `619037c`, coincidente con el commit de `main` validado por [GitHub Actions](https://github.com/aleharo2003/gastos/actions/runs/39335126642). Es un registro de esa entrega: los siguientes despliegues tendrán su propio SHA.
+La primera publicación de la API ejecutó el commit `619037c`, comprobado contra su [CI de main](https://github.com/aleharo2003/gastos/actions/runs/39335126642). El BFF se publicó con `015cfd4`, también con [CI aprobado](https://github.com/aleharo2003/gastos/actions/runs/39339009294). Son registros de esas entregas; cada despliegue siguiente debe comprobar su propio SHA.
 
-El servicio `gastos-test-api` tiene Auto-Deploy en Off. Un servicio activo continúa atendiendo solicitudes aunque se desactive el despliegue automático.
+En la comprobación del BFF se observó un primer HTTP 502. Luego, una consulta directa a FastAPI tardó aproximadamente 23 segundos y el siguiente recorrido desde el BFF devolvió HTTP 200 con el mensaje esperado. Es compatible con un arranque en frío; esa observación por sí sola no determina la causa del primer error.
 
-## Orden del trabajo
+## Orden de despliegue
 
-1. Sincronizar la copia local con `main` y crear una rama para el BFF.
-2. Ejecutar las pruebas del BFF y construir las imágenes de ejecución de API y BFF.
-3. Probar respuesta, caída de la API y recuperación usando esas imágenes, sin montajes del código local.
-4. Subir el cambio, comprobar CI y fusionar el PR en `main`.
-5. Esperar el CI de ese commit de `main` y recién entonces crear el servicio Free del BFF.
-6. Comprobar salud, versión y comunicación con la API publicada.
-7. Preparar Angular y probar el recorrido remoto completo, incluido el acceso desde celular y el comportamiento después del reposo.
-8. Incorporar el despliegue automático desde GitHub para un commit validado.
+1. Trabajar en una rama y comprobar el cambio localmente.
+2. Subirlo, revisar el PR y esperar CI.
+3. Integrarlo en `main` y esperar el CI del commit integrado.
+4. Desplegar ese commit y comprobar salud, versión y recorrido HTTP.
+5. Si es la primera publicación de Angular, registrar su URL real y configurarla como origen permitido en el BFF.
+6. Probar la aplicación desde el navegador y desde el celular.
 
-Crear un servicio en Render inicia su primer build y despliegue. Por eso el nuevo servicio se crea cuando el código ya está en `main` y su CI pasó. Configurar Auto-Deploy en Off evita que los siguientes cambios se publiquen por fuera del orden acordado.
+Mantener Auto-Deploy en Off en los servicios. Al crear un servicio o un sitio nuevo, Render inicia su primer despliegue; por eso se crea después de los pasos de revisión y CI. Para los siguientes despliegues manuales, elegir el SHA aprobado mediante **Manual Deploy → Deploy a specific commit**. Comprobar la versión publicada al terminar.
 
-Cuando exista la base, el orden ordinario será CI, migraciones, despliegue y verificación. El saludo actual no requiere migraciones.
+Cuando exista la base, el orden ordinario será **CI, migraciones, despliegue y verificación**. El saludo actual no requiere migraciones.
 
-## Imágenes para ejecutar la aplicación
+## API y BFF: configuración de ejecución
 
-`Dockerfile.dev` conserva la recarga automática para programar. Los nuevos `Dockerfile` incluyen el código dentro de la imagen y arrancan los servidores sin recarga.
-
-La imagen del BFF se construye en dos etapas. La primera instala las dependencias y compila TypeScript. La segunda instala las dependencias necesarias para ejecutar el programa y copia el resultado compilado. Arranca con Node y un usuario sin privilegios de administrador.
-
-El BFF escucha en `0.0.0.0` y utiliza el puerto indicado por `PORT`. Render proporciona esa variable; la aplicación conserva el puerto local predeterminado para desarrollo.
-
-## Configuración del BFF
-
-| Variable | Uso |
-|---|---|
-| `API_BASE_URL` | Dirección de FastAPI a la que consulta el BFF. En Render usa la URL HTTPS pública de la API. |
-| `API_TIMEOUT_MS` | Límite de espera de la llamada a FastAPI, en milisegundos. El valor predeterminado local es 5000; en Render se configura 120000. |
-| `PORT` | Puerto del servidor. Lo proporciona Render. |
-| `RENDER_GIT_COMMIT` | Commit que devuelve `/version`. Lo proporciona Render cuando construye desde Git. |
-
-`API_TIMEOUT_MS` debe ser un entero positivo. El arranque debe señalar un valor inválido para poder corregir la configuración. No contiene una credencial.
-
-El BFF valida el estado HTTP y el contenido de la respuesta de FastAPI. Un error de red, un timeout, un HTTP de error o un contenido inválido se convierten en su error controlado HTTP 502. Ampliar el tiempo de espera no garantiza que toda llamada durante un arranque en frío termine correctamente.
-
-El BFF no reintenta automáticamente la solicitud en esta entrega. Si falla, el usuario puede volver a consultar cuando los servicios estén disponibles.
-
-## Salud y versión
-
-Ambos servidores exponen:
-
-- `/health`: devuelve HTTP 200 con `{"status":"ok"}` cuando ese proceso atiende solicitudes.
-- `/version`: devuelve el commit que informa `RENDER_GIT_COMMIT`. Sin esa variable, devuelve `{"commit":null}`. No publica las demás variables del servicio y solicita no guardar la respuesta en caché.
-
-La salud del BFF no consulta FastAPI. Esto permite distinguir un BFF funcionando de una API que está dormida o caída. La comunicación entre ambos se verifica por separado mediante `/api/hello`.
-
-## Prueba local de las imágenes de ejecución
-
-Ejecutar desde la raíz del repositorio:
-
-```bash
-docker compose --project-name gastos-runtime-local --file infra/ci/compose.runtime.yml config --quiet
-docker compose --project-name gastos-runtime-local --file infra/ci/compose.runtime.yml up --detach --build
-
-python3 infra/ci/check-stack.py success --url http://127.0.0.1:18001/api/hello
-
-curl --fail --silent --show-error http://127.0.0.1:18001/health
-curl --fail --silent --show-error http://127.0.0.1:18001/version
-```
-
-Esta configuración utiliza API en `127.0.0.1:18000` y BFF en `127.0.0.1:18001`, con puertos diferentes de los servicios habituales de desarrollo. No incluye Angular ni monta el código local. La primera consulta espera a que el recorrido HTTP esté listo; tener un contenedor iniciado no significa que ya atienda solicitudes.
-
-Sin `RENDER_GIT_COMMIT`, la versión local es `null`. En CI se asigna el SHA del workflow a ambos servicios para comprobar la versión ejecutada.
-
-Probar la caída y la recuperación:
-
-```bash
-docker compose --project-name gastos-runtime-local --file infra/ci/compose.runtime.yml stop api
-python3 infra/ci/check-stack.py unavailable --url http://127.0.0.1:18001/api/hello
-
-docker compose --project-name gastos-runtime-local --file infra/ci/compose.runtime.yml start api
-python3 infra/ci/check-stack.py success --url http://127.0.0.1:18001/api/hello
-```
-
-La prueba de indisponibilidad pasa cuando recibe el error esperado HTTP 502 del BFF. La recuperación debe funcionar sin reiniciar el BFF.
-
-Para retirar únicamente este entorno de prueba:
-
-```bash
-docker compose --project-name gastos-runtime-local --file infra/ci/compose.runtime.yml down
-```
-
-Si una comprobación falla, revisar los logs de este mismo proyecto y volver a iniciar la API antes de repetirla:
-
-```bash
-docker compose --project-name gastos-runtime-local --file infra/ci/compose.runtime.yml logs --tail=100
-```
-
-## Configuración de los servicios en Render
-
-La API ya existe. La tabla del BFF registra lo que deberá usarse después de integrar este incremento; no implica que el servicio ya esté creado.
-
-| Campo | API existente | BFF por crear |
+| Campo | API | BFF |
 |---|---|---|
 | Tipo | Web Service | Web Service |
-| Origen | Git Provider | Git Provider |
 | Repositorio | `aleharo2003/gastos` | `aleharo2003/gastos` |
-| Nombre | `gastos-test-api` | `gastos-test-bff`, sujeto a disponibilidad |
+| Nombre | `gastos-test-api` | `gastos-test-bff` |
 | Rama | `main` | `main` |
 | Runtime / Language | Docker | Docker |
 | Root Directory | Vacío | Vacío |
 | Dockerfile Path | `apps/api/Dockerfile` | `apps/bff/Dockerfile` |
 | Docker Build Context Directory | `apps/api` | `apps/bff` |
+| Docker Command | Vacío: usa el Dockerfile | Vacío: usa el Dockerfile |
 | Instance Type | Free | Free |
 | Health Check Path | `/health` | `/health` |
 | Auto-Deploy | Off | Off |
-| Docker Command | Vacío: usa el Dockerfile | Vacío: usa el Dockerfile |
-| `API_BASE_URL` | No aplica | `https://gastos-test-api.onrender.com` |
-| `API_TIMEOUT_MS` | No aplica | `120000` |
 
-Elegir el tipo de instancia Free y revisar el costo que muestra el formulario. El plan del workspace y el cómputo de un servicio son conceptos distintos.
+Los servidores escuchan en `0.0.0.0` y usan `PORT`, proporcionado por Render. Las imágenes incluyen el código y arrancan sin recarga automática, con usuarios sin privilegios de administrador. La imagen del BFF compila TypeScript en una etapa y copia el resultado a la etapa de ejecución.
 
-Registrar la URL real que Render asigne al BFF. Comprobar `/health`, `/version` y `/api/hello`; comparar el SHA con el commit validado de `main`. La ruta `/` conserva el saludo propio del BFF y por sí sola no demuestra comunicación con FastAPI.
+| Variable del BFF | Valor o función |
+|---|---|
+| `API_BASE_URL` | `https://gastos-test-api.onrender.com` |
+| `API_TIMEOUT_MS` | `120000`: límite de espera de su consulta a FastAPI. Localmente, el predeterminado es `5000`. |
+| `FRONTEND_ORIGIN` | URL de origen real de Angular. Se configura después de crear el sitio. |
+| `PORT` | Puerto del proceso, proporcionado por Render. |
+| `RENDER_GIT_COMMIT` | SHA proporcionado por Render; el BFF lo publica en `/version`. |
 
-## Límites y trabajo pendiente
+`API_TIMEOUT_MS` debe ser un entero positivo. `FRONTEND_ORIGIN`, si está definida, debe ser un origen HTTP(S) completo, sin ruta, credenciales, parámetros ni barra final. Un valor inválido impide arrancar y permite detectar la configuración incorrecta durante el despliegue.
 
-Render Free suspende cada servicio tras 15 minutos sin tráfico. El siguiente acceso puede requerir aproximadamente un minuto para despertarlo. Con BFF y API dormidos, las esperas pueden acumularse. Las 750 horas gratuitas se comparten entre los servicios del workspace; no se agrega un ping para mantenerlos activos.
+El BFF permite leer sus respuestas desde el origen configurado y admite los métodos GET y HEAD de este incremento. No habilita credenciales CORS. Si la variable está ausente, no habilita CORS. El desarrollo local sigue usando el proxy, que no requiere ese permiso entre orígenes.
 
-BFF y API se comunican mediante HTTPS público, porque los servicios Free no reciben tráfico por la red privada. La conexión del BFF a la API no necesita CORS.
+CORS lo aplica el navegador; no reemplaza autenticación ni autorización. La conexión entre el BFF y FastAPI es una consulta entre servidores y no necesita CORS.
 
-Angular todavía utiliza un tiempo de espera local de 10 segundos y su proxy de desarrollo. Antes de publicarlo deben resolverse su dirección de BFF, el acceso entre orígenes si corresponde y el tiempo de espera del recorrido completo. Este incremento no habilita CORS general ni garantiza que el primer acceso tras el reposo funcione sin reintentar.
+## Angular: configuración del build
 
-Las comprobaciones HTTP no abren un navegador ni ejecutan el botón de Angular. La publicación del frontend, la prueba desde celular y el CD siguen pendientes. US-005 y US-009 conservan sus criterios de aceptación restantes.
+| Archivo o comando | Responsabilidad |
+|---|---|
+| `src/environments/environment.ts` | Dirección relativa del BFF y espera local de 10 segundos. |
+| `src/environments/environment.remote.ts` | Dirección pública `https://gastos-test-bff.onrender.com` y espera de 180 segundos. |
+| `npm run build:test` | Aplica las configuraciones `production,test` y luego genera `version.json`. |
+| `infra/build/write-web-version.mjs` | Comprueba la salida del build y escribe el SHA de Render, el de GitHub Actions o `null`. |
+
+El componente importa el archivo base y el build de prueba lo reemplaza. `production` indica opciones de compilación; el entorno de despliegue sigue siendo **test**. Los proxies del servidor de desarrollo no se ejecutan en el sitio estático publicado.
+
+Las direcciones de los servicios, los tiempos de espera y el SHA del build son datos públicos. No incluir contraseñas, claves privadas ni secretos de los servidores en los archivos de Angular o en su build.
+
+## Angular: configuración prevista en Render
+
+Crear un **Static Site**, después de integrar este cambio y comprobar el CI de `main`.
+
+| Campo | Valor |
+|---|---|
+| Repositorio | `aleharo2003/gastos` |
+| Nombre sugerido | `gastos-test-web`, sujeto a disponibilidad |
+| Rama | `main` |
+| Root Directory | Vacío |
+| Build Command | `npm --prefix apps/web ci --include=dev && npm --prefix apps/web run build:test` |
+| Publish Directory | `apps/web/dist/gastos-web/browser` |
+| Auto-Deploy | Off |
+
+La raíz vacía permite usar `.nvmrc`, que fija Node `24.22.0`, y acceder al generador de versión dentro de `infra/build/`. La carpeta publicada es la que contiene `index.html`. El comando instala también las herramientas de compilación, porque Angular las necesita durante el build.
+
+Agregar la variable de build `SKIP_INSTALL_DEPS=true`. Así Render deja la instalación de dependencias a nuestro `npm ci` y evitamos una instalación automática adicional. `RENDER_GIT_COMMIT` lo proporciona Render; no hay que escribirlo manualmente.
+
+En **Redirects/Rewrites**, agregar:
+
+| Source | Destination | Action |
+|---|---|---|
+| `/*` | `/index.html` | Rewrite |
+
+Esto entrega la aplicación al recargar futuras rutas del navegador. No cambia el destino del BFF: la configuración de prueba de Angular ya usa su dirección HTTPS pública.
+
+En **Headers**, agregar:
+
+| Path | Header | Value |
+|---|---|---|
+| `/version.json` | `Cache-Control` | `no-store` |
+
+El encabezado evita conservar la respuesta de versión en caché cuando comprobamos un despliegue. El resto de los archivos conserva el comportamiento de caché de la plataforma.
+
+Si Auto-Deploy no aparece en el formulario inicial, establecer Off desde Settings después de crear el sitio. Elegir el servicio de sitio estático gratuito y revisar los importes que muestre la cuenta antes de confirmar una opción adicional.
+
+## Registrar el origen de Angular y publicar el BFF
+
+1. Esperar a que el sitio termine su primer despliegue y copiar la URL real asignada por Render.
+2. En las variables del BFF, asignar esa dirección a `FRONTEND_ORIGIN`, sin barra final. No utilizar un nombre supuesto ni `*`.
+3. Elegir **Save only** para guardar la variable y después usar **Manual Deploy → Deploy a specific commit** con el SHA aprobado en CI. La variable se aplicará en ese despliegue.
+4. Mantener Auto-Deploy en Off y comprobar `/version` del BFF después del despliegue.
+5. Entrar al sitio de Angular y pulsar el botón para verificar el recorrido.
+
+La configuración CORS nueva debe estar en el BFF desplegado para que `FRONTEND_ORIGIN` tenga efecto. No basta con agregar la variable a la versión anterior del BFF.
+
+## Comprobaciones de cada entrega
+
+La API y el BFF tienen `/health` y `/version`. Salud devuelve `{"status":"ok"}` cuando ese proceso atiende solicitudes; no comprueba todas sus dependencias. Versión devuelve el SHA ejecutado y solicita no guardar la respuesta en caché. La salud del BFF no consulta ni despierta FastAPI.
+
+El sitio estático publica `/version.json`. Comparar su SHA con el commit que terminó CI y fue desplegado. Abrirlo en el navegador no comprueba que Angular funcione: también hay que pulsar el botón y observar el resultado.
+
+La prueba del recorrido completo debe verificar:
+
+- Carga de Angular por HTTPS y versión esperada del sitio.
+- Botón, espera visible y mensaje `Hola desde FastAPI`.
+- Solicitud al BFF real, con permiso CORS para el origen del sitio.
+- Acceso desde el celular.
+- Comportamiento después del reposo y posibilidad de volver a consultar después de un error.
+
+Las pruebas locales y CI usan servicios aislados. No envían solicitudes periódicas a Render para evitar el reposo.
+
+## Límites de Free y trabajo pendiente
+
+Render Free suspende los servicios web después de 15 minutos sin tráfico. Despertar un servicio puede requerir aproximadamente un minuto; el BFF y FastAPI duermen por separado. El sitio estático se distribuye por CDN y no utiliza esos procesos para servir sus archivos.
+
+La consulta de Angular admite hasta tres minutos, y la llamada del BFF a FastAPI hasta dos. Son límites de espera, no una promesa de éxito del primer acceso. El BFF valida estado HTTP y contenido de FastAPI; errores de red, timeout, HTTP de error o contenido inválido producen su HTTP 502 controlado. El usuario puede volver a consultar; no se agregan reintentos automáticos en este incremento.
+
+Las 750 horas gratuitas de los servicios web se comparten en el workspace. No mantenerlos despiertos mediante pings. BFF y API usan HTTPS público porque las instancias Free no reciben tráfico privado. El sitio estático consume las cuotas de transferencia y de construcción de la cuenta.
+
+Faltan la publicación del sitio, las verificaciones de navegador y celular, el CD desde GitHub y los criterios restantes de las stories. Este entorno de prueba no determina todavía el alojamiento final de producción.
 
 ## Referencias
 
-- [Servicios web y configuración del puerto](https://render.com/docs/web-services).
-- [Rutas de Docker en un monorepo](https://render.com/docs/monorepo-support#root-relative-settings).
+- [Configuraciones y archivos de entorno de Angular](https://angular.dev/tools/cli/environments).
+- [Publicación de Angular y rutas del navegador](https://angular.dev/tools/cli/deployment).
+- [Sitios estáticos de Render](https://render.com/docs/static-sites).
+- [Instalación de dependencias en sitios estáticos](https://render.com/docs/static-sites#dependency-installation).
+- [Node en Render](https://render.com/docs/node-version).
+- [Rutas de monorepos](https://render.com/docs/monorepo-support).
+- [Redirects y rewrites](https://render.com/docs/redirects-rewrites).
+- [Encabezados de sitios estáticos](https://render.com/docs/static-site-headers).
+- [CORS en Nest](https://docs.nestjs.com/security/cors).
 - [Variables de Render](https://render.com/docs/environment-variables).
-- [Health checks](https://render.com/docs/health-checks).
+- [Guardar variables y elegir cuándo desplegarlas](https://render.com/changelog/specify-deploy-behavior-when-modifying-environment-variables).
 - [Límites de Free](https://render.com/docs/free).
-- [Configuración de Auto-Deploy](https://render.com/docs/deploys#configuring-auto-deploys).
+- [Despliegues de Render](https://render.com/docs/deploys).

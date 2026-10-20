@@ -11,8 +11,12 @@
     {{ loading() ? 'Consultando...' : 'Consultar mensaje' }}
   </button>
 
+  @if (loading()) {
+    <p role="status">Esperando respuesta. La primera consulta puede tardar unos minutos.</p>
+  }
+
   @if (message()) {
-    <p>{{ message() }}</p>
+    <p aria-live="polite">{{ message() }}</p>
   }
 
   @if (error()) {

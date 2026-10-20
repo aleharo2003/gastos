@@ -19,6 +19,7 @@ services:
       PORT: "10000"
       API_BASE_URL: "http://api:8000"
       API_TIMEOUT_MS: "5000"
+      FRONTEND_ORIGIN:
       RENDER_GIT_COMMIT:
     ports:
       - "127.0.0.1:${RUNTIME_BFF_PORT:-18001}:10000"
