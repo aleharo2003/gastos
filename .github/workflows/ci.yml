@@ -14,7 +14,7 @@ permissions:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
   CI: 'true'
@@ -165,6 +165,8 @@ jobs:
         run: python -m pip check
       - name: Comprobar sintaxis de la aplicacion
         run: python -m compileall -q app
+      - name: Probar el despliegue con respuestas simuladas
+        run: python -m unittest discover -s ../../infra/cd -p 'test_*.py'
       - name: Construir la imagen para despliegue
         run: docker build --tag gastos-api-runtime:ci --file Dockerfile .
       - name: Iniciar la imagen sin montajes del repositorio
@@ -222,3 +224,44 @@ jobs:
       - name: Limpiar el entorno de esta ejecucion
         if: always()
         run: docker compose down
+
+  deploy_test:
+    name: Publicar test en Render
+    needs: [web, bff, api, integration]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    environment:
+      name: test
+      url: https://gastos-test-web.onrender.com
+    concurrency:
+      group: render-test
+      cancel-in-progress: false
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Descargar el commit validado
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Preparar Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14.4'
+      - name: Comprobar si main avanzo durante CI
+        id: current_main
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          DEPLOY_COMMIT: ${{ github.sha }}
+        run: python infra/cd/check_main.py --commit "$DEPLOY_COMMIT"
+      - name: Desplegar y verificar API, BFF y Angular
+        if: steps.current_main.outputs.deploy == 'true'
+        env:
+          DEPLOY_COMMIT: ${{ github.sha }}
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_API_SERVICE_ID: ${{ vars.RENDER_API_SERVICE_ID }}
+          RENDER_BFF_SERVICE_ID: ${{ vars.RENDER_BFF_SERVICE_ID }}
+          RENDER_WEB_SERVICE_ID: ${{ vars.RENDER_WEB_SERVICE_ID }}
+        run: python infra/cd/deploy_render.py --commit "$DEPLOY_COMMIT"

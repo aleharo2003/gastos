@@ -6,7 +6,7 @@ Aplicación de finanzas personales para uso familiar, aprendizaje y enseñanza. 
 
 El recorrido funciona en desarrollo con Docker Compose. El CI ejecuta las pruebas y compilaciones de Angular y BFF, comprueba dependencias y sintaxis de Python, y construye los contenedores para probar la comunicación HTTP, la caída de FastAPI y la recuperación.
 
-FastAPI y el BFF están publicados en el entorno de prueba: [API](https://gastos-test-api.onrender.com) y [BFF](https://gastos-test-bff.onrender.com). Angular tiene un build preparado para test y está pendiente de publicación. Faltan la base de datos, autenticación, migraciones, datos iniciales y el CD automático.
+El entorno de prueba está publicado en Render: [Angular](https://gastos-test-web.onrender.com), [BFF](https://gastos-test-bff.onrender.com) y [API](https://gastos-test-api.onrender.com). El recorrido también se comprobó desde un celular. Este incremento incorpora la configuración de CD desde GitHub; su primera ejecución real requiere configurar el environment `test` e integrar el cambio. Faltan la base de datos, autenticación, migraciones y datos iniciales.
 
 Los archivos `Dockerfile.dev` sirven para programar. FastAPI y BFF disponen además de un `Dockerfile` para ejecutar imágenes sin recarga automática. El CI prueba esas imágenes sin montar el código del equipo.
 
@@ -56,7 +56,7 @@ Los puertos se publican en `127.0.0.1`, para acceder desde el equipo de desarrol
 
 El BFF recibe `API_BASE_URL=http://api:8000` mediante `compose.yml`. Angular utiliza `src/proxy.docker.conf.json` al arrancar dentro de Docker. El archivo `src/proxy.conf.json` conserva la dirección del BFF para ejecutar Angular directamente en Ubuntu.
 
-Estos proxies pertenecen al servidor de desarrollo; las rutas del despliegue remoto se configurarán al preparar ese entorno.
+Estos proxies pertenecen al servidor de desarrollo. En el sitio publicado, Angular consulta la URL HTTPS del BFF configurada en el build de test.
 
 ## Comprobar el funcionamiento
 
@@ -253,7 +253,23 @@ El BFF habilita CORS cuando se configura `FRONTEND_ORIGIN` con el origen exacto 
 
 CORS controla qué respuestas puede leer el navegador desde otro origen. La autenticación y la autorización de usuarios se incorporarán en sus stories.
 
-El sitio de Angular se creará después de integrar el PR y comprobar CI en main. Render asignará su URL real; con ese origen se configurará y desplegará el BFF. El orden completo y los campos del Static Site están en [la guía de despliegue de test](docs/despliegue-test.md).
+Angular está publicado en `https://gastos-test-web.onrender.com`. Ese origen está configurado en el BFF. Los campos del Static Site y las variables de los servidores están en [la guía de despliegue de test](docs/despliegue-test.md).
+
+## Despliegue continuo de test
+
+El quinto trabajo de CI publica en Render después de que aprueben Angular, BFF, API e integración HTTP. Solo se ejecuta ante un `push` a `main`; los PR y las ramas de trabajo conservan las comprobaciones sin publicar.
+
+La entrega usa el mismo SHA validado para API, BFF y Angular, en ese orden. Espera cada despliegue y comprueba salud, versión y respuestas públicas antes de continuar. Si `main` avanzó durante CI, omite la entrega anterior antes de modificar Render. Una publicación que ya comenzó conserva su SHA hasta terminar o fallar.
+
+Para activarlo, configurar el environment `test` en GitHub con la API key y los tres identificadores de servicio. Mantener Auto-Deploy en Off en Render. La configuración, las pruebas y la recuperación ante una entrega parcial están en [CD de test](docs/cd-test.md).
+
+Las pruebas del programa no publican servicios y usan solo Python:
+
+```bash
+python3 -m unittest discover -s infra/cd -p 'test_*.py'
+```
+
+Este flujo todavía no ejecuta migraciones ni publica producción. Cada entrega reconstruye el commit en Render y puede dejar versiones distintas si falla a mitad de la secuencia; el resumen de Actions permite revisar qué se publicó.
 
 ## Consultar y detener los servicios
 
@@ -289,6 +305,7 @@ compose.yml  Arranque conjunto del entorno local
 - Completar las comprobaciones de recarga y recuperación del entorno local.
 - Ampliar CI con análisis de calidad, detección de secretos y pruebas en un navegador.
 - Incorporar Supabase local, migraciones y datos iniciales conforme a US-005/006/007 y los ADR.
-- Desplegar el primer recorrido en el entorno remoto de prueba y comprobarlo desde un celular.
+- Configurar GitHub y verificar la primera publicación automática del entorno de prueba.
+- Completar la prueba de primer acceso tras reposo y preparar producción cuando corresponda.
 
 US-005 y US-008 permanecen abiertas hasta cumplir sus criterios pendientes y la definición de terminado acordada para el primer incremento.
