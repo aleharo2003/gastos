@@ -1,6 +1,6 @@
 # Despliegue del entorno de prueba en Render
 
-La API y el BFF ya están publicados. Esta entrega prepara Angular como sitio estático, configura su acceso al BFF e incorpora las comprobaciones correspondientes en CI. La creación del sitio y su prueba desde el celular se harán después de integrar el PR y comprobar el CI de `main`.
+Angular, el BFF y la API están publicados en Render. El recorrido «Consultar mensaje» se comprobó en el navegador y desde un celular. Este documento conserva la configuración de los servicios; [CD de test](cd-test.md) explica cómo GitHub automatiza las siguientes entregas.
 
 Este entorno ejecuta un saludo de prueba. Supabase, autenticación y datos financieros pertenecen a los siguientes incrementos. US-005 y US-009 conservan sus criterios de aceptación pendientes.
 
@@ -10,25 +10,26 @@ Este entorno ejecuta un saludo de prueba. Supabase, autenticación y datos finan
 |---|---|
 | API | Publicada en `https://gastos-test-api.onrender.com`. |
 | BFF | Publicado en `https://gastos-test-bff.onrender.com`. |
-| Angular | Configuración preparada en este incremento; sitio pendiente de creación. |
+| Angular | Publicado en `https://gastos-test-web.onrender.com`. |
 | CI | Comprueba aplicaciones, imágenes de ejecución, comunicación HTTP y configuración del build de prueba de Angular. |
-| CD | Pendiente. Los despliegues actuales se controlan manualmente. |
+| CD | Configuración incorporada; primera ejecución real pendiente de configurar GitHub e integrar el cambio. |
 | Base de datos y autenticación | Pendientes de sus stories y ADR. |
 
-La primera publicación de la API ejecutó el commit `619037c`, comprobado contra su [CI de main](https://github.com/aleharo2003/gastos/actions/runs/39335126642). El BFF se publicó con `015cfd4`, también con [CI aprobado](https://github.com/aleharo2003/gastos/actions/runs/39339009294). Son registros de esas entregas; cada despliegue siguiente debe comprobar su propio SHA.
+La primera publicación de la API ejecutó el commit `619037c`, comprobado contra su [CI de main](https://github.com/aleharo2003/gastos/actions/runs/39335126642). Al publicar Angular y habilitar CORS se comprobó `aff2bbee` en el sitio y el BFF, con [CI aprobado](https://github.com/aleharo2003/gastos/actions/runs/39483975917). Son registros de esas entregas; cada despliegue siguiente debe comprobar su propio SHA.
 
-En la comprobación del BFF se observó un primer HTTP 502. Luego, una consulta directa a FastAPI tardó aproximadamente 23 segundos y el siguiente recorrido desde el BFF devolvió HTTP 200 con el mensaje esperado. Es compatible con un arranque en frío; esa observación por sí sola no determina la causa del primer error.
+Durante las comprobaciones se observó un primer HTTP 502 y una consulta posterior correcta. Es compatible con un arranque en frío; esa observación por sí sola no determina la causa del primer error. El éxito posterior y la prueba desde el celular no completan la validación controlada del primer acceso tras reposo.
 
 ## Orden de despliegue
 
-1. Trabajar en una rama y comprobar el cambio localmente.
-2. Subirlo, revisar el PR y esperar CI.
-3. Integrarlo en `main` y esperar el CI del commit integrado.
-4. Desplegar ese commit y comprobar salud, versión y recorrido HTTP.
-5. Si es la primera publicación de Angular, registrar su URL real y configurarla como origen permitido en el BFF.
-6. Probar la aplicación desde el navegador y desde el celular.
+1. Trabajar en una rama, comprobar el cambio localmente y abrir el PR.
+2. Revisar el cambio y esperar CI antes de integrarlo en `main`.
+3. GitHub repite CI sobre el commit integrado y habilita la entrega de test cuando aprueban los cuatro trabajos.
+4. El trabajo de despliegue comprueba `main` y los destinos, publica API, BFF y Angular con ese SHA y verifica cada uno antes de continuar.
+5. Revisar el resumen de Actions y probar la aplicación en el navegador; repetir desde el celular cuando cambie la experiencia de uso.
 
-Mantener Auto-Deploy en Off en los servicios. Al crear un servicio o un sitio nuevo, Render inicia su primer despliegue; por eso se crea después de los pasos de revisión y CI. Para los siguientes despliegues manuales, elegir el SHA aprobado mediante **Manual Deploy → Deploy a specific commit**. Comprobar la versión publicada al terminar.
+Antes de la primera ejecución automática, configurar el environment `test`, sus variables y su secreto según [CD de test](cd-test.md). Mantener Auto-Deploy en Off en los tres servicios. La recuperación manual usa **Manual Deploy → Deploy a specific commit**, eligiendo un SHA aprobado y comprobando el conjunto de versiones; no ejecutarla mientras haya una entrega automática activa.
+
+Si se recrea un servicio, Render inicia su primer despliegue al crearlo. Preparar esa configuración después de revisión y CI, actualizar su ID en GitHub y volver a verificar la conexión entre los componentes.
 
 Cuando exista la base, el orden ordinario será **CI, migraciones, despliegue y verificación**. El saludo actual no requiere migraciones.
 
@@ -55,7 +56,7 @@ Los servidores escuchan en `0.0.0.0` y usan `PORT`, proporcionado por Render. La
 |---|---|
 | `API_BASE_URL` | `https://gastos-test-api.onrender.com` |
 | `API_TIMEOUT_MS` | `120000`: límite de espera de su consulta a FastAPI. Localmente, el predeterminado es `5000`. |
-| `FRONTEND_ORIGIN` | URL de origen real de Angular. Se configura después de crear el sitio. |
+| `FRONTEND_ORIGIN` | `https://gastos-test-web.onrender.com`, sin barra final. |
 | `PORT` | Puerto del proceso, proporcionado por Render. |
 | `RENDER_GIT_COMMIT` | SHA proporcionado por Render; el BFF lo publica en `/version`. |
 
@@ -78,14 +79,14 @@ El componente importa el archivo base y el build de prueba lo reemplaza. `produc
 
 Las direcciones de los servicios, los tiempos de espera y el SHA del build son datos públicos. No incluir contraseñas, claves privadas ni secretos de los servidores en los archivos de Angular o en su build.
 
-## Angular: configuración prevista en Render
+## Angular: configuración en Render
 
-Crear un **Static Site**, después de integrar este cambio y comprobar el CI de `main`.
+El sitio existente es un **Static Site**. Estos valores permiten revisar su configuración o recrearlo cuando corresponda.
 
 | Campo | Valor |
 |---|---|
 | Repositorio | `aleharo2003/gastos` |
-| Nombre sugerido | `gastos-test-web`, sujeto a disponibilidad |
+| Nombre | `gastos-test-web` |
 | Rama | `main` |
 | Root Directory | Vacío |
 | Build Command | `npm --prefix apps/web ci --include=dev && npm --prefix apps/web run build:test` |
@@ -114,15 +115,11 @@ El encabezado evita conservar la respuesta de versión en caché cuando comproba
 
 Si Auto-Deploy no aparece en el formulario inicial, establecer Off desde Settings después de crear el sitio. Elegir el servicio de sitio estático gratuito y revisar los importes que muestre la cuenta antes de confirmar una opción adicional.
 
-## Registrar el origen de Angular y publicar el BFF
+## Cambios del origen de Angular
 
-1. Esperar a que el sitio termine su primer despliegue y copiar la URL real asignada por Render.
-2. En las variables del BFF, asignar esa dirección a `FRONTEND_ORIGIN`, sin barra final. No utilizar un nombre supuesto ni `*`.
-3. Elegir **Save only** para guardar la variable y después usar **Manual Deploy → Deploy a specific commit** con el SHA aprobado en CI. La variable se aplicará en ese despliegue.
-4. Mantener Auto-Deploy en Off y comprobar `/version` del BFF después del despliegue.
-5. Entrar al sitio de Angular y pulsar el botón para verificar el recorrido.
+Si cambia el dominio del sitio, actualizar `FRONTEND_ORIGIN` en el BFF, sin barra final. Actualizar también la URL de web en `infra/cd/render-test.json` y el enlace del environment en el workflow. Revisar los campos de CORS de CI si cambia ese contrato.
 
-La configuración CORS nueva debe estar en el BFF desplegado para que `FRONTEND_ORIGIN` tenga efecto. No basta con agregar la variable a la versión anterior del BFF.
+Guardar la variable con **Save only** y coordinar la siguiente entrega del SHA aprobado para que se aplique. La comprobación pública exige ese origen exacto. Cambiar una variable de Render no modifica el código del repositorio ni garantiza por sí solo que se haya desplegado.
 
 ## Comprobaciones de cada entrega
 
@@ -148,7 +145,7 @@ La consulta de Angular admite hasta tres minutos, y la llamada del BFF a FastAPI
 
 Las 750 horas gratuitas de los servicios web se comparten en el workspace. No mantenerlos despiertos mediante pings. BFF y API usan HTTPS público porque las instancias Free no reciben tráfico privado. El sitio estático consume las cuotas de transferencia y de construcción de la cuenta.
 
-Faltan la publicación del sitio, las verificaciones de navegador y celular, el CD desde GitHub y los criterios restantes de las stories. Este entorno de prueba no determina todavía el alojamiento final de producción.
+Faltan la primera ejecución real de CD desde GitHub, la comprobación controlada tras reposo y los criterios restantes de las stories. Las verificaciones HTTP del despliegue no ejecutan Angular en un navegador. Este entorno de prueba no determina todavía el alojamiento final de producción.
 
 ## Referencias
 

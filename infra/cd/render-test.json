@@ -1,0 +1,24 @@
+{
+  "repository": "https://github.com/aleharo2003/gastos",
+  "branch": "main",
+  "services": [
+    {
+      "name": "api",
+      "id_variable": "RENDER_API_SERVICE_ID",
+      "type": "web_service",
+      "url": "https://gastos-test-api.onrender.com"
+    },
+    {
+      "name": "bff",
+      "id_variable": "RENDER_BFF_SERVICE_ID",
+      "type": "web_service",
+      "url": "https://gastos-test-bff.onrender.com"
+    },
+    {
+      "name": "web",
+      "id_variable": "RENDER_WEB_SERVICE_ID",
+      "type": "static_site",
+      "url": "https://gastos-test-web.onrender.com"
+    }
+  ]
+}
