@@ -46,6 +46,17 @@ jobs:
         run: npm test -- --watch=false
       - name: Compilar
         run: npm run build
+      - name: Compilar para el entorno remoto de prueba
+        run: npm run build:test
+      - name: Comprobar los archivos estaticos y su commit
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { access, readFile } from 'node:fs/promises';
+          await access('dist/gastos-web/browser/index.html');
+          const version = JSON.parse(await readFile('dist/gastos-web/browser/version.json', 'utf8'));
+          assert.equal(version.commit, process.env.GITHUB_SHA);
+          NODE
 
   bff:
     name: BFF - pruebas, compilacion e imagen
@@ -54,6 +65,7 @@ jobs:
     env:
       RENDER_GIT_COMMIT: ${{ github.sha }}
       COMPOSE_PROJECT_NAME: gastos-runtime-ci
+      FRONTEND_ORIGIN: https://gastos-ci.example.test
     defaults:
       run:
         shell: bash
@@ -89,6 +101,25 @@ jobs:
             jq --exit-status '. == {"status":"ok"}'
           curl --fail --silent --show-error --max-time 10 http://127.0.0.1:18001/version |
             jq --exit-status --arg commit "$RENDER_GIT_COMMIT" '. == {"commit":$commit}'
+      - name: Comprobar CORS en la imagen del BFF
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          const url = 'http://127.0.0.1:18001/health';
+          const allowed = await fetch(url, {
+            headers: { Origin: process.env.FRONTEND_ORIGIN },
+            signal: AbortSignal.timeout(10000),
+          });
+          assert.equal(allowed.status, 200);
+          assert.equal(allowed.headers.get('access-control-allow-origin'), process.env.FRONTEND_ORIGIN);
+          assert.equal(allowed.headers.get('access-control-allow-credentials'), null);
+          const other = await fetch(url, {
+            headers: { Origin: 'https://otro.example.test' },
+            signal: AbortSignal.timeout(10000),
+          });
+          assert.equal(other.status, 200);
+          assert.equal(other.headers.get('access-control-allow-origin'), null);
+          NODE
       - name: Detener la API de la prueba de imagenes
         run: docker compose --file ../../infra/ci/compose.runtime.yml stop api
       - name: Comprobar error controlado y salud independiente

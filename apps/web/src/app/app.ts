@@ -2,6 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Component, inject, signal } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 import { finalize } from 'rxjs';
+import { environment } from '../environments/environment';
 
 @Component({
   imports: [RouterOutlet],
@@ -27,8 +28,8 @@ export class App {
     this.loading.set(true);
 
     this.http
-      .get<{ message: string }>('/api/hello', {
-        timeout: 10000,
+      .get<{ message: string }>(`${environment.bffBaseUrl}/api/hello`, {
+        timeout: environment.requestTimeoutMs,
       })
       .pipe(finalize(() => this.loading.set(false)))
       .subscribe({
@@ -36,9 +37,7 @@ export class App {
           this.message.set(response.message);
         },
         error: () => {
-          this.error.set(
-            'No se pudo obtener el mensaje. Intentá nuevamente.',
-          );
+          this.error.set('No se pudo obtener el mensaje. Intentá nuevamente.');
         },
       });
   }
