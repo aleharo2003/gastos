@@ -6,3 +6,6 @@
 .env.keys
 .env.local
 .env.*.local
+
+# Consultas locales de Supabase Studio
+/snippets/
