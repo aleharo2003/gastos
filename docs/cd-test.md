@@ -14,7 +14,7 @@ El workflow de CI publica el mismo commit aprobado en los tres servicios existen
 
 ## Flujo del workflow
 
-El quinto trabajo de `.github/workflows/ci.yml` depende de `web`, `bff`, `api` e `integration` mediante `needs`. Solo se habilita para el evento `push` de `main`; un PR conserva las comprobaciones y omite el despliegue. [Dependencias y condiciones de los trabajos](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idneeds).
+El trabajo de despliegue de `.github/workflows/ci.yml` depende de `web`, `bff`, `api`, `integration` y `database` mediante `needs`. Solo se habilita para el evento `push` de `main`; un PR conserva las comprobaciones y omite el despliegue. [Dependencias y condiciones de los trabajos](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idneeds).
 
 En Actions aparece como **Publicar test en Render**; su identificador es `deploy_test`.
 

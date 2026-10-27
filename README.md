@@ -6,7 +6,7 @@ Aplicación de finanzas personales para uso familiar, aprendizaje y enseñanza. 
 
 El recorrido funciona en desarrollo con Docker Compose. El CI ejecuta las pruebas y compilaciones de Angular y BFF, comprueba dependencias y sintaxis de Python, y construye los contenedores para probar la comunicación HTTP, la caída de FastAPI y la recuperación.
 
-El entorno de prueba está publicado en Render: [Angular](https://gastos-test-web.onrender.com), [BFF](https://gastos-test-bff.onrender.com) y [API](https://gastos-test-api.onrender.com). El recorrido también se comprobó desde un celular. Este incremento incorpora la configuración de CD desde GitHub; su primera ejecución real requiere configurar el environment `test` e integrar el cambio. Faltan la base de datos, autenticación, migraciones y datos iniciales.
+El entorno de prueba está publicado en Render: [Angular](https://gastos-test-web.onrender.com), [BFF](https://gastos-test-bff.onrender.com) y [API](https://gastos-test-api.onrender.com). El recorrido también se comprobó desde un celular. La [primera ejecución real de CD](https://github.com/aleharo2003/gastos/actions/runs/39502412899) publicó y verificó el mismo commit en los tres servicios. US-006 incorpora ahora Supabase local y prepara los roles de acceso; faltan la persistencia de la aplicación, autenticación, migraciones y datos iniciales.
 
 Los archivos `Dockerfile.dev` sirven para programar. FastAPI y BFF disponen además de un `Dockerfile` para ejecutar imágenes sin recarga automática. El CI prueba esas imágenes sin montar el código del equipo.
 
@@ -257,7 +257,7 @@ Angular está publicado en `https://gastos-test-web.onrender.com`. Ese origen es
 
 ## Despliegue continuo de test
 
-El quinto trabajo de CI publica en Render después de que aprueben Angular, BFF, API e integración HTTP. Solo se ejecuta ante un `push` a `main`; los PR y las ramas de trabajo conservan las comprobaciones sin publicar.
+El trabajo de despliegue publica en Render después de que aprueben Angular, BFF, API, integración HTTP y reconstrucción de PostgreSQL. Solo se ejecuta ante un `push` a `main`; los PR y las ramas de trabajo conservan las comprobaciones sin publicar.
 
 La entrega usa el mismo SHA validado para API, BFF y Angular, en ese orden. Espera cada despliegue y comprueba salud, versión y respuestas públicas antes de continuar. Si `main` avanzó durante CI, omite la entrega anterior antes de modificar Render. Una publicación que ya comenzó conserva su SHA hasta terminar o fallar.
 
@@ -270,6 +270,18 @@ python3 -m unittest discover -s infra/cd -p 'test_*.py'
 ```
 
 Este flujo todavía no ejecuta migraciones ni publica producción. Cada entrega reconstruye el commit en Render y puede dejar versiones distintas si falla a mitad de la secuencia; el resumen de Actions permite revisar qué se publicó.
+
+## Supabase y roles de desarrollo
+
+Supabase local se inicia con su CLI, junto a los tres servicios de Compose. La configuración está en `supabase/config.toml`; se utiliza la CLI 2.121.0. Los pasos de provisión y comprobación se describen en [Roles de PostgreSQL local](docs/roles-postgresql-local.md).
+
+La herramienta `infra/postgres/local_roles.py` usa Python y el cliente `psql` del contenedor. Prepara `app_migrator` y `app_runtime`, comprueba conexiones TCP con contraseña y verifica sus permisos efectivos. Las credenciales locales se guardan en `.env.roles.local`, excluido de Git. El bootstrap local de ambos roles ya fue comprobado y puede repetirse. Esta herramienta opera sobre el contenedor local del proyecto.
+
+El primer modelo de SQLAlchemy representa `public.espacios`, con UUID y nombre. Su revisión inicial se genera y revisa mediante Alembic antes de aplicarla. El procedimiento está en [Alembic local](docs/alembic-local.md).
+
+`infra/postgres/local_database.py check` comprueba ambas conexiones mediante SQLAlchemy. Su subcomando `alembic` entrega solo la URL del migrator a Alembic, sin guardar contraseñas en `alembic.ini`. Los filtros admiten `public` y el esquema predeterminado únicamente después de comprobar que este sea `public`; excluyen esquemas externos y la tabla interna `alembic_version`.
+
+Los endpoints actuales siguen atendiendo el saludo sin consultas de negocio. La provisión y esta primera migración no implementan RLS ni habilitan CRUD para runtime. Las policies, los grants sobre datos y el contexto transaccional corresponden a US-007. El trabajo `database` reconstruye una base Supabase desechable, provisiona ambos roles y aplica las migraciones. Exige que `alembic check` pase con el esquema correcto y falle ante una tabla pública sin migración; también compara objetos externos y sus datos centinela. El procedimiento está en [Base de datos en CI](docs/base-datos-ci.md). Las conexiones del entorno remoto siguen pendientes dentro de US-006.
 
 ## Consultar y detener los servicios
 
@@ -305,7 +317,7 @@ compose.yml  Arranque conjunto del entorno local
 - Completar las comprobaciones de recarga y recuperación del entorno local.
 - Ampliar CI con análisis de calidad, detección de secretos y pruebas en un navegador.
 - Incorporar Supabase local, migraciones y datos iniciales conforme a US-005/006/007 y los ADR.
-- Configurar GitHub y verificar la primera publicación automática del entorno de prueba.
+- Confirmar el nuevo trabajo de base de datos en GitHub Actions y completar las conexiones remotas de ambos roles para US-006.
 - Completar la prueba de primer acceso tras reposo y preparar producción cuando corresponda.
 
 US-005 y US-008 permanecen abiertas hasta cumplir sus criterios pendientes y la definición de terminado acordada para el primer incremento.
