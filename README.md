@@ -257,7 +257,7 @@ Angular está publicado en `https://gastos-test-web.onrender.com`. Ese origen es
 
 ## Despliegue continuo de test
 
-El quinto trabajo de CI publica en Render después de que aprueben Angular, BFF, API e integración HTTP. Solo se ejecuta ante un `push` a `main`; los PR y las ramas de trabajo conservan las comprobaciones sin publicar.
+El trabajo de despliegue publica en Render después de que aprueben Angular, BFF, API, integración HTTP y reconstrucción de PostgreSQL. Solo se ejecuta ante un `push` a `main`; los PR y las ramas de trabajo conservan las comprobaciones sin publicar.
 
 La entrega usa el mismo SHA validado para API, BFF y Angular, en ese orden. Espera cada despliegue y comprueba salud, versión y respuestas públicas antes de continuar. Si `main` avanzó durante CI, omite la entrega anterior antes de modificar Render. Una publicación que ya comenzó conserva su SHA hasta terminar o fallar.
 
@@ -281,7 +281,7 @@ El primer modelo de SQLAlchemy representa `public.espacios`, con UUID y nombre. 
 
 `infra/postgres/local_database.py check` comprueba ambas conexiones mediante SQLAlchemy. Su subcomando `alembic` entrega solo la URL del migrator a Alembic, sin guardar contraseñas en `alembic.ini`. Los filtros admiten `public` y el esquema predeterminado únicamente después de comprobar que este sea `public`; excluyen esquemas externos y la tabla interna `alembic_version`.
 
-Los endpoints actuales siguen atendiendo el saludo sin consultas de negocio. La provisión y esta primera migración no implementan RLS ni habilitan CRUD para runtime. Las policies, los grants sobre datos y el contexto transaccional corresponden a US-007. La reconstrucción en CI y las conexiones del entorno remoto siguen pendientes dentro de US-006.
+Los endpoints actuales siguen atendiendo el saludo sin consultas de negocio. La provisión y esta primera migración no implementan RLS ni habilitan CRUD para runtime. Las policies, los grants sobre datos y el contexto transaccional corresponden a US-007. El trabajo `database` reconstruye una base Supabase desechable, provisiona ambos roles y aplica las migraciones. Exige que `alembic check` pase con el esquema correcto y falle ante una tabla pública sin migración; también compara objetos externos y sus datos centinela. El procedimiento está en [Base de datos en CI](docs/base-datos-ci.md). Las conexiones del entorno remoto siguen pendientes dentro de US-006.
 
 ## Consultar y detener los servicios
 
@@ -317,7 +317,7 @@ compose.yml  Arranque conjunto del entorno local
 - Completar las comprobaciones de recarga y recuperación del entorno local.
 - Ampliar CI con análisis de calidad, detección de secretos y pruebas en un navegador.
 - Incorporar Supabase local, migraciones y datos iniciales conforme a US-005/006/007 y los ADR.
-- Completar los roles y las migraciones de US-006, con reconstrucción de base en CI y conexión remota comprobada.
+- Confirmar el nuevo trabajo de base de datos en GitHub Actions y completar las conexiones remotas de ambos roles para US-006.
 - Completar la prueba de primer acceso tras reposo y preparar producción cuando corresponda.
 
 US-005 y US-008 permanecen abiertas hasta cumplir sus criterios pendientes y la definición de terminado acordada para el primer incremento.

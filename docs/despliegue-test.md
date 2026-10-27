@@ -23,7 +23,7 @@ Durante las comprobaciones se observó un primer HTTP 502 y una consulta posteri
 
 1. Trabajar en una rama, comprobar el cambio localmente y abrir el PR.
 2. Revisar el cambio y esperar CI antes de integrarlo en `main`.
-3. GitHub repite CI sobre el commit integrado y habilita la entrega de test cuando aprueban los cuatro trabajos.
+3. GitHub repite CI sobre el commit integrado y habilita la entrega de test cuando aprueban los cinco trabajos de comprobación, incluida la reconstrucción de la base desechable.
 4. El trabajo de despliegue comprueba `main` y los destinos, publica API, BFF y Angular con ese SHA y verifica cada uno antes de continuar.
 5. Revisar el resumen de Actions y probar la aplicación en el navegador; repetir desde el celular cuando cambie la experiencia de uso.
 

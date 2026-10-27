@@ -229,9 +229,35 @@ jobs:
         if: always()
         run: docker compose down
 
+  database:
+    name: PostgreSQL - reconstruccion y migraciones
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Descargar el codigo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Preparar Node.js para la CLI de Supabase
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - name: Preparar Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14.4'
+          cache: pip
+          cache-dependency-path: apps/api/requirements.txt
+      - name: Instalar dependencias de la API
+        run: python -m pip install -r apps/api/requirements.txt
+      - name: Probar los controles del entorno desechable
+        run: python -m unittest discover -s infra/ci -p 'test_*.py'
+      - name: Reconstruir y comprobar una base Supabase desechable
+        run: python infra/ci/check_database.py
+
   deploy_test:
     name: Publicar test en Render
-    needs: [web, bff, api, integration]
+    needs: [web, bff, api, integration, database]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
