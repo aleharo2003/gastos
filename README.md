@@ -275,9 +275,13 @@ Este flujo todavía no ejecuta migraciones ni publica producción. Cada entrega 
 
 Supabase local se inicia con su CLI, junto a los tres servicios de Compose. La configuración está en `supabase/config.toml`; se utiliza la CLI 2.121.0. Los pasos de provisión y comprobación se describen en [Roles de PostgreSQL local](docs/roles-postgresql-local.md).
 
-La herramienta `infra/postgres/local_roles.py` usa Python y el cliente `psql` del contenedor. Prepara `app_migrator` y `app_runtime`, comprueba conexiones TCP con contraseña y verifica sus permisos efectivos. Las credenciales locales se guardan en `.env.roles.local`, excluido de Git. Esta herramienta opera sobre el contenedor local del proyecto.
+La herramienta `infra/postgres/local_roles.py` usa Python y el cliente `psql` del contenedor. Prepara `app_migrator` y `app_runtime`, comprueba conexiones TCP con contraseña y verifica sus permisos efectivos. Las credenciales locales se guardan en `.env.roles.local`, excluido de Git. El bootstrap local de ambos roles ya fue comprobado y puede repetirse. Esta herramienta opera sobre el contenedor local del proyecto.
 
-Las tablas y las policies de aplicación todavía se incorporarán mediante Alembic. La provisión de roles no implementa RLS ni conecta por sí sola FastAPI a la base. La conexión del entorno remoto se comprobará por separado en US-006.
+El primer modelo de SQLAlchemy representa `public.espacios`, con UUID y nombre. Su revisión inicial se genera y revisa mediante Alembic antes de aplicarla. El procedimiento está en [Alembic local](docs/alembic-local.md).
+
+`infra/postgres/local_database.py check` comprueba ambas conexiones mediante SQLAlchemy. Su subcomando `alembic` entrega solo la URL del migrator a Alembic, sin guardar contraseñas en `alembic.ini`. Los filtros admiten `public` y el esquema predeterminado únicamente después de comprobar que este sea `public`; excluyen esquemas externos y la tabla interna `alembic_version`.
+
+Los endpoints actuales siguen atendiendo el saludo sin consultas de negocio. La provisión y esta primera migración no implementan RLS ni habilitan CRUD para runtime. Las policies, los grants sobre datos y el contexto transaccional corresponden a US-007. La reconstrucción en CI y las conexiones del entorno remoto siguen pendientes dentro de US-006.
 
 ## Consultar y detener los servicios
 

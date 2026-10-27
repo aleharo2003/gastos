@@ -61,6 +61,19 @@ BEGIN
         OR EXISTS (
             SELECT FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
             WHERE c.relowner = migrator_oid AND n.nspname <> 'public'
+                -- PostgreSQL crea TOAST y su indice para columnas como text.
+                -- Solo se admiten si pertenecen a una relacion propia en public.
+                AND NOT (
+                    n.nspname = 'pg_toast' AND EXISTS (
+                        SELECT FROM pg_class parent
+                        LEFT JOIN pg_index toast_index
+                            ON toast_index.indrelid = parent.reltoastrelid
+                        WHERE parent.relnamespace = 'public'::regnamespace
+                            AND parent.relowner = migrator_oid
+                            AND (c.oid = parent.reltoastrelid
+                                OR c.oid = toast_index.indexrelid)
+                    )
+                )
         ) THEN
         RAISE EXCEPTION 'app_migrator tiene objetos fuera de public; revisar antes de continuar.';
     END IF;

@@ -169,6 +169,8 @@ jobs:
         run: python -m unittest discover -s ../../infra/cd -p 'test_*.py'
       - name: Probar la herramienta de roles locales
         run: python -m unittest discover -s ../../infra/postgres -p 'test_*.py'
+      - name: Probar conexiones y filtros de migraciones
+        run: python -m unittest discover -s tests -p 'test_*.py'
       - name: Construir la imagen para despliegue
         run: docker build --tag gastos-api-runtime:ci --file Dockerfile .
       - name: Iniciar la imagen sin montajes del repositorio
