@@ -108,6 +108,31 @@ class DriftTests(unittest.TestCase):
         with self.assertRaises(ci.CheckError):
             ci.require_drift(self.result(255, "New upgrade operations detected: otra_tabla"))
 
+    def test_acepta_columna_del_modelo_sin_migracion(self):
+        ci.require_drift(
+            self.result(255, "New upgrade operations detected: add_column gastos_ci_pending_column"),
+            "gastos_ci_pending_column",
+        )
+
+    def test_cambio_de_tabla_no_sustituye_prueba_del_modelo(self):
+        with self.assertRaises(ci.CheckError):
+            ci.require_drift(
+                self.result(255, "New upgrade operations detected: remove_table gastos_ci_unversioned"),
+                "gastos_ci_pending_column",
+            )
+
+    def test_check_con_drift_indica_migracion_pendiente(self):
+        result = self.result(255, "New upgrade operations detected: columna_nueva")
+        with patch.object(ci, "alembic", return_value=result):
+            with self.assertRaisesRegex(ci.CheckError, "generar la migracion pendiente"):
+                ci.require_alembic(["check"], None)
+
+    def test_error_de_conexion_no_pide_generar_migracion(self):
+        with patch.object(ci, "alembic", return_value=self.result(1, "could not connect")):
+            with self.assertRaises(ci.CheckError) as caught:
+                ci.require_alembic(["check"], None)
+        self.assertNotIn("migracion pendiente", str(caught.exception))
+
 
 if __name__ == "__main__":
     unittest.main()

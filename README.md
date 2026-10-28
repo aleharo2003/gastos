@@ -6,7 +6,7 @@ Aplicación de finanzas personales para uso familiar, aprendizaje y enseñanza. 
 
 El recorrido funciona en desarrollo con Docker Compose. El CI ejecuta las pruebas y compilaciones de Angular y BFF, comprueba dependencias y sintaxis de Python, y construye los contenedores para probar la comunicación HTTP, la caída de FastAPI y la recuperación.
 
-El entorno de prueba está publicado en Render: [Angular](https://gastos-test-web.onrender.com), [BFF](https://gastos-test-bff.onrender.com) y [API](https://gastos-test-api.onrender.com). El recorrido también se comprobó desde un celular. La [primera ejecución real de CD](https://github.com/aleharo2003/gastos/actions/runs/39502412899) publicó y verificó el mismo commit en los tres servicios. US-006 incorpora ahora Supabase local y prepara los roles de acceso; faltan la persistencia de la aplicación, autenticación, migraciones y datos iniciales.
+El entorno de prueba está publicado en Render: [Angular](https://gastos-test-web.onrender.com), [BFF](https://gastos-test-bff.onrender.com) y [API](https://gastos-test-api.onrender.com). El recorrido también se comprobó desde un celular. La [primera ejecución real de CD](https://github.com/aleharo2003/gastos/actions/runs/39502412899) publicó y verificó el mismo commit en los tres servicios. US-006 incorpora Supabase local, roles y la primera migración con Alembic. Faltan las operaciones de negocio, autenticación y datos iniciales; las migraciones remotas todavía no forman parte del despliegue.
 
 Los archivos `Dockerfile.dev` sirven para programar. FastAPI y BFF disponen además de un `Dockerfile` para ejecutar imágenes sin recarga automática. El CI prueba esas imágenes sin montar el código del equipo.
 
@@ -281,7 +281,7 @@ El primer modelo de SQLAlchemy representa `public.espacios`, con UUID y nombre. 
 
 `infra/postgres/local_database.py check` comprueba ambas conexiones mediante SQLAlchemy. Su subcomando `alembic` entrega solo la URL del migrator a Alembic, sin guardar contraseñas en `alembic.ini`. Los filtros admiten `public` y el esquema predeterminado únicamente después de comprobar que este sea `public`; excluyen esquemas externos y la tabla interna `alembic_version`.
 
-Los endpoints actuales siguen atendiendo el saludo sin consultas de negocio. La provisión y esta primera migración no implementan RLS ni habilitan CRUD para runtime. Las policies, los grants sobre datos y el contexto transaccional corresponden a US-007. El trabajo `database` reconstruye una base Supabase desechable, provisiona ambos roles y aplica las migraciones. Exige que `alembic check` pase con el esquema correcto y falle ante una tabla pública sin migración; también compara objetos externos y sus datos centinela. El procedimiento está en [Base de datos en CI](docs/base-datos-ci.md). Las conexiones del entorno remoto siguen pendientes dentro de US-006.
+Los endpoints actuales siguen atendiendo el saludo sin consultas de negocio. La provisión y esta primera migración no implementan RLS ni habilitan CRUD para runtime. Las policies, los grants sobre datos y el contexto transaccional corresponden a US-007. El trabajo `database` reconstruye una base Supabase desechable, provisiona ambos roles y aplica las migraciones. Exige que `alembic check` pase con el esquema correcto y falle ante un cambio de modelo sin migración o una tabla pública extra; también compara objetos externos y sus datos centinela. El procedimiento está en [Base de datos en CI](docs/base-datos-ci.md). Las conexiones remotas de ambos roles ya fueron comprobadas; ver [Validación de US-006](docs/validacion-us-006.md).
 
 ## Consultar y detener los servicios
 
@@ -316,8 +316,8 @@ compose.yml  Arranque conjunto del entorno local
 
 - Completar las comprobaciones de recarga y recuperación del entorno local.
 - Ampliar CI con análisis de calidad, detección de secretos y pruebas en un navegador.
-- Incorporar Supabase local, migraciones y datos iniciales conforme a US-005/006/007 y los ADR.
-- Confirmar el nuevo trabajo de base de datos en GitHub Actions y completar las conexiones remotas de ambos roles para US-006.
+- Implementar el acceso a datos y RLS de US-007; resolver el alta inicial conforme a ADR-0004.
+- Integrar y validar en GitHub Actions el refuerzo del caso de modelo sin migración para cerrar US-006.
 - Completar la prueba de primer acceso tras reposo y preparar producción cuando corresponda.
 
 US-005 y US-008 permanecen abiertas hasta cumplir sus criterios pendientes y la definición de terminado acordada para el primer incremento.
