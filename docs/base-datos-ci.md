@@ -13,11 +13,11 @@ Corre en las ramas y PR que ya activan el workflow. El despliegue de test requie
 5. Crear datos centinela administrativos en `auth`, `storage` y un esquema externo de prueba. Son fixtures para comprobar los filtros; no son usuarios ni datos iniciales de negocio.
 6. Ejecutar `alembic upgrade head` con `app_migrator`, verificar las revisiones aplicadas y la propiedad de `espacios`.
 7. Repetir la provisión para comprobar que sigue funcionando con tablas y objetos internos TOAST. Exigir que `alembic check` termine correctamente.
-8. Crear una tabla de prueba en `public` que no figura en los modelos. Exigir que `alembic check` falle específicamente por esa diferencia. Un error de conexión no cuenta como detección de drift. Retirar la tabla y volver a exigir un `check` correcto.
+8. Agregar una columna al modelo únicamente en la memoria de un proceso hijo, sin crear una revisión. Exigir que Alembic detecte esa columna pendiente; al terminar el proceso, volver a exigir un check limpio. Después, crear una tabla de prueba en `public` que no figura en los modelos. Exigir que `alembic check` falle específicamente por esa diferencia. Un error de conexión no cuenta como detección de drift. Retirar la tabla y volver a exigir un `check` correcto.
 9. Comprobar que `app_runtime` no puede crear tablas en `public` y comparar la estructura externa y sus datos centinela con el estado anterior a las migraciones.
 10. En el bloque de limpieza, detener solo el proyecto temporal y eliminar sus volúmenes con `supabase stop --no-backup`. Si GitHub termina el runner por fuerza, sus recursos se descartan con la máquina.
 
-El programa no genera revisiones, no modifica los modelos y no corrige automáticamente el drift. Tampoco usa migraciones de aplicación desde `supabase/migrations/`: las de `public` siguen en Alembic.
+El programa no genera revisiones ni modifica archivos de modelos y no corrige automáticamente el drift. Tampoco usa migraciones de aplicación desde `supabase/migrations/`: las de `public` siguen en Alembic.
 
 ## Repetir la prueba en Ubuntu/WSL
 
@@ -46,6 +46,8 @@ La prueba comprueba la reconstrucción y la comparación de objetos que Alembic 
 
 Las pruebas de RLS, contexto transaccional y migraciones de datos con `FORCE ROW LEVEL SECURITY` corresponden a US-007. Este incremento no concede CRUD a runtime.
 
-Para cerrar US-006 todavía falta observar este trabajo aprobado en GitHub Actions y comprobar las conexiones remotas de ambos roles mediante el pooler de sesión, con TLS y validación del certificado.
+El trabajo original ya aprobó en GitHub Actions y las conexiones remotas de ambos roles se verificaron. El refuerzo que prueba explícitamente un cambio del modelo debe integrarse y aprobar en CI antes del cierre. Las evidencias están en [Validación de US-006](validacion-us-006.md).
+
+Si el modelo real del checkout no coincide con sus migraciones, la validación termina con un mensaje que pide revisar los cambios y generar la migración pendiente. Un fallo de conexión conserva un diagnóstico diferente.
 
 Referencia: [Supabase CLI](https://supabase.com/docs/reference/cli/supabase-db-reset) documenta el alcance de `--local`, `--no-seed` y la gestión del proyecto local.

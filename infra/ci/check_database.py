@@ -144,25 +144,53 @@ def external_state(database):
     """))
 
 
-def alembic(arguments, migration_url):
+def migration_environment(migration_url):
     env = os.environ.copy()
     env.pop("DATABASE_URL", None)
     env["MIGRATION_DATABASE_URL"] = migration_url.render_as_string(hide_password=False)
+    return env
+
+
+def alembic(arguments, migration_url):
     return run([sys.executable, "-m", "alembic", "-c",
-                str(ROOT / "apps/api/alembic.ini"), *arguments], env=env)
+                str(ROOT / "apps/api/alembic.ini"), *arguments],
+               env=migration_environment(migration_url))
+
+
+def check_unmigrated_model(migration_url):
+    # Simula agregar una columna al modelo sin escribir una revision. El cambio
+    # existe solo en el MetaData de este proceso hijo; no se editan archivos.
+    code = """
+import runpy
+import sys
+sys.path.insert(0, sys.argv[1])
+from sqlalchemy import Column, Integer
+from app.db.models import Espacio
+Espacio.__table__.append_column(Column('gastos_ci_pending_column', Integer))
+sys.argv = ['alembic', '-c', sys.argv[2], 'check']
+runpy.run_module('alembic', run_name='__main__')
+"""
+    return run([sys.executable, "-c", code, str(ROOT / "apps/api"),
+                str(ROOT / "apps/api/alembic.ini")],
+               env=migration_environment(migration_url))
 
 
 def require_alembic(arguments, url):
     result = alembic(arguments, url)
     if result.returncode:
+        if arguments == ["check"] and "New upgrade operations detected" in result.stdout + result.stderr:
+            raise CheckError(
+                "El esquema y los modelos no coinciden. Revisar los cambios "
+                "y generar la migracion pendiente con Alembic antes de integrar."
+            )
         raise CheckError(f"Alembic {' '.join(arguments)} fallo (codigo {result.returncode}).")
 
 
-def require_drift(result):
+def require_drift(result, object_name="gastos_ci_unversioned"):
     output = result.stdout + result.stderr
     if (result.returncode == 0 or "New upgrade operations detected" not in output
-            or "gastos_ci_unversioned" not in output):
-        raise CheckError("alembic check no detecto la tabla publica sin migracion.")
+            or object_name not in output):
+        raise CheckError(f"alembic check no detecto el cambio esperado: {object_name}.")
 
 
 def check_database(fixture):
@@ -210,7 +238,9 @@ def check_database(fixture):
         database.provision(passwords)
         database.check(passwords)
         require_alembic(["check"], urls[MIGRATOR])
-        step("6/8 Introducir una tabla sin migracion y exigir que alembic check falle.")
+        step("6/8 Detectar un cambio de modelo sin migracion y una tabla publica extra.")
+        require_drift(check_unmigrated_model(urls[MIGRATOR]), "gastos_ci_pending_column")
+        require_alembic(["check"], urls[MIGRATOR])
         with engines[MIGRATOR].begin() as connection:
             connection.execute(text("CREATE TABLE public.gastos_ci_unversioned (id integer PRIMARY KEY)"))
         try:

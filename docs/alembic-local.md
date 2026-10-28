@@ -97,12 +97,12 @@ El autogenerate estándar no compara de forma general policies de RLS, grants, f
 
 La aplicación todavía no tiene endpoints de espacios, permisos CRUD de runtime ni políticas RLS. Solo se usan datos ficticios. Antes de habilitar operaciones privadas, US-007 debe implementar y probar su contrato de acceso.
 
-## Trabajo que queda en US-006
+## Validación de US-006
 
-- Reconstrucción de la base en CI: preparación local desechable, provisión de roles, migraciones y comprobación de coherencia.
-- Incorporar a CI la comprobación de que un cambio de modelo sin migración hace fallar la validación.
-- Conexión remota comprobada para ambos roles mediante pooler en modo sesión y TLS, antes de desarrollar RLS.
+La reconstrucción desechable, las migraciones y los filtros ya se ejecutaron en GitHub Actions. También se comprobaron las conexiones remotas de ambos roles mediante pooler de sesión y TLS con validación del certificado.
 
-Este incremento no cierra US-006 ni requiere publicar todavía un PR. US-007 incorporará contexto transaccional, grants, RLS e índices. El alta inicial del usuario y su espacio sigue dependiendo de ADR-0004.
+La comprobación de CI incluye un cambio de modelo sin migración y una tabla pública extra. El registro de evidencias y el paso pendiente para cerrar la story están en [Validación de US-006](validacion-us-006.md).
+
+US-007 incorporará contexto transaccional, grants, RLS e índices. El alta inicial del usuario y su espacio sigue dependiendo de ADR-0004.
 
 Las decisiones de referencia son ADR-0001 y ADR-0002, conservadas en `D:\HB\Cuentas`; DAT-01 muestra el modelo conceptual de espacios e identidad. Sus diagramas no sustituyen una migración ejecutable ni las pruebas de permisos.
