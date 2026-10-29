@@ -19,6 +19,7 @@ sys.path.insert(0, str(ROOT / "apps/api"))
 
 from local_roles import LocalDatabase, LocalError
 from check_transaction_context import check_transaction_context
+from check_read_rls import check_read_rls
 from sqlalchemy import text
 from sqlalchemy.engine import URL
 from sqlalchemy.exc import SQLAlchemyError
@@ -262,6 +263,7 @@ def check_database(fixture):
             finally:
                 connection.rollback()
         check_transaction_context(urls[RUNTIME], urls[MIGRATOR])
+        check_read_rls(urls[RUNTIME], urls[MIGRATOR])
         step("8/8 Comparar estructura externa y datos centinela con su estado inicial.")
         if external_state(database) != before:
             raise CheckError("Cambio la estructura externa o sus datos centinela.")
