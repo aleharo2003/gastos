@@ -14,9 +14,9 @@ class MiembroEspacio(Base):
         Index("ix_miembros_espacio_espacio_id", "espacio_id"),
     )
 
-    # El perfil de usuario se incorporará en el siguiente paso de identidad.
-    # Por ahora se usan UUID ficticios exclusivamente en pruebas.
-    usuario_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    usuario_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey('public.perfiles.usuario_id'), primary_key=True,
+    )
     espacio_id: Mapped[UUID] = mapped_column(
         Uuid, ForeignKey("public.espacios.id"), primary_key=True,
     )
