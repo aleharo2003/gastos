@@ -1,5 +1,7 @@
 # US-007, paso 2: contexto transaccional
 
+> Guía de un paso anterior. Para el estado consolidado del PR y sus pendientes, consultar [Estado de US-007](estado-us-007.md).
+
 Una operación de la aplicación usa una sesión de SQLAlchemy y una transacción.
 La conexión física se toma del pool y puede ser reutilizada por otra operación.
 La sesión no se comparte entre usuarios ni entre tareas concurrentes.

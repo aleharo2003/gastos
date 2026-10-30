@@ -1,5 +1,7 @@
 # Reconstrucción de PostgreSQL en CI
 
+> Guía de un paso anterior. Para el estado consolidado del PR y sus pendientes, consultar [Estado de US-007](estado-us-007.md).
+
 El trabajo `database` comprueba que un checkout del repositorio alcanza para reconstruir el esquema de la aplicación. Usa Python 3.14.4, las dependencias de `apps/api/requirements.txt`, Docker y Supabase CLI 2.121.0.
 
 Corre en las ramas y PR que ya activan el workflow. El despliegue de test requiere que aprueben `web`, `bff`, `api`, `integration` y `database`. Aprobar esta prueba no aplica migraciones sobre una base remota: esa etapa deberá incorporarse antes de desplegar código que dependa de ella.
@@ -52,4 +54,4 @@ Si el modelo real del checkout no coincide con sus migraciones, la validación t
 
 Referencia: [Supabase CLI](https://supabase.com/docs/reference/cli/supabase-db-reset) documenta el alcance de `--local`, `--no-seed` y la gestión del proyecto local.
 
-El contexto se describe en [Contexto transaccional](contexto-transaccional.md). Esta comprobación todavía no demuestra aislamiento RLS entre filas ni cancela un request HTTP real.
+El contexto se describe en [Contexto transaccional](contexto-transaccional.md). La prueba del contexto por sí sola no demuestra aislamiento entre filas ni cancelación HTTP real. El pipeline actual también ejecuta los contratos de lectura, cuentas, cobertura, permisos e integridad descritos en [Estado de US-007](estado-us-007.md).

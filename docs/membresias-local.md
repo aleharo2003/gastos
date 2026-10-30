@@ -1,5 +1,7 @@
 # US-007, paso 1: membresías
 
+> Guía de un paso anterior. Para el estado consolidado del PR y sus pendientes, consultar [Estado de US-007](estado-us-007.md).
+
 Una membresía relaciona un usuario con un espacio y le asigna un rol de aplicación.
 No es un rol de PostgreSQL: FastAPI continuará conectándose como app_runtime.
 
@@ -45,7 +47,7 @@ python3 infra/postgres/local_roles.py check
 python3 infra/ci/check_database.py
 ```
 
-Esperado: revisión 0002 (head), sin operaciones pendientes y comprobaciones aprobadas.
+En el paso original se esperaba 0002. Con todas las migraciones de este PR se espera 0006 (head), sin operaciones pendientes y comprobaciones aprobadas.
 El último comando reconstruye una base temporal, no el proyecto remoto.
 alembic check compara estructura; no demuestra por sí solo que RLS y grants sean correctos.
 

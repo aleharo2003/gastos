@@ -1,5 +1,7 @@
 # US-007, paso 3: lectura de membresías y espacios
 
+> Guía de un paso anterior. Para el estado consolidado del PR y sus pendientes, consultar [Estado de US-007](estado-us-007.md).
+
 La revisión 0003 habilita SELECT para app_runtime sobre espacios y miembros_espacio.
 El permiso permite ejecutar SELECT; las policies deciden qué filas devuelve.
 

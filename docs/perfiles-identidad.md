@@ -1,5 +1,7 @@
 # US-007, paso 4: perfiles y membresías
 
+> Guía de un paso anterior. Para el estado consolidado del PR y sus pendientes, consultar [Estado de US-007](estado-us-007.md).
+
 La cadena implementada es:
 
 ```text

@@ -1,5 +1,7 @@
 # US-007, paso 5: cuentas por espacio y permiso
 
+> Guía de un paso anterior. Para el estado consolidado del PR y sus pendientes, consultar [Estado de US-007](estado-us-007.md).
+
 Esta es la estructura mínima de cuentas para probar el aislamiento. Solo contiene
 id, espacio_id y nombre. No implementa US-010: faltan tipos de cuenta, monedas,
 apertura, datos específicos de tarjetas/inversiones, endpoints y pantallas. No se

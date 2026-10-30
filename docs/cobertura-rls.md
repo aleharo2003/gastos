@@ -1,5 +1,7 @@
 # Cobertura de RLS en CI
 
+> Guía de un paso anterior. Para el estado consolidado del PR y sus pendientes, consultar [Estado de US-007](estado-us-007.md).
+
 US-007 necesita detectar que una tabla privada pierde su protección. Las pruebas de lectura y escritura cubren el comportamiento; este control agrega un inventario explícito de las relaciones de `public`.
 
 `infra/ci/check_rls_coverage.py` reconoce cuatro tablas privadas: `espacios`, `miembros_espacio`, `perfiles` y `cuentas`. Exige que pertenezcan a `app_migrator` y tengan RLS y FORCE activos. `alembic_version` es la única tabla técnica exceptuada de esos dos indicadores: contiene la revisión del esquema, no datos de usuarios.
