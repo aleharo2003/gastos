@@ -22,6 +22,7 @@ from check_transaction_context import check_transaction_context
 from check_read_rls import check_read_rls
 from check_accounts_rls import check_accounts_rls
 from check_rls_coverage import check_rls_coverage, CoverageError
+from check_object_privileges import check_object_privileges, PrivilegeError
 from sqlalchemy import text
 from sqlalchemy.engine import URL
 from sqlalchemy.exc import SQLAlchemyError
@@ -269,7 +270,8 @@ def check_database(fixture):
         check_accounts_rls(urls[RUNTIME], urls[MIGRATOR])
         try:
             check_rls_coverage(urls[MIGRATOR])
-        except CoverageError as error:
+            check_object_privileges(urls[MIGRATOR])
+        except (CoverageError, PrivilegeError) as error:
             raise CheckError(str(error)) from None
         step("8/8 Comparar estructura externa y datos centinela con su estado inicial.")
         if external_state(database) != before:
