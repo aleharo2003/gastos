@@ -30,12 +30,13 @@ El resultado de GitHub Actions debe comprobarse para el último commit del PR. L
 | Configuración de protección | Inventario privado, RLS/FORCE, grants efectivos y defaults de objetos de prueba |
 | Integridad compuesta | Inserciones y cambios cruzados rechazados por una FK en una tabla de prueba; una FK simple se detecta y demuestra insuficiente |
 
+La observación del [plan de membresías](plan-membresias.md) con 10.000 filas ficticias confirmó el uso de pk_miembros_espacio para la búsqueda por usuario y espacio y el listado por usuario, sin forzar el optimizador. Es una evidencia puntual, no una garantía de rendimiento.
+
 ## Pendientes para revisar el cierre de US-007
 
 1. Revisar el PR y obtener CI correcto para su último commit.
-2. Registrar la comprobación del plan de consulta de membresía y los índices previstos por ADR-0002. Ya existen la PK (usuario_id, espacio_id), el índice adicional de espacio y la clave única de cuentas (espacio_id, id); eso no sustituye observar el plan.
-3. Acordar explícitamente el alcance del cierre respecto de repositorios y entidades futuras. Hoy no hay repositorios financieros ni una entidad hija de cuentas: la prueba transitoria no equivale a implementar esas relaciones. Sus stories deberán incluir filtros por espacio, FKs compuestas y pruebas runtime reales.
-4. Registrar la aceptación o ajustes de ADR-0002 mediante la decisión del responsable. Abrir o integrar este PR no cambia automáticamente el estado de ese ADR ni de Jira.
+2. Acordar explícitamente el alcance del cierre respecto de repositorios y entidades futuras. Hoy no hay repositorios financieros ni una entidad hija de cuentas: la prueba transitoria no equivale a implementar esas relaciones. Sus stories deberán incluir filtros por espacio, FKs compuestas y pruebas runtime reales.
+3. Registrar la aceptación o ajustes de ADR-0002 mediante la decisión del responsable. Abrir o integrar este PR no cambia automáticamente el estado de ese ADR ni de Jira.
 
 No se agregan entidades financieras incompletas solo para cumplir una casilla del backlog. Si los criterios de US-007 exigen esas entidades reales, la story sigue abierta o se divide explícitamente su alcance antes de cerrarla.
 
