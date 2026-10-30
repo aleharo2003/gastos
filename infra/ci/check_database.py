@@ -18,6 +18,12 @@ sys.path.insert(0, str(ROOT / "infra/postgres"))
 sys.path.insert(0, str(ROOT / "apps/api"))
 
 from local_roles import LocalDatabase, LocalError
+from check_transaction_context import check_transaction_context
+from check_read_rls import check_read_rls
+from check_accounts_rls import check_accounts_rls
+from check_rls_coverage import check_rls_coverage, CoverageError
+from check_object_privileges import check_object_privileges, PrivilegeError
+from check_workspace_links import check_workspace_links, WorkspaceLinkError
 from sqlalchemy import text
 from sqlalchemy.engine import URL
 from sqlalchemy.exc import SQLAlchemyError
@@ -249,7 +255,7 @@ def check_database(fixture):
             with engines[MIGRATOR].begin() as connection:
                 connection.execute(text("DROP TABLE public.gastos_ci_unversioned"))
         require_alembic(["check"], urls[MIGRATOR])
-        step("7/8 Comprobar que runtime no puede crear tablas en public.")
+        step("7/8 Comprobar permisos de runtime y contexto al reutilizar conexiones.")
         with engines[RUNTIME].connect() as connection:
             try:
                 connection.execute(text("CREATE TABLE public.gastos_ci_forbidden (id integer)"))
@@ -260,6 +266,15 @@ def check_database(fixture):
                 raise CheckError("Runtime pudo crear una tabla en public.")
             finally:
                 connection.rollback()
+        check_transaction_context(urls[RUNTIME], urls[MIGRATOR])
+        check_read_rls(urls[RUNTIME], urls[MIGRATOR])
+        check_accounts_rls(urls[RUNTIME], urls[MIGRATOR])
+        try:
+            check_rls_coverage(urls[MIGRATOR])
+            check_object_privileges(urls[MIGRATOR])
+            check_workspace_links(urls[MIGRATOR])
+        except (CoverageError, PrivilegeError, WorkspaceLinkError) as error:
+            raise CheckError(str(error)) from None
         step("8/8 Comparar estructura externa y datos centinela con su estado inicial.")
         if external_state(database) != before:
             raise CheckError("Cambio la estructura externa o sus datos centinela.")

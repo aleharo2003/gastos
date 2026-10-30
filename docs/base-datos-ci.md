@@ -1,5 +1,7 @@
 # Reconstrucción de PostgreSQL en CI
 
+> Guía de un paso anterior. Para el estado consolidado del PR y sus pendientes, consultar [Estado de US-007](estado-us-007.md).
+
 El trabajo `database` comprueba que un checkout del repositorio alcanza para reconstruir el esquema de la aplicación. Usa Python 3.14.4, las dependencias de `apps/api/requirements.txt`, Docker y Supabase CLI 2.121.0.
 
 Corre en las ramas y PR que ya activan el workflow. El despliegue de test requiere que aprueben `web`, `bff`, `api`, `integration` y `database`. Aprobar esta prueba no aplica migraciones sobre una base remota: esa etapa deberá incorporarse antes de desplegar código que dependa de ella.
@@ -14,7 +16,7 @@ Corre en las ramas y PR que ya activan el workflow. El despliegue de test requie
 6. Ejecutar `alembic upgrade head` con `app_migrator`, verificar las revisiones aplicadas y la propiedad de `espacios`.
 7. Repetir la provisión para comprobar que sigue funcionando con tablas y objetos internos TOAST. Exigir que `alembic check` termine correctamente.
 8. Agregar una columna al modelo únicamente en la memoria de un proceso hijo, sin crear una revisión. Exigir que Alembic detecte esa columna pendiente; al terminar el proceso, volver a exigir un check limpio. Después, crear una tabla de prueba en `public` que no figura en los modelos. Exigir que `alembic check` falle específicamente por esa diferencia. Un error de conexión no cuenta como detección de drift. Retirar la tabla y volver a exigir un `check` correcto.
-9. Comprobar que `app_runtime` no puede crear tablas en `public` y comparar la estructura externa y sus datos centinela con el estado anterior a las migraciones.
+9. Comprobar que `app_runtime` no puede crear tablas en `public`. Ejecutar el contrato del contexto transaccional reutilizando la misma conexión PostgreSQL tras commit, excepción, cancelación simulada y error SQL. Comprobar que un segundo usuario no herede la identidad anterior. Comparar la estructura externa y sus datos centinela con el estado anterior a las migraciones.
 10. En el bloque de limpieza, detener solo el proyecto temporal y eliminar sus volúmenes con `supabase stop --no-backup`. Si GitHub termina el runner por fuerza, sus recursos se descartan con la máquina.
 
 El programa no genera revisiones ni modifica archivos de modelos y no corrige automáticamente el drift. Tampoco usa migraciones de aplicación desde `supabase/migrations/`: las de `public` siguen en Alembic.
@@ -51,3 +53,5 @@ El trabajo original ya aprobó en GitHub Actions y las conexiones remotas de amb
 Si el modelo real del checkout no coincide con sus migraciones, la validación termina con un mensaje que pide revisar los cambios y generar la migración pendiente. Un fallo de conexión conserva un diagnóstico diferente.
 
 Referencia: [Supabase CLI](https://supabase.com/docs/reference/cli/supabase-db-reset) documenta el alcance de `--local`, `--no-seed` y la gestión del proyecto local.
+
+El contexto se describe en [Contexto transaccional](contexto-transaccional.md). La prueba del contexto por sí sola no demuestra aislamiento entre filas ni cancelación HTTP real. El pipeline actual también ejecuta los contratos de lectura, cuentas, cobertura, permisos e integridad descritos en [Estado de US-007](estado-us-007.md).

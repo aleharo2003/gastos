@@ -5,6 +5,7 @@ from alembic.util import CommandError
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.base import Base
+from app.db.migration_metadata import comparison_metadata
 from app.db.connection import (
     MIGRATOR, DatabaseAccessError, DatabaseConfigurationError,
     create_migration_engine, validate_connection,
@@ -30,7 +31,7 @@ def run_migrations():
                 validate_connection(connection, MIGRATOR)
                 context.configure(
                     connection=connection,
-                    target_metadata=Base.metadata,
+                    target_metadata=comparison_metadata(Base.metadata),
                     include_schemas=True,
                     include_name=include_name,
                     include_object=include_object,
