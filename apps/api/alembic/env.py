@@ -18,29 +18,38 @@ if config.config_file_name:
     fileConfig(config.config_file_name)
 
 
+def apply_migrations(connection):
+    validate_connection(connection, MIGRATOR)
+    context.configure(
+        connection=connection,
+        target_metadata=comparison_metadata(Base.metadata),
+        include_schemas=True,
+        include_name=include_name,
+        include_object=include_object,
+        version_table_schema="public",
+        compare_type=True,
+        compare_server_default=False,
+    )
+    with context.begin_transaction():
+        context.run_migrations()
+
+
 def run_migrations():
     if context.is_offline_mode():
         raise CommandError("Este incremento requiere conexion para comprobar el rol y el esquema antes de migrar.")
     engine = None
     try:
-        engine = create_migration_engine()
-        with engine.connect() as connection:
-            # La comprobacion SELECT y las migraciones comparten una transaccion
-            # exterior que se confirma solo al terminar correctamente.
-            with connection.begin():
-                validate_connection(connection, MIGRATOR)
-                context.configure(
-                    connection=connection,
-                    target_metadata=comparison_metadata(Base.metadata),
-                    include_schemas=True,
-                    include_name=include_name,
-                    include_object=include_object,
-                    version_table_schema="public",
-                    compare_type=True,
-                    compare_server_default=False,
-                )
-                with context.begin_transaction():
-                    context.run_migrations()
+        supplied = config.attributes.get("connection")
+        if supplied is not None:
+            # El runner es propietario de la transaccion: upgrade y check
+            # deben aprobar antes de confirmar. No cerrar esta conexion aqui.
+            if not supplied.in_transaction():
+                raise CommandError("La conexion compartida requiere una transaccion activa.")
+            apply_migrations(supplied)
+        else:
+            engine = create_migration_engine()
+            with engine.begin() as connection:
+                apply_migrations(connection)
     except (DatabaseConfigurationError, DatabaseAccessError) as error:
         raise CommandError(str(error)) from None
     except SQLAlchemyError:

@@ -286,6 +286,15 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           DEPLOY_COMMIT: ${{ github.sha }}
         run: python infra/cd/check_main.py --commit "$DEPLOY_COMMIT"
+      - name: Instalar dependencias para migrar test
+        if: steps.current_main.outputs.deploy == 'true'
+        run: python -m pip install -r apps/api/requirements.txt
+      - name: Migrar y comprobar Supabase test
+        if: steps.current_main.outputs.deploy == 'true'
+        env:
+          SUPABASE_MIGRATOR_PASSWORD: ${{ secrets.SUPABASE_MIGRATOR_PASSWORD }}
+          SUPABASE_DB_CA_CERT: ${{ secrets.SUPABASE_DB_CA_CERT }}
+        run: python infra/cd/migrate_test.py
       - name: Desplegar y verificar API, BFF y Angular
         if: steps.current_main.outputs.deploy == 'true'
         env:
