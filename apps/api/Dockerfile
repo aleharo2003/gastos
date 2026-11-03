@@ -8,7 +8,8 @@ WORKDIR /app
 COPY requirements.txt .
 RUN python -m pip install --no-cache-dir -r requirements.txt
 
-RUN useradd --create-home --uid 10001 appuser
+RUN groupadd --gid 1000 render-secrets \
+    && useradd --create-home --uid 10001 --groups render-secrets appuser
 COPY --chown=appuser:appuser app ./app
 
 USER appuser
