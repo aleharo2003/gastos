@@ -36,6 +36,7 @@ class RuntimeStartupTests(unittest.TestCase):
     def test_success_checks_effective_role(self):
         engine = MagicMock()
         with patch('app.db.startup.configured_url', return_value='url'), \
+             patch('app.db.startup.validate_certificate'), \
              patch('app.db.startup.create_runtime_engine', return_value=engine), \
              patch('app.db.startup.validate_connection') as validate:
             self.assertIs(connect_runtime({}), engine)
@@ -44,6 +45,7 @@ class RuntimeStartupTests(unittest.TestCase):
     def test_failure_closes_engine_and_hides_driver_message(self):
         engine = MagicMock()
         with patch('app.db.startup.configured_url', return_value='url'), \
+             patch('app.db.startup.validate_certificate'), \
              patch('app.db.startup.create_runtime_engine', return_value=engine), \
              patch('app.db.startup.validate_connection', side_effect=ValueError('secret-password')):
             with self.assertRaises(RuntimeError) as caught:
