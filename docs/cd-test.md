@@ -4,7 +4,7 @@ Documento preparado el 20 de octubre de 2026. La primera ejecución real de este
 
 ## Objetivo y alcance
 
-El workflow de CI publica el mismo commit aprobado en los tres servicios existentes de Render. El entorno contiene el recorrido de prueba Angular → BFF → FastAPI. No administra datos financieros, Supabase ni autenticación todavía.
+El workflow de CI publica el mismo commit aprobado en los tres servicios existentes de Render. El entorno contiene el recorrido de prueba Angular → BFF → FastAPI. Ahora aplica las migraciones de Supabase test antes de publicar. No implementa autenticación ni operaciones financieras; ver [Migraciones de test](migraciones-test.md).
 
 | Entorno | Uso en este incremento |
 |---|---|
@@ -26,7 +26,8 @@ flowchart TD
     C -- Sí --> E[Tomar turno del entorno test]
     E --> F{El SHA sigue siendo main}
     F -- No --> G[Omitir entrega anterior]
-    F -- Sí --> H[Comprobar configuración de los tres servicios]
+    F -- Sí --> M[Migrar y comprobar Supabase test]
+    M --> H[Comprobar configuración de los tres servicios]
     H --> I[Desplegar y verificar API]
     I --> J[Desplegar y verificar BFF]
     J --> K[Desplegar y verificar Angular]
@@ -56,7 +57,7 @@ Los tres servicios deben conservar **Auto-Deploy: Off**. Los permisos de publica
 
 ## Programa y contrato de publicación
 
-Los programas usan únicamente la biblioteca estándar de Python.
+Los programas de Render usan la biblioteca estándar de Python. El paso de migración instala las dependencias de apps/api/requirements.txt para usar Alembic, SQLAlchemy y Psycopg.
 
 | Archivo | Función |
 |---|---|
@@ -112,4 +113,4 @@ Las pruebas sustituyen las comunicaciones HTTP y las esperas. No usan una clave,
 
 Por simplicidad, cada integración despliega los tres servicios. Ese comportamiento consume builds incluso cuando un componente no cambió; se podrá optimizar por archivos afectados si el uso lo justifica. Los servicios gratuitos conservan sus límites y su reposo; no se programan pings para mantenerlos activos.
 
-Al incorporar la base de datos habrá que ampliar el flujo a **CI → provisión cuando corresponda → migraciones → despliegue → verificación**, con las credenciales y las reglas de los ADR. Este programa no ejecuta migraciones ni cubre ese escenario todavía. La publicación de producción requiere un incremento separado.
+El flujo de test ahora ejecuta **CI, migraciones, despliegue y verificación**, en ese orden. La provisión de roles es previa y separada. migrate_test.py usa los secrets SUPABASE_MIGRATOR_PASSWORD y SUPABASE_DB_CA_CERT del environment test; deploy_render.py mantiene su responsabilidad sobre Render. Una migración confirmada no se revierte si falla un despliegue posterior. La publicación de producción requiere un incremento separado.

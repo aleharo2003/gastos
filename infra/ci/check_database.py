@@ -18,6 +18,7 @@ sys.path.insert(0, str(ROOT / "infra/postgres"))
 sys.path.insert(0, str(ROOT / "apps/api"))
 
 from local_roles import LocalDatabase, LocalError
+from check_migration_runner import check_migration_runner
 from check_transaction_context import check_transaction_context
 from check_read_rls import check_read_rls
 from check_accounts_rls import check_accounts_rls
@@ -230,6 +231,7 @@ def check_database(fixture):
         """)
         before = external_state(database)
         step("4/8 Aplicar todas las migraciones versionadas como app_migrator.")
+        check_migration_runner(urls[MIGRATOR])
         require_alembic(["upgrade", "head"], urls[MIGRATOR])
         config = Config(str(ROOT / "apps/api/alembic.ini"))
         heads = set(ScriptDirectory.from_config(config).get_heads())
