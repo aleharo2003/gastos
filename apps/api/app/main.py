@@ -2,7 +2,9 @@ import os
 
 from fastapi import FastAPI, Response
 
-app = FastAPI(title="Gastos API")
+from app.db.startup import lifespan
+
+app = FastAPI(title="Gastos API", lifespan=lifespan)
 
 
 @app.get("/")
