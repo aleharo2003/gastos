@@ -3,8 +3,10 @@ import os
 from fastapi import FastAPI, Response
 
 from app.db.startup import lifespan
+from app.auth import router as auth_router
 
 app = FastAPI(title="Gastos API", lifespan=lifespan)
+app.include_router(auth_router)
 
 
 @app.get("/")
