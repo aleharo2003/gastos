@@ -38,7 +38,7 @@ export function configureCors(app: INestApplication): void {
 
   app.enableCors({
     origin: [origin],
-    methods: ['GET', 'HEAD'],
+    methods: ['GET', 'HEAD', 'POST'],
     credentials: false,
   });
 }
