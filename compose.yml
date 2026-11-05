@@ -43,7 +43,7 @@ services:
 
     volumes:
       - ./apps/web/src:/app/src:ro
-      - ./apps/web/public:/app/public:ro
+      # public se copia en la imagen; prestart genera auth-config.json alli.
 
     depends_on:
       - bff
