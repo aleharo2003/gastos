@@ -1,92 +1,53 @@
-import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import { environment } from '../environments/environment';
+import { signal } from '@angular/core';
+import { vi } from 'vitest';
 import { App } from './app';
+import { AuthSession } from './auth-session';
 
-describe('App', () => {
-  let http: HttpTestingController;
-
-  beforeEach(async () => {
-    await TestBed.configureTestingModule({
-      imports: [App],
-      providers: [provideHttpClientTesting()],
-    }).compileComponents();
-    http = TestBed.inject(HttpTestingController);
-  });
-
-  afterEach(() => http.verify());
-
-  it('crea la aplicación sin consultar el BFF automáticamente', async () => {
+describe('Login web', () => {
+  function setup() {
+    const auth = {
+      ready: signal(true), available: signal(true), busy: signal(false),
+      checking: signal(false), signedIn: signal(false), verified: signal(false),
+      email: signal(''), message: signal(''),
+      initialize: vi.fn().mockResolvedValue(undefined),
+      login: vi.fn().mockResolvedValue(undefined), logout: vi.fn(), verify: vi.fn(),
+    };
+    TestBed.configureTestingModule({ imports: [App], providers: [{ provide: AuthSession, useValue: auth }] });
     const fixture = TestBed.createComponent(App);
-    await fixture.whenStable();
-    expect(fixture.componentInstance).toBeTruthy();
-    http.expectNone(`${environment.bffBaseUrl}/api/hello`);
+    fixture.detectChanges();
+    return { fixture, auth };
+  }
+  it('deshabilita el ingreso sin credenciales', async () => {
+    const { fixture } = setup(); await fixture.whenStable(); fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('button').disabled).toBe(true);
   });
-
-  it('conserva el título', async () => {
-    const fixture = TestBed.createComponent(App);
-    await fixture.whenStable();
-    const page = fixture.nativeElement as HTMLElement;
-    expect(page.querySelector('h1')?.textContent).toContain('Hello, gastos-web');
+  it('envia credenciales y limpia la contraseña del formulario', async () => {
+    const { fixture, auth } = setup(); await fixture.whenStable();
+    for (const [id, value] of [['email', 'test@example.com'], ['password', 'example-password']]) {
+      const input = fixture.nativeElement.querySelector('#' + id);
+      input.value = value; input.dispatchEvent(new Event('input'));
+    }
+    await fixture.whenStable(); fixture.detectChanges();
+    fixture.nativeElement.querySelector('form').dispatchEvent(new Event('submit', { cancelable: true }));
+    await fixture.whenStable(); fixture.detectChanges();
+    expect(auth.login).toHaveBeenCalledWith('test@example.com', 'example-password');
+    expect(fixture.nativeElement.querySelector('#password').value).toBe('');
   });
-
-  it('muestra la espera, evita consultas duplicadas y presenta el mensaje', async () => {
-    const fixture = TestBed.createComponent(App);
-    await fixture.whenStable();
-    const page = fixture.nativeElement as HTMLElement;
-    const button = page.querySelector('button')!;
-    button.click();
-    await fixture.whenStable();
-
-    expect(button.disabled).toBe(true);
-    expect(page.querySelector('[role="status"]')?.textContent).toContain('Esperando respuesta');
-    button.click();
-
-    const pending = http.expectOne(`${environment.bffBaseUrl}/api/hello`);
-    expect(pending.request.method).toBe('GET');
-    expect(pending.request.timeout).toBe(environment.requestTimeoutMs);
-    pending.flush({ message: 'Hola desde FastAPI' });
-    await fixture.whenStable();
-
-    expect(page.textContent).toContain('Hola desde FastAPI');
-    expect(page.querySelector('[role="status"]')).toBeNull();
-    expect(button.disabled).toBe(false);
+  it('muestra la identidad verificada y permite salir', () => {
+    const { fixture, auth } = setup();
+    auth.signedIn.set(true); auth.verified.set(true); auth.email.set('test@example.com');
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Tu sesión está verificada');
+    fixture.nativeElement.querySelector('button').click();
+    expect(auth.logout).toHaveBeenCalled();
   });
-
-  it('permite reintentar después del error controlado del BFF', async () => {
-    const fixture = TestBed.createComponent(App);
-    await fixture.whenStable();
-    const page = fixture.nativeElement as HTMLElement;
-    const button = page.querySelector('button')!;
-
-    button.click();
-    http.expectOne(`${environment.bffBaseUrl}/api/hello`).flush(
-      { message: 'No se pudo consultar FastAPI' },
-      { status: 502, statusText: 'Bad Gateway' },
-    );
-    await fixture.whenStable();
-    expect(page.querySelector('[role="alert"]')?.textContent).toContain('Intentá nuevamente');
-    expect(button.disabled).toBe(false);
-
-    button.click();
-    http.expectOne(`${environment.bffBaseUrl}/api/hello`).flush({ message: 'Hola desde FastAPI' });
-    await fixture.whenStable();
-    expect(page.querySelector('[role="alert"]')).toBeNull();
-    expect(page.textContent).toContain('Hola desde FastAPI');
-  });
-
-  it('termina la espera y permite otra consulta tras un error de red', async () => {
-    const fixture = TestBed.createComponent(App);
-    await fixture.whenStable();
-    const page = fixture.nativeElement as HTMLElement;
-    const button = page.querySelector('button')!;
-
-    button.click();
-    http.expectOne(`${environment.bffBaseUrl}/api/hello`).error(new ProgressEvent('error'));
-    await fixture.whenStable();
-
-    expect(page.querySelector('[role="alert"]')).not.toBeNull();
-    expect(page.querySelector('[role="status"]')).toBeNull();
-    expect(button.disabled).toBe(false);
+  it('muestra el error con una accion para reintentar', () => {
+    const { fixture, auth } = setup();
+    auth.signedIn.set(true); auth.message.set('No pudimos conectar');
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[role=alert]').textContent).toContain('No pudimos conectar');
+    fixture.nativeElement.querySelector('button').click();
+    expect(auth.verify).toHaveBeenCalled();
   });
 });

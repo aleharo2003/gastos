@@ -4,10 +4,11 @@
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
-    "build": "ng build",
+    "build": "ng build && node ../../infra/build/write-auth-config.mjs",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
-    "build:test": "ng build --configuration production,test && node ../../infra/build/write-web-version.mjs"
+    "build:test": "ng build --configuration production,test && node ../../infra/build/write-web-version.mjs && node ../../infra/build/write-auth-config.mjs",
+    "prestart": "node ../../infra/build/write-auth-config.mjs --local"
   },
   "private": true,
   "packageManager": "npm@11.19.1",
@@ -18,6 +19,7 @@
     "@angular/forms": "^22.2.0",
     "@angular/platform-browser": "^22.2.0",
     "@angular/router": "^22.2.0",
+    "@supabase/supabase-js": "2.119.0",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0"
   },

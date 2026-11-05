@@ -1,27 +1,42 @@
 <main>
-  <h1>Hello, {{ title() }}</h1>
-
-  <p>Primer recorrido de Gastos.</p>
-
-  <button
-    type="button"
-    (click)="loadMessage()"
-    [disabled]="loading()"
-  >
-    {{ loading() ? 'Consultando...' : 'Consultar mensaje' }}
-  </button>
-
-  @if (loading()) {
-    <p role="status">Esperando respuesta. La primera consulta puede tardar unos minutos.</p>
-  }
-
-  @if (message()) {
-    <p aria-live="polite">{{ message() }}</p>
-  }
-
-  @if (error()) {
-    <p role="alert">{{ error() }}</p>
-  }
+  <header><span class="mark" aria-hidden="true">G</span> Gastos</header>
+  <section class="card" aria-labelledby="page-title">
+    @if (!auth.ready()) {
+      <h1 id="page-title">Bienvenido a Gastos</h1>
+      <p role="status">Preparando tu sesión…</p>
+    } @else if (auth.signedIn()) {
+      <p class="eyebrow">TU ESPACIO PERSONAL</p>
+      <h1 id="page-title">Hola, bienvenido</h1>
+      <p class="email">{{ auth.email() }}</p>
+      @if (auth.checking()) {
+        <p role="status">Conectando con Gastos… La primera conexión puede tardar unos minutos.</p>
+      } @else if (auth.verified()) {
+        <p class="success" role="status">✓ Tu sesión está verificada</p>
+        <p>Ya podés entrar con tu cuenta. El próximo paso será registrar tus primeros gastos.</p>
+      }
+      @if (auth.message()) { <p class="error" role="alert">{{ auth.message() }}</p> }
+      @if (!auth.checking() && !auth.verified()) {
+        <button (click)="auth.verify()" [disabled]="auth.busy()">Volver a intentar</button>
+      }
+      <button class="secondary" (click)="auth.logout()" [disabled]="auth.busy()">Cerrar sesión</button>
+    } @else {
+      <p class="eyebrow">TUS FINANZAS, EN UN SOLO LUGAR</p>
+      <h1 id="page-title">Iniciá sesión</h1>
+      <p>Ingresá con tu cuenta para continuar.</p>
+      <form #loginForm="ngForm" (ngSubmit)="submit()">
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email" autocomplete="username" inputmode="email"
+          [(ngModel)]="email" required email [disabled]="auth.busy() || !auth.available()">
+        <label for="password">Contraseña</label>
+        <input id="password" name="password" type="password" autocomplete="current-password"
+          [(ngModel)]="password" required [disabled]="auth.busy() || !auth.available()">
+        @if (auth.message()) { <p class="error" role="alert">{{ auth.message() }}</p> }
+        <button type="submit" [disabled]="loginForm.invalid || auth.busy() || !auth.available()">
+          {{ auth.busy() ? 'Ingresando…' : 'Ingresar' }}
+        </button>
+      </form>
+      <p class="note">Acceso para usuarios de prueba. El registro de nuevas cuentas estará disponible más adelante.</p>
+    }
+  </section>
+  <footer>Un paso a la vez, tus cuentas más claras.</footer>
 </main>
-
-<router-outlet />

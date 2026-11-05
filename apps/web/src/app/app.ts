@@ -1,44 +1,18 @@
-import { HttpClient } from '@angular/common/http';
-import { Component, inject, signal } from '@angular/core';
-import { RouterOutlet } from '@angular/router';
-import { finalize } from 'rxjs';
-import { environment } from '../environments/environment';
+import { Component, inject, OnInit } from '@angular/core';
+import { FormsModule } from '@angular/forms';
+import { AuthSession } from './auth-session';
 
 @Component({
-  imports: [RouterOutlet],
-  selector: 'app-root',
-  styleUrl: './app.css',
-  templateUrl: './app.html',
+  selector: 'app-root', imports: [FormsModule],
+  templateUrl: './app.html', styleUrl: './app.css',
 })
-export class App {
-  protected readonly title = signal('gastos-web');
-  protected readonly message = signal('');
-  protected readonly loading = signal(false);
-  protected readonly error = signal('');
-
-  private readonly http = inject(HttpClient);
-
-  protected loadMessage(): void {
-    if (this.loading()) {
-      return;
-    }
-
-    this.message.set('');
-    this.error.set('');
-    this.loading.set(true);
-
-    this.http
-      .get<{ message: string }>(`${environment.bffBaseUrl}/api/hello`, {
-        timeout: environment.requestTimeoutMs,
-      })
-      .pipe(finalize(() => this.loading.set(false)))
-      .subscribe({
-        next: (response) => {
-          this.message.set(response.message);
-        },
-        error: () => {
-          this.error.set('No se pudo obtener el mensaje. Intentá nuevamente.');
-        },
-      });
+export class App implements OnInit {
+  protected readonly auth = inject(AuthSession);
+  protected email = '';
+  protected password = '';
+  ngOnInit(): void { void this.auth.initialize(); }
+  protected async submit(): Promise<void> {
+    try { await this.auth.login(this.email, this.password); }
+    finally { this.password = ''; }
   }
 }
