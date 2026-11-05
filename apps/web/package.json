@@ -8,7 +8,7 @@
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
     "build:test": "ng build --configuration production,test && node ../../infra/build/write-web-version.mjs && node ../../infra/build/write-auth-config.mjs",
-    "prestart": "node ../../infra/build/write-auth-config.mjs --local"
+    "prestart": "node scripts/write-auth-config.mjs --local"
   },
   "private": true,
   "packageManager": "npm@11.19.1",

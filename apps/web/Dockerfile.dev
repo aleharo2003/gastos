@@ -8,6 +8,7 @@ RUN npm ci
 COPY angular.json tsconfig*.json ./
 COPY public ./public
 COPY src ./src
+COPY scripts ./scripts
 
 EXPOSE 4200
 
