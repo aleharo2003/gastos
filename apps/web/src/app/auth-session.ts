@@ -22,6 +22,8 @@ export class AuthSession {
   readonly signedIn = signal(false);
   readonly verified = signal(false);
   readonly email = signal('');
+  readonly personalSpace = signal('');
+  readonly creatingSpace = signal(false);
   readonly message = signal('');
   private readonly http = inject(HttpClient);
   private readonly factory = inject(AUTH_CLIENT_FACTORY);
@@ -58,6 +60,8 @@ export class AuthSession {
     if (session?.access_token && session.access_token === this.session?.access_token) return;
     this.generation++;
     this.session = session;
+    this.personalSpace.set('');
+    this.creatingSpace.set(false);
     this.signedIn.set(!!session);
     this.email.set(session?.user.email ?? '');
     this.verified.set(false);
@@ -103,6 +107,26 @@ export class AuthSession {
         ? 'Tu sesión no pudo validarse. Cerrá sesión y volvé a ingresar.'
         : 'No pudimos conectar con Gastos. Podés volver a intentarlo.');
     } finally { if (revision === this.generation) this.checking.set(false); }
+  }
+
+  async createPersonalSpace(): Promise<void> {
+    if (!this.session || !this.verified() || this.creatingSpace()) return;
+    const session = this.session;
+    this.creatingSpace.set(true);
+    this.message.set('');
+    try {
+      const result = await firstValueFrom(this.http.post<{ usuario_id: string; espacio_id: string; nombre: string }>(
+        `${environment.bffBaseUrl}/api/personal-space`, {}, {
+          headers: { Authorization: `Bearer ${session.access_token}` }, timeout: environment.requestTimeoutMs,
+        }));
+      if (this.session !== session) return;
+      if (result.usuario_id !== session.user.id || result.espacio_id !== session.user.id || !result.nombre) throw new Error();
+      this.personalSpace.set(result.nombre);
+    } catch {
+      if (this.session === session) this.message.set('No pudimos preparar tu espacio. Volvé a intentarlo.');
+    } finally {
+      if (this.session === session) this.creatingSpace.set(false);
+    }
   }
 
   async logout(): Promise<void> {

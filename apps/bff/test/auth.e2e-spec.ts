@@ -32,6 +32,28 @@ describe('GET /api/me', () => {
   });
   afterEach(async () => { await app.close(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
+  it('crea el espacio solo con identidad validada y POST hacia FastAPI', async () => {
+    apiFetch.mockResolvedValue(new Response(JSON.stringify({ usuario_id: user, espacio_id: user, nombre: 'Mi espacio' })));
+    await request(app.getHttpServer()).post('/api/personal-space').set('Authorization', `Bearer ${token}`)
+      .send({ usuario_id: randomUUID() }).expect(201).expect('Cache-Control', 'no-store')
+      .expect({ usuario_id: user, espacio_id: user, nombre: 'Mi espacio' });
+    expect(String(apiFetch.mock.calls[0][0])).toBe('https://api.example/personal-space');
+    expect(apiFetch.mock.calls[0][1].method).toBe('POST');
+    expect(apiFetch.mock.calls[0][1].body).toBeUndefined();
+  });
+
+  it('conserva conflicto de alta sin revelar respuesta privada', async () => {
+    apiFetch.mockResolvedValue(new Response('PRIVATE', { status: 409 }));
+    const result = await request(app.getHttpServer()).post('/api/personal-space')
+      .set('Authorization', `Bearer ${token}`).expect(409);
+    expect(result.text).not.toContain('PRIVATE');
+  });
+
+  it('rechaza alta sin token antes de llamar FastAPI', async () => {
+    await request(app.getHttpServer()).post('/api/personal-space').expect(401);
+    expect(apiFetch).not.toHaveBeenCalled();
+  });
+
   it('reenvia el token original y comprueba identidad de FastAPI', async () => {
     await request(app.getHttpServer()).get('/api/me').set('Authorization', `Bearer ${token}`)
       .set('X-User-Id', randomUUID()).expect(200).expect('Cache-Control', 'no-store').expect({ usuario_id: user });

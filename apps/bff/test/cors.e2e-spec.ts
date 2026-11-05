@@ -48,15 +48,16 @@ describe('CORS del BFF (e2e)', () => {
     expect(response.headers['access-control-allow-origin']).toBeUndefined();
   });
 
-  it('responde al preflight GET del origen permitido sin habilitar credenciales', async () => {
+  it.each(['GET', 'POST'])('responde al preflight %s del origen permitido sin habilitar credenciales', async (method) => {
     const server = await createApplication(frontendOrigin);
     const response = await request(server)
-      .options('/health')
+      .options('/api/personal-space')
       .set('Origin', frontendOrigin)
-      .set('Access-Control-Request-Method', 'GET')
+      .set('Access-Control-Request-Method', method)
+      .set('Access-Control-Request-Headers', 'authorization,content-type')
       .expect(204)
       .expect('Access-Control-Allow-Origin', frontendOrigin)
-      .expect('Access-Control-Allow-Methods', 'GET,HEAD');
+      .expect('Access-Control-Allow-Methods', 'GET,HEAD,POST');
     expect(
       response.headers['access-control-allow-credentials'],
     ).toBeUndefined();

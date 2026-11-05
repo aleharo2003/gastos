@@ -32,6 +32,26 @@ describe('AuthSession', () => {
     http.expectOne('/auth-config.json').flush({ projectRef: 'cyxhyfbiacfayixbmotq', publishableKey: 'sb_publishable_test' });
     await pending;
   }
+  it('crea espacio con token y permite repetir sin duplicados de UI', async () => {
+    await initialize(); await service.login('test@example.com', 'password');
+    http.expectOne('/api/me').flush({ usuario_id: 'user-1' }); await Promise.resolve();
+    const pending = service.createPersonalSpace();
+    const request = http.expectOne('/api/personal-space');
+    expect(request.request.method).toBe('POST');
+    expect(request.request.headers.get('Authorization')).toBe('Bearer test-token');
+    request.flush({ usuario_id: 'user-1', espacio_id: 'user-1', nombre: 'Mi espacio' });
+    await pending; expect(service.personalSpace()).toBe('Mi espacio');
+    await service.logout(); expect(service.personalSpace()).toBe('');
+  });
+  it('ignora alta que llega despues de cerrar sesion', async () => {
+    await initialize(); await service.login('test@example.com', 'password');
+    http.expectOne('/api/me').flush({ usuario_id: 'user-1' }); await Promise.resolve();
+    const pending = service.createPersonalSpace();
+    const request = http.expectOne('/api/personal-space');
+    await service.logout();
+    request.flush({ usuario_id: 'user-1', espacio_id: 'user-1', nombre: 'Mi espacio' });
+    await pending; expect(service.personalSpace()).toBe('');
+  });
   it('rechaza configuracion incompleta', async () => {
     const pending = service.initialize();
     http.expectOne('/auth-config.json').flush({ projectRef: '', publishableKey: '' });

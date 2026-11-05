@@ -21,6 +21,7 @@ from local_roles import LocalDatabase, LocalError
 from check_migration_runner import check_migration_runner
 from check_transaction_context import check_transaction_context
 from check_read_rls import check_read_rls
+from check_personal_space import check_personal_space
 from check_accounts_rls import check_accounts_rls
 from check_rls_coverage import check_rls_coverage, CoverageError
 from check_object_privileges import check_object_privileges, PrivilegeError
@@ -271,6 +272,7 @@ def check_database(fixture):
         check_transaction_context(urls[RUNTIME], urls[MIGRATOR])
         check_read_rls(urls[RUNTIME], urls[MIGRATOR])
         check_accounts_rls(urls[RUNTIME], urls[MIGRATOR])
+        check_personal_space(urls[RUNTIME], urls[MIGRATOR])
         try:
             check_rls_coverage(urls[MIGRATOR])
             check_object_privileges(urls[MIGRATOR])

@@ -9,7 +9,7 @@ describe('Login web', () => {
     const auth = {
       ready: signal(true), available: signal(true), busy: signal(false),
       checking: signal(false), signedIn: signal(false), verified: signal(false),
-      email: signal(''), message: signal(''),
+      email: signal(''), message: signal(''), personalSpace: signal(''), creatingSpace: signal(false), createPersonalSpace: vi.fn(),
       initialize: vi.fn().mockResolvedValue(undefined),
       login: vi.fn().mockResolvedValue(undefined), logout: vi.fn(), verify: vi.fn(),
     };
@@ -39,7 +39,7 @@ describe('Login web', () => {
     auth.signedIn.set(true); auth.verified.set(true); auth.email.set('test@example.com');
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('Tu sesión está verificada');
-    fixture.nativeElement.querySelector('button').click();
+    fixture.nativeElement.querySelector('button.secondary').click();
     expect(auth.logout).toHaveBeenCalled();
   });
   it('muestra el error con una accion para reintentar', () => {
