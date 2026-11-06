@@ -1,0 +1,23 @@
+<section aria-labelledby="accounts-title">
+  <h3 id="accounts-title">Tus cuentas</h3>
+  <p>Una cuenta indica dónde tenés tu dinero: efectivo, banco o billetera.</p>
+  @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
+  @if (notice()) { <p class="notice" role="status">{{ notice() }}</p> }
+  @if (loading()) { <p role="status">Cargando cuentas…</p> }
+  @if (!items().length && !loading() && !error()) { <p>Todavía no tenés cuentas. Agregá la primera.</p> }
+  <ul>
+    @for (account of items(); track account.id) { <li>{{ account.nombre }}</li> }
+  </ul>
+  <button type="button" class="secondary" (click)="load()" [disabled]="loading() || saving()">Actualizar lista</button>
+  @if (next() !== null) {
+    <button type="button" class="secondary" (click)="load(true)" [disabled]="loading() || saving()">Ver más</button>
+  }
+  <form #accountForm="ngForm" (ngSubmit)="save()">
+    <label for="account-name">Nombre de la nueva cuenta</label>
+    <input id="account-name" name="accountName" [(ngModel)]="name" required maxlength="80"
+      placeholder="Por ejemplo, Efectivo" [disabled]="saving()">
+    <button type="submit" [disabled]="accountForm.invalid || !name.trim() || saving() || loading()">
+      {{ saving() ? 'Guardando…' : 'Agregar cuenta' }}
+    </button>
+  </form>
+</section>
