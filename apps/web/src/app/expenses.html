@@ -4,6 +4,7 @@
   @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
   @if (notice()) { <p class="notice" role="status">{{ notice() }}</p> }
   <form #expenseForm="ngForm" (ngSubmit)="save()">
+    @if (editing) { <h4>Editar gasto</h4> }
     <label for="expense-date">Fecha</label>
     <input id="expense-date" name="date" type="date" [(ngModel)]="date" required [disabled]="saving()">
     <label for="expense-description">Descripción</label>
@@ -15,13 +16,14 @@
     <label for="expense-amount">Importe</label>
     <input id="expense-amount" name="amount" inputmode="decimal" [(ngModel)]="amount" required placeholder="1234,56" aria-describedby="amount-help" [disabled]="saving()">
     <small id="amount-help">Sin separador de miles. Podés usar coma o punto para los decimales.</small>
-    <button type="submit" [disabled]="expenseForm.invalid || saving() || loading()">{{ saving() ? 'Guardando…' : 'Registrar gasto' }}</button>
+    <button type="submit" [disabled]="expenseForm.invalid || saving() || loading()">{{ saving() ? 'Guardando…' : editing ? 'Guardar cambios' : 'Registrar gasto' }}</button>
+    @if (editing) { <button type="button" class="secondary" (click)="cancelEdit()" [disabled]="saving()">Cancelar edición</button> }
   </form>
   <h4>Gastos registrados</h4>
   @if (loading()) { <p role="status">Cargando gastos…</p> }
   @if (!items().length && !loading() && !error()) { <p>Todavía no registraste gastos en esta cuenta.</p> }
   <ul>@for (item of items(); track item.id) {
-    <li><strong>{{ item.descripcion }}</strong><span>{{ item.fecha.split('-').reverse().join('/') }}</span><b>{{ item.moneda }} {{ showAmount(item.importe) }}</b></li>
+    <li><strong>{{ item.descripcion }}</strong><span>{{ item.fecha.split('-').reverse().join('/') }}</span><b>{{ item.moneda }} {{ showAmount(item.importe) }}</b><button type="button" class="secondary" (click)="edit(item)" [disabled]="saving() || loading()" [attr.aria-label]="'Editar ' + item.descripcion">Editar</button></li>
   }</ul>
   <button type="button" class="secondary" (click)="load()" [disabled]="loading() || saving()">Actualizar gastos</button>
   @if (next() !== null) { <button type="button" class="secondary" (click)="load(true)" [disabled]="loading() || saving()">Ver más gastos</button> }

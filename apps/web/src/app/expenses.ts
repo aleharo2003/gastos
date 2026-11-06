@@ -34,6 +34,19 @@ export class Expenses implements OnInit {
   private readonly auth = inject(AuthSession);
   private alive = true;
   private pending?: Payload;
+  editing: Payload | null = null;
+  edit(item: Expense): void {
+    if (this.saving() || this.loading()) return;
+    if ((this.editing || this.description || this.amount) && !window.confirm('¿Descartar el formulario actual y editar este gasto?')) return;
+    this.editing = {id:item.id,fecha:item.fecha,descripcion:item.descripcion,moneda:item.moneda,importe:item.importe};
+    this.date=item.fecha; this.description=item.descripcion; this.currency=item.moneda; this.amount=item.importe;
+    this.pending=undefined; this.error.set(''); this.notice.set('Editando el gasto seleccionado.');
+    document.getElementById('expense-date')?.focus();
+  }
+  cancelEdit(): void {
+    if (this.saving() || !window.confirm('¿Descartar los cambios de este gasto?')) return;
+    this.editing=null; this.date=today(); this.description=''; this.amount=''; this.error.set(''); this.notice.set('Edición cancelada.');
+  }
   constructor() { inject(DestroyRef).onDestroy(() => { this.alive = false; }); }
   ngOnInit() { void this.load(); }
   private get path() { return `/api/spaces/${encodeURIComponent(this.space)}/accounts/${encodeURIComponent(this.account.id)}/expenses`; }
@@ -61,13 +74,19 @@ export class Expenses implements OnInit {
     if (!this.pending || Object.entries(values).some(([key,value]) => this.pending![key as keyof Payload] !== value)) this.pending = { id: crypto.randomUUID(), ...values };
     this.saving.set(true);
     try {
-      const row = await this.auth.accountRequest<Expense>('POST', this.path, this.pending);
+      const editing = this.editing;
+      const row = editing
+        ? await this.auth.accountRequest<Expense>('PATCH', `${this.path}/${editing.id}`, {original:editing,nuevo:{id:editing.id,...values}})
+        : await this.auth.accountRequest<Expense>('POST', this.path, this.pending);
       if (!this.alive) return;
       this.items.update(items => [row, ...items.filter(item => item.id !== row.id)].sort((a,b) => b.fecha.localeCompare(a.fecha) || b.id.localeCompare(a.id)));
       this.pending = undefined; this.description = ''; this.amount = '';
-      this.notice.set('Gasto guardado.');
+      this.editing=null; this.date=today();
+      this.notice.set(editing ? 'Cambios guardados.' : 'Gasto guardado.');
     } catch (error) {
-      if (this.alive) this.error.set(error instanceof HttpErrorResponse && error.status === 403
+      if (this.alive) this.error.set(error instanceof HttpErrorResponse && error.status === 409 && this.editing
+        ? 'El gasto cambió desde otra sesión. Tu formulario se conserva. Actualizá la lista y volvé a seleccionar Editar para revisar los valores actuales.'
+        : error instanceof HttpErrorResponse && error.status === 403
         ? 'No tenés permiso para registrar gastos en este espacio.'
         : 'No pudimos confirmar el guardado. Reintentá sin cambiar los datos para evitar duplicar esta solicitud.');
     } finally { if (this.alive) this.saving.set(false); }

@@ -1,4 +1,4 @@
-import { BadGatewayException, BadRequestException, Body, Controller, Get, HttpCode, HttpException, Param, Post, Query, Req, Res, UnauthorizedException } from '@nestjs/common';
+import { BadGatewayException, BadRequestException, Body, Controller, Get, HttpCode, HttpException, Param, Patch, Post, Query, Req, Res, UnauthorizedException } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { AuthService } from './auth.service.js';
 import { boundedJson } from './token-verifier.js';
@@ -6,6 +6,7 @@ import { boundedJson } from './token-verifier.js';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 type ExpenseInput = { id: string; fecha: string; descripcion: string; moneda: string; importe: string };
 type Expense = ExpenseInput & { espacio_id: string; cuenta_id: string };
+type ExpenseEdit = { original: ExpenseInput; nuevo: ExpenseInput };
 function valid(value: unknown): value is ExpenseInput {
   const row = value as ExpenseInput;
   return !!row && typeof row.id === 'string' && UUID.test(row.id) && !/^0{8}-0{4}-0{4}-0{4}-0{12}$/.test(row.id) &&
@@ -54,7 +55,19 @@ export class ExpensesController {
     }
   }
 
-  private async forward(token: string, rawSpace: string, rawAccount: string, body?: ExpenseInput, offset = 0) {
+  @Patch(':id')
+  async edit(@Param('space') space: string, @Param('account') account: string, @Param('id') id: string, @Body() value: unknown, @Req() request: Request, @Res({ passthrough: true }) response: Response) {
+    response.setHeader('Cache-Control', 'no-store');
+    const token = await this.token(request, response);
+    const body = value as ExpenseEdit;
+    if (!UUID.test(id) || !body || !valid(body.original) || !valid(body.nuevo) ||
+        body.original.id.toLowerCase() !== id.toLowerCase() || body.nuevo.id.toLowerCase() !== id.toLowerCase() ||
+        Object.keys(body).some(k => !['original','nuevo'].includes(k)) ||
+        [body.original,body.nuevo].some(r => Object.keys(r).some(k => !['id','fecha','descripcion','moneda','importe'].includes(k)))) throw new BadRequestException('Edicion invalida');
+    return this.forward(token, space, account, body, 0, id.toLowerCase());
+  }
+
+  private async forward(token: string, rawSpace: string, rawAccount: string, body?: ExpenseInput | ExpenseEdit, offset = 0, editId?: string) {
     if (!UUID.test(rawSpace) || !UUID.test(rawAccount)) throw new BadRequestException('Espacio invalido');
     const space = rawSpace.toLowerCase();
     const account = rawAccount.toLowerCase();
@@ -66,8 +79,8 @@ export class ExpensesController {
       const rawTimeout = process.env.API_TIMEOUT_MS ?? '5000';
       const timeout = Number(rawTimeout);
       if (!/^\d+$/.test(rawTimeout) || !Number.isSafeInteger(timeout) || timeout < 1 || timeout > 2147483647) throw new Error();
-      const result = await fetch(new URL(`/spaces/${space}/accounts/${account}/expenses?offset=${offset}`, base), {
-        method: body ? 'POST' : 'GET', redirect: 'error', signal: AbortSignal.timeout(timeout),
+      const result = await fetch(new URL(`/spaces/${space}/accounts/${account}/expenses${editId ? '/' + editId : '?offset=' + offset}`, base), {
+        method: editId ? 'PATCH' : body ? 'POST' : 'GET', redirect: 'error', signal: AbortSignal.timeout(timeout),
         headers: { Accept: 'application/json', Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
         ...(body ? { body: JSON.stringify(body) } : {}),
       });
