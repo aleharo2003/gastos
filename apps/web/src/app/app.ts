@@ -1,9 +1,10 @@
 import { Component, inject, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { Accounts } from './accounts';
 import { AuthSession } from './auth-session';
 
 @Component({
-  selector: 'app-root', imports: [FormsModule],
+  selector: 'app-root', imports: [FormsModule, Accounts],
   templateUrl: './app.html', styleUrl: './app.css',
 })
 export class App implements OnInit {

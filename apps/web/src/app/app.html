@@ -14,11 +14,11 @@
         <p class="success" role="status">✓ Tu sesión está verificada</p>
         @if (auth.personalSpace()) {
           <h2>{{ auth.personalSpace() }}</h2>
-          <p>Tu espacio está listo. El siguiente paso será agregar tu primera cuenta.</p>
+          <app-accounts [space]="auth.personalSpaceId()" />
         } @else {
           <p>Prepará tu espacio personal para empezar a organizar tus gastos.</p>
           <button (click)="auth.createPersonalSpace()" [disabled]="auth.creatingSpace()">
-            {{ auth.creatingSpace() ? 'Preparando tu espacio…' : 'Crear mi espacio' }}
+            {{ auth.creatingSpace() ? 'Preparando tu espacio…' : 'Abrir mi espacio' }}
           </button>
         }
       }

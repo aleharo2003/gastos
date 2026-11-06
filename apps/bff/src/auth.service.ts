@@ -14,16 +14,19 @@ export class AuthService {
     return result as { usuario_id: string; espacio_id: string; nombre: string };
   }
 
-  private async requestIdentity(token: string, personal: boolean): Promise<{ usuario_id: string; espacio_id?: string; nombre?: string }> {
-    let userId: string;
+  async verifyIdentity(token: string): Promise<string> {
     try {
       this.verifier ??= new TokenVerifier(process.env.AUTH_SUPABASE_PROJECT_REF ?? '');
-      userId = await this.verifier.verify(token);
+      return await this.verifier.verify(token);
     } catch (error) {
       if (error instanceof InvalidToken) throw new UnauthorizedException('No autenticado');
       if (error instanceof AuthUnavailable) throw new ServiceUnavailableException('Autenticacion no disponible');
       throw new ServiceUnavailableException('Autenticacion no disponible');
     }
+  }
+
+  private async requestIdentity(token: string, personal: boolean): Promise<{ usuario_id: string; espacio_id?: string; nombre?: string }> {
+    const userId = await this.verifyIdentity(token);
     try {
       const base = new URL(process.env.API_BASE_URL ?? 'http://127.0.0.1:8000');
       const local = ['localhost', '127.0.0.1', '[::1]', 'api'].includes(base.hostname);

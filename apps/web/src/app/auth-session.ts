@@ -23,6 +23,7 @@ export class AuthSession {
   readonly verified = signal(false);
   readonly email = signal('');
   readonly personalSpace = signal('');
+  readonly personalSpaceId = signal('');
   readonly creatingSpace = signal(false);
   readonly message = signal('');
   private readonly http = inject(HttpClient);
@@ -61,6 +62,7 @@ export class AuthSession {
     this.generation++;
     this.session = session;
     this.personalSpace.set('');
+    this.personalSpaceId.set('');
     this.creatingSpace.set(false);
     this.signedIn.set(!!session);
     this.email.set(session?.user.email ?? '');
@@ -121,12 +123,23 @@ export class AuthSession {
         }));
       if (this.session !== session) return;
       if (result.usuario_id !== session.user.id || result.espacio_id !== session.user.id || !result.nombre) throw new Error();
+      this.personalSpaceId.set(result.espacio_id);
       this.personalSpace.set(result.nombre);
     } catch {
       if (this.session === session) this.message.set('No pudimos preparar tu espacio. Volvé a intentarlo.');
     } finally {
       if (this.session === session) this.creatingSpace.set(false);
     }
+  }
+
+  async accountRequest<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
+    const session = this.session;
+    if (!session || !this.verified()) throw new Error('Sesion no disponible');
+    const result = await firstValueFrom(this.http.request<T>(method, `${environment.bffBaseUrl}${path}`, {
+      body, headers: { Authorization: `Bearer ${session.access_token}` }, timeout: environment.requestTimeoutMs,
+    }));
+    if (this.session !== session) throw new Error('La sesion cambio');
+    return result;
   }
 
   async logout(): Promise<void> {
