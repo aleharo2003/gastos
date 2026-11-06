@@ -1,0 +1,28 @@
+<section aria-labelledby="expenses-title">
+  <h3 id="expenses-title">Gastos de {{ account.nombre }}</h3>
+  <p>Cada gasto tiene su moneda. No se convierten ni se suman monedas distintas.</p>
+  @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
+  @if (notice()) { <p class="notice" role="status">{{ notice() }}</p> }
+  <form #expenseForm="ngForm" (ngSubmit)="save()">
+    <label for="expense-date">Fecha</label>
+    <input id="expense-date" name="date" type="date" [(ngModel)]="date" required [disabled]="saving()">
+    <label for="expense-description">Descripción</label>
+    <input id="expense-description" name="description" [(ngModel)]="description" maxlength="160" required placeholder="Por ejemplo, supermercado" [disabled]="saving()">
+    <label for="expense-currency">Moneda</label>
+    <select id="expense-currency" name="currency" [(ngModel)]="currency" [disabled]="saving()">
+      <option value="ARS">ARS · Peso argentino</option><option value="USD">USD · Dólar estadounidense</option><option value="EUR">EUR · Euro</option>
+    </select>
+    <label for="expense-amount">Importe</label>
+    <input id="expense-amount" name="amount" inputmode="decimal" [(ngModel)]="amount" required placeholder="1234,56" aria-describedby="amount-help" [disabled]="saving()">
+    <small id="amount-help">Sin separador de miles. Podés usar coma o punto para los decimales.</small>
+    <button type="submit" [disabled]="expenseForm.invalid || saving() || loading()">{{ saving() ? 'Guardando…' : 'Registrar gasto' }}</button>
+  </form>
+  <h4>Gastos registrados</h4>
+  @if (loading()) { <p role="status">Cargando gastos…</p> }
+  @if (!items().length && !loading() && !error()) { <p>Todavía no registraste gastos en esta cuenta.</p> }
+  <ul>@for (item of items(); track item.id) {
+    <li><strong>{{ item.descripcion }}</strong><span>{{ item.fecha.split('-').reverse().join('/') }}</span><b>{{ item.moneda }} {{ showAmount(item.importe) }}</b></li>
+  }</ul>
+  <button type="button" class="secondary" (click)="load()" [disabled]="loading() || saving()">Actualizar gastos</button>
+  @if (next() !== null) { <button type="button" class="secondary" (click)="load(true)" [disabled]="loading() || saving()">Ver más gastos</button> }
+</section>

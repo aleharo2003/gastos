@@ -8,7 +8,7 @@ from sqlalchemy import text
 from app.db.connection import create_migration_engine
 
 
-PRIVATE_TABLES = frozenset({'espacios', 'miembros_espacio', 'perfiles', 'cuentas'})
+PRIVATE_TABLES = frozenset({'espacios', 'miembros_espacio', 'perfiles', 'cuentas', 'gastos'})
 TECHNICAL_TABLES = frozenset({'alembic_version'})
 
 
@@ -77,4 +77,4 @@ def check_rls_coverage(migration_url):
                 'Inventario public: sin clasificar=gastos_ci_unclassified; ausentes=')
     finally:
         engine.dispose()
-    print('OK: inventario privado, RLS y FORCE; nueve alteraciones detectadas y revertidas.', flush=True)
+    print('OK: inventario privado, RLS y FORCE; alteraciones detectadas y revertidas.', flush=True)
