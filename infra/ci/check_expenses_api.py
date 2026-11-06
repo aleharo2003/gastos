@@ -5,7 +5,7 @@ from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from app.accounts import AccountInput, create_account
-from app.expenses import ExpenseInput, create_expense, list_expenses
+from app.expenses import ExpenseInput, ExpenseEdit, edit_expense, create_expense, list_expenses
 from app.db.connection import create_runtime_engine, create_migration_engine
 from app.db.unit_of_work import runtime_transaction
 
@@ -54,7 +54,22 @@ def check_expenses_api(runtime_url, migration_url):
         sql_denied(owner,insert,params,'42501')
         sql_denied(reader,insert,params|{'u':reader},'42501')
         sql_denied(owner,'DELETE FROM public.gastos',{},'42501')
-        sql_denied(owner,"UPDATE public.gastos SET importe=2",{},'42501')
+        def edit(who,space,acct,original,nuevo):
+            with runtime_transaction(runtime,usuario_id=who,espacio_id=space) as s:
+                return edit_expense(s,who,space,acct,payload.id,ExpenseEdit(original=original,nuevo=nuevo))
+        changed=body(id=payload.id,fecha='2026-11-01',importe='0.25')
+        saved=edit(editor,owner,account,payload,changed)
+        assert saved['fecha']=='2026-11-01' and saved['importe']=='0.25' and saved['id']==str(payload.id)
+        assert edit(editor,owner,account,payload,changed)==saved
+        denied(lambda:edit(owner,owner,account,payload,body(id=payload.id,importe='2')),409)
+        denied(lambda:edit(reader,owner,account,changed,payload),403)
+        denied(lambda:edit(other,owner,account,changed,payload),403)
+        denied(lambda:edit(owner,owner,foreign,changed,payload),404)
+        sql_denied(owner,'UPDATE public.gastos SET cuenta_id=:a',{'a':foreign},'42501')
+        with runtime_transaction(runtime,usuario_id=reader,espacio_id=owner) as s:
+            assert s.execute(text('UPDATE public.gastos SET importe=2')).rowcount==0
+        with runtime_transaction(runtime,usuario_id=other,espacio_id=other) as s:
+            assert s.execute(text('UPDATE public.gastos SET importe=2 WHERE id=:id'),{'id':payload.id}).rowcount==0
         # La FK compuesta protege incluso cuando el migrador no esta sujeto a la policy runtime.
         try:
             with migrator.begin() as c: c.execute(text(insert),params|{'a':foreign})

@@ -59,6 +59,41 @@ def require_account(session, user, space, account, write=False):
         raise HTTPException(404, 'Cuenta no disponible', headers=NO_STORE)
 
 
+class ExpenseEdit(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    original: ExpenseInput
+    nuevo: ExpenseInput
+
+
+def edit_expense(session, user, space, account, expense_id, body):
+    require_account(session, user, space, account, write=True)
+    if body.original.id != expense_id or body.nuevo.id != expense_id:
+        raise HTTPException(422, 'Identificador inconsistente', headers=NO_STORE)
+    params = {'id':expense_id, 's':space, 'a':account}
+    row = session.execute(text('''SELECT * FROM public.gastos
+        WHERE id=:id AND espacio_id=:s AND cuenta_id=:a FOR UPDATE'''), params).mappings().one_or_none()
+    if row is None:
+        raise HTTPException(404, 'Gasto no disponible', headers=NO_STORE)
+    def matches(value):
+        return all(row[key] == getattr(value, key) for key in ('fecha','descripcion','moneda','importe'))
+    # A retry after a lost response returns the already saved state.
+    if matches(body.nuevo):
+        return public_expense(row)
+    if not matches(body.original):
+        raise HTTPException(409, 'El gasto cambio; actualiza la lista antes de editar', headers=NO_STORE)
+    params.update(f=body.nuevo.fecha, d=body.nuevo.descripcion, m=body.nuevo.moneda, i=body.nuevo.importe)
+    updated = session.execute(text('''UPDATE public.gastos SET fecha=:f, descripcion=:d, moneda=:m, importe=:i
+        WHERE id=:id AND espacio_id=:s AND cuenta_id=:a RETURNING *'''),params).mappings().one_or_none()
+    if updated is None:
+        raise HTTPException(403, 'Sin permiso para editar', headers=NO_STORE)
+    return public_expense(updated)
+
+
+@router.patch('/spaces/{space}/accounts/{account}/expenses/{expense_id}')
+def patch_expense(space: UUID, account: UUID, expense_id: UUID, body: ExpenseEdit, request: Request, response: Response):
+    return execute(request,response,space,lambda session,user: edit_expense(session,user,space,account,expense_id,body))
+
+
 def public_expense(row):
     return {'id':str(row['id']), 'espacio_id':str(row['espacio_id']), 'cuenta_id':str(row['cuenta_id']),
             'fecha':row['fecha'].isoformat(), 'descripcion':row['descripcion'], 'moneda':row['moneda'],

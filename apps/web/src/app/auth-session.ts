@@ -132,7 +132,7 @@ export class AuthSession {
     }
   }
 
-  async accountRequest<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
+  async accountRequest<T>(method: 'GET' | 'POST' | 'PATCH', path: string, body?: unknown): Promise<T> {
     const session = this.session;
     if (!session || !this.verified()) throw new Error('Sesion no disponible');
     const result = await firstValueFrom(this.http.request<T>(method, `${environment.bffBaseUrl}${path}`, {

@@ -27,6 +27,21 @@ describe('Gastos HTTP', () => {
     await request(app.getHttpServer()).get(path).expect(401);
     expect(fetchMock).not.toHaveBeenCalled();
   });
+  it('edita mediante PATCH con identidad y control de original', async () => {
+    const body={original:payload,nuevo:{...payload,fecha:'2026-11-01'}};
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({...row,fecha:'2026-11-01'})));
+    await request(app.getHttpServer()).patch(`${path}/${id}`).set('Authorization','Bearer token').send(body).expect(200);
+    const [url,options]=fetchMock.mock.calls[0];
+    expect(String(url)).toBe(`https://api.example/spaces/${space}/accounts/${account}/expenses/${id}`);
+    expect(options.method).toBe('PATCH');expect(JSON.parse(options.body)).toEqual(body);
+  });
+  it('rechaza cambio de ID y campos de pertenencia en edicion',async()=>{
+    await request(app.getHttpServer()).patch(`${path}/${id}`).set('Authorization','Bearer token')
+      .send({original:payload,nuevo:{...payload,id:randomUUID()}}).expect(400);
+    await request(app.getHttpServer()).patch(`${path}/${id}`).set('Authorization','Bearer token')
+      .send({original:payload,nuevo:{...payload,espacio_id:randomUUID()}}).expect(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
   it('valida token antes de consultar', async () => {
     verify.mockRejectedValue(new UnauthorizedException());
     await request(app.getHttpServer()).get(path).set('Authorization','Bearer invalid').expect(401);
