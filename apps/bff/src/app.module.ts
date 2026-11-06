@@ -1,3 +1,4 @@
+import { ExpensesController } from './expenses.controller.js';
 import { AccountsController } from './accounts.controller.js';
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller.js';
@@ -7,7 +8,7 @@ import { AuthService } from './auth.service.js';
 
 @Module({
   imports: [],
-  controllers: [AppController, AuthController, AccountsController],
+  controllers: [ExpensesController, AppController, AuthController, AccountsController],
   providers: [AppService, AuthService],
 })
 export class AppModule {}

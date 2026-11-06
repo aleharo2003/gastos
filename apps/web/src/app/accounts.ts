@@ -1,3 +1,4 @@
+import { Expenses } from './expenses';
 import { Component, DestroyRef, inject, Input, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -7,12 +8,13 @@ type Account = { id: string; espacio_id: string; nombre: string };
 type Page = { items: Account[]; next_offset: number | null };
 
 @Component({
-  selector: 'app-accounts', imports: [FormsModule],
+  selector: 'app-accounts', imports: [FormsModule, Expenses],
   templateUrl: './accounts.html', styleUrl: './accounts.css',
 })
 export class Accounts implements OnInit {
   @Input({ required: true }) space = '';
   readonly items = signal<Account[]>([]);
+  readonly selected = signal<Account[]>([]);
   readonly loading = signal(false);
   readonly saving = signal(false);
   readonly error = signal('');

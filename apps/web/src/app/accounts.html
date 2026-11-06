@@ -6,7 +6,7 @@
   @if (loading()) { <p role="status">Cargando cuentas…</p> }
   @if (!items().length && !loading() && !error()) { <p>Todavía no tenés cuentas. Agregá la primera.</p> }
   <ul>
-    @for (account of items(); track account.id) { <li>{{ account.nombre }}</li> }
+    @for (account of items(); track account.id) { <li>{{ account.nombre }}<button type="button" class="secondary" (click)="selected.set([account])">Ver gastos de {{ account.nombre }}</button></li> }
   </ul>
   <button type="button" class="secondary" (click)="load()" [disabled]="loading() || saving()">Actualizar lista</button>
   @if (next() !== null) {
@@ -21,3 +21,7 @@
     </button>
   </form>
 </section>
+
+@for (account of selected(); track account.id) {
+  <app-expenses [space]="space" [account]="account" />
+}
