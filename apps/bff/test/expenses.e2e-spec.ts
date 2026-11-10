@@ -23,6 +23,25 @@ describe('Gastos HTTP', () => {
     vi.stubGlobal('fetch', fetchMock);
   });
   afterEach(async () => { await app.close(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
+  it('reenvia filtros codificados y conserva categoria',async()=>{
+    const page={items:[{...row,categoria:'alimentos'}],next_offset:null};
+    fetchMock.mockResolvedValue(new Response(JSON.stringify(page)));
+    await request(app.getHttpServer()).get(path).query({texto:'10% & cerveza',desde:'2026-11-01',hasta:'2026-11-10',categoria:'alimentos',moneda:'ARS',offset:100}).set('Authorization','Bearer token').expect(200).expect(page);
+    const url=new URL(String(fetchMock.mock.calls[0][0]));
+    expect(url.searchParams.get('texto')).toBe('10% & cerveza');expect(url.searchParams.get('offset')).toBe('100');
+    expect(url.searchParams.get('categoria')).toBe('alimentos');
+  });
+  it('acepta categoria al crear y rechaza categorias arbitrarias',async()=>{
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({...row,categoria:'ocio'})));
+    await request(app.getHttpServer()).post(path).set('Authorization','Bearer token').send({...payload,categoria:'ocio'}).expect(200);
+    await request(app.getHttpServer()).post(path).set('Authorization','Bearer token').send({...payload,categoria:'inventada'}).expect(400);
+  });
+  it('rechaza filtros desconocidos, repetidos o demasiado largos',async()=>{
+    for(const query of ['categoria=inventada','texto=a&texto=b','usuario_id=other','moneda=XXX','texto='+ 'x'.repeat(161)]) {
+      await request(app.getHttpServer()).get(path+'?'+query).set('Authorization','Bearer token').expect(400);
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
   it('requiere token', async () => {
     await request(app.getHttpServer()).get(path).expect(401);
     expect(fetchMock).not.toHaveBeenCalled();

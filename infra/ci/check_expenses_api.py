@@ -5,7 +5,7 @@ from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from app.accounts import AccountInput, create_account
-from app.expenses import ExpenseInput, ExpenseEdit, edit_expense, create_expense, list_expenses
+from app.expenses import ExpenseFilters, ExpenseInput, ExpenseEdit, edit_expense, create_expense, list_expenses
 from app.db.connection import create_runtime_engine, create_migration_engine
 from app.db.unit_of_work import runtime_transaction
 
@@ -49,7 +49,7 @@ def check_expenses_api(runtime_url, migration_url):
             page=list_expenses(s,reader,owner,account)
             assert {r['moneda'] for r in page['items']}=={'ARS','USD','EUR'}
             assert len(page['items'])==3
-        insert="INSERT INTO public.gastos VALUES (:id,:s,:a,:u,'2026-11-06','SQL','ARS',1)"
+        insert="INSERT INTO public.gastos(id,espacio_id,cuenta_id,usuario_id,fecha,descripcion,moneda,importe) VALUES (:id,:s,:a,:u,'2026-11-06','SQL','ARS',1)"
         params={'id':uuid4(),'s':owner,'a':account,'u':other}
         sql_denied(owner,insert,params,'42501')
         sql_denied(reader,insert,params|{'u':reader},'42501')
@@ -81,6 +81,36 @@ def check_expenses_api(runtime_url, migration_url):
             page=list_expenses(s,owner,owner,account);following=list_expenses(s,owner,owner,account,page['next_offset'])
             assert len(page['items'])==100 and len(following['items'])==1
             assert len({r['id'] for r in page['items']+following['items']})==101
+        # Clasificar existentes no cambia sus IDs; un cliente anterior conserva la categoria.
+        categorized=body(id=payload.id,fecha=changed.fecha.isoformat(),importe='0.25',categoria='alimentos')
+        assert edit(editor,owner,account,changed,categorized)['categoria']=='alimentos'
+        legacy=body(id=payload.id,fecha='2026-11-02',importe='0.25')
+        assert edit(editor,owner,account,changed,legacy)['categoria']=='alimentos'
+        denied(lambda:edit(editor,owner,account,categorized,body(id=payload.id,categoria='ocio')),409)
+        # Una categoria no valida tampoco puede escribirse por SQL directo.
+        sql_denied(owner,"UPDATE public.gastos SET categoria='inventada' WHERE id=:id",{'id':payload.id},'23514')
+        with runtime_transaction(runtime,usuario_id=reader,espacio_id=owner) as s:
+            assert s.execute(text("UPDATE public.gastos SET categoria='ocio'")).rowcount==0
+        def filtered(who=owner,space=owner,acct=account,offset=0,**kw):
+            with runtime_transaction(runtime,usuario_id=who,espacio_id=space) as s:
+                return list_expenses(s,who,space,acct,offset,ExpenseFilters(**kw))
+        result=filtered(desde='2026-11-02',hasta='2026-11-02',categoria='alimentos',moneda='ARS',texto='COMI')
+        assert [r['id'] for r in result['items']]==[str(payload.id)]
+        assert not filtered(hasta='2026-11-01',categoria='alimentos')['items']
+        assert len(filtered(categoria='sin_categoria')['items'])==100
+        assert not filtered(texto="%' OR true --")['items']
+        denied(lambda:filtered(desde='2026-12-01',hasta='2026-11-01'),422)
+        denied(lambda:filtered(who=other),403)
+        denied(lambda:filtered(acct=foreign),404)
+        # Mas de una pagina de coincidencias: filtros antes de LIMIT/OFFSET.
+        with migrator.begin() as c:
+            c.execute(text("INSERT INTO public.gastos(id,espacio_id,cuenta_id,usuario_id,fecha,descripcion,moneda,importe,categoria) VALUES (:id,:s,:a,:u,'2026-10-01','Cerveza 10%_oferta','ARS',1,'ocio')"),[params|{'id':uuid4(),'u':owner} for _ in range(102)])
+        page=filtered(texto='cerveza',categoria='ocio'); following=filtered(offset=page['next_offset'],texto='cerveza',categoria='ocio')
+        assert len(page['items'])==100 and len(following['items'])==2 and following['next_offset'] is None
+        assert len({r['id'] for r in page['items']+following['items']})==102
+        assert filtered(texto='10%_oferta')['next_offset']==100
+        assert not filtered(texto='10X_oferta')['items']
+        print('OK: categorias, clientes anteriores, filtros combinados, texto literal, aislamiento y paginacion filtrada.',flush=True)
         with migrator.begin() as c: c.execute(text('DELETE FROM public.miembros_espacio WHERE usuario_id=:u AND espacio_id=:s'),{'u':editor,'s':owner})
         denied(lambda:create(editor,owner,account,body()),403)
         print('OK: gastos multimoneda, precision, reintentos, roles, FK por espacio y paginacion.',flush=True)

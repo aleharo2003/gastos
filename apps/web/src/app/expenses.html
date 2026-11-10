@@ -4,12 +4,20 @@
   @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
   @if (notice()) { <p class="notice" role="status">{{ notice() }}</p> }
   @if(lastSaved()){<button type="button" class="secondary" (click)="openReceipts(lastSaved())">Adjuntar comprobante al gasto guardado</button>}
+  @if(receiptOutsideList()){
+    @for(id of [receiptExpense()!]; track id){<app-receipts [id]="'receipts-'+id" [path]="receiptPath(id)" />}
+  }
   <form #expenseForm="ngForm" (ngSubmit)="save()">
     @if (editing) { <h4>Editar gasto</h4> }
     <label for="expense-date">Fecha</label>
     <input id="expense-date" name="date" type="date" [(ngModel)]="date" required [disabled]="saving()">
     <label for="expense-description">Descripción</label>
     <input id="expense-description" name="description" [(ngModel)]="description" maxlength="160" required placeholder="Por ejemplo, supermercado" [disabled]="saving()">
+    <label for="expense-category">Categoría <small>(opcional)</small></label>
+    <select id="expense-category" name="category" [(ngModel)]="category" [disabled]="saving()">
+      <option value="">Sin categoría</option>
+      @for(c of categories; track c.id){<option [value]="c.id">{{ c.label }}</option>}
+    </select>
     <label for="expense-currency">Moneda</label>
     <select id="expense-currency" name="currency" [(ngModel)]="currency" [disabled]="saving()">
       <option value="ARS">ARS · Peso argentino</option><option value="USD">USD · Dólar estadounidense</option><option value="EUR">EUR · Euro</option>
@@ -21,10 +29,34 @@
     @if (editing) { <button type="button" class="secondary" (click)="cancelEdit()" [disabled]="saving()">Cancelar edición</button> }
   </form>
   <h4>Gastos registrados</h4>
+  <details class="filters" [open]="!!appliedFilters()">
+    <summary>Filtrar gastos {{ appliedFilters() ? '· Filtros aplicados' : '' }}</summary>
+    <form #filtersForm="ngForm" (ngSubmit)="applyFilters()">
+      <label for="filter-text">Buscar en la descripción</label>
+      <input id="filter-text" name="filterText" type="search" [(ngModel)]="filterText" maxlength="160" placeholder="Por ejemplo, cerveza" [disabled]="loading() || saving()">
+      <small>Busca el texto escrito, sin distinguir mayúsculas. Todavía no corrige errores de escritura.</small>
+      <div class="date-range">
+        <div><label for="filter-from">Desde</label><input id="filter-from" name="filterFrom" type="date" [(ngModel)]="filterFrom" [disabled]="loading() || saving()"></div>
+        <div><label for="filter-to">Hasta (inclusive)</label><input id="filter-to" name="filterTo" type="date" [(ngModel)]="filterTo" [disabled]="loading() || saving()"></div>
+      </div>
+      <label for="filter-category">Categoría</label>
+      <select id="filter-category" name="filterCategory" [(ngModel)]="filterCategory" [disabled]="loading() || saving()">
+        <option value="">Todas</option><option value="sin_categoria">Sin categoría</option>
+        @for(c of categories; track c.id){<option [value]="c.id">{{ c.label }}</option>}
+      </select>
+      <label for="filter-currency">Moneda</label>
+      <select id="filter-currency" name="filterCurrency" [(ngModel)]="filterCurrency" [disabled]="loading() || saving()">
+        <option value="">Todas</option><option>ARS</option><option>USD</option><option>EUR</option>
+      </select>
+      <button type="submit" [disabled]="filtersForm.invalid || loading() || saving()">Aplicar filtros</button>
+      <button type="button" class="secondary" (click)="applyFilters(true)" [disabled]="loading() || saving()">Limpiar filtros</button>
+    </form>
+  </details>
+  <p>Buscando en todos los gastos de {{ account.nombre }}. {{ items().length }} resultados cargados{{ next() !== null ? '; hay más disponibles.' : '.' }}</p>
   @if (loading()) { <p role="status">Cargando gastos…</p> }
-  @if (!items().length && !loading() && !error()) { <p>Todavía no registraste gastos en esta cuenta.</p> }
+  @if (!items().length && !loading() && !error()) { <p>{{ appliedFilters() ? 'No hay gastos que coincidan. Probá ampliar las fechas o limpiar los filtros.' : 'Todavía no registraste gastos en esta cuenta.' }}</p> }
   <ul>@for (item of items(); track item.id) {
-    <li><strong>{{ item.descripcion }}</strong><span>{{ item.fecha.split('-').reverse().join('/') }}</span><b>{{ item.moneda }} {{ showAmount(item.importe) }}</b><button type="button" class="secondary" (click)="edit(item)" [disabled]="saving() || loading()" [attr.aria-label]="'Editar ' + item.descripcion">Editar</button>
+    <li><strong>{{ item.descripcion }}</strong><span>{{ categoryName(item.categoria) }}</span><span>{{ item.fecha.split('-').reverse().join('/') }}</span><b>{{ item.moneda }} {{ showAmount(item.importe) }}</b><button type="button" class="secondary" (click)="edit(item)" [disabled]="saving() || loading()" [attr.aria-label]="'Editar ' + item.descripcion">Editar</button>
       <button type="button" class="secondary" (click)="openReceipts(receiptExpense()===item.id?null:item.id)" [attr.aria-expanded]="receiptExpense()===item.id">Comprobantes</button>
       @if(receiptExpense()===item.id){<app-receipts [id]="'receipts-'+item.id" [path]="receiptPath(item.id)" />}
     </li>
