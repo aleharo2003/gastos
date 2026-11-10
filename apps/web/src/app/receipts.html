@@ -1,0 +1,24 @@
+<section aria-label="Comprobantes del gasto">
+  <h4>Comprobantes</h4>
+  <p>Hasta 5 archivos JPG, PNG o PDF de 5 MB cada uno. Adjuntar no modifica el importe ni la fecha del gasto.</p>
+  @if(error()){<p class="error" role="alert">{{error()}}</p>}
+  @if(notice()){<p role="status">{{notice()}}</p>}
+  @if(busy()){<p role="status">Procesando comprobante…</p>}
+  <ul>@for(row of items();track row.id){
+    <li><span>{{row.nombre}}</span>
+      @if(row.mime.startsWith('image/')){<button type="button" (click)="file(row,true)" [disabled]="busy()">Ver foto</button>}
+      <button type="button" (click)="file(row)" [disabled]="busy()">{{row.mime==='application/pdf'?'Descargar PDF':'Descargar'}}</button>
+    </li>
+  }</ul>
+  @if(!items().length&&!busy()){<p>Este gasto todavía no tiene comprobantes.</p>}
+  @if(preview()){
+    <img [src]="preview()" alt="Comprobante del gasto">
+    <button type="button" (click)="closePreview()">Cerrar foto</button>
+  }
+  @if(items().length<5){
+    <label>Tomar foto<input type="file" accept="image/jpeg,image/png" capture="environment" (change)="choose($event)" [disabled]="busy()"></label>
+    <label>Elegir foto o PDF<input type="file" accept="image/jpeg,image/png,application/pdf" (change)="choose($event)" [disabled]="busy()"></label>
+    @if(selected()){<p>Seleccionado: {{selected()!.name}}</p><button type="button" (click)="upload()" [disabled]="busy()">Subir comprobante</button>}
+  }
+  <button type="button" (click)="load()" [disabled]="busy()">Actualizar comprobantes</button>
+</section>

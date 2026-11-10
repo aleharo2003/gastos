@@ -1,7 +1,7 @@
 from datetime import date
 from decimal import Decimal
 from uuid import UUID
-from sqlalchemy import CheckConstraint, Date, ForeignKey, ForeignKeyConstraint, Index, Numeric, Text, Uuid
+from sqlalchemy import CheckConstraint, Date, ForeignKey, ForeignKeyConstraint, Index, Numeric, Text, Uuid, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base
 
@@ -9,6 +9,7 @@ from app.db.base import Base
 class Gasto(Base):
     __tablename__ = 'gastos'
     __table_args__ = (
+        UniqueConstraint('espacio_id','id',name='uq_gastos_espacio_id_id'),
         ForeignKeyConstraint(['espacio_id', 'cuenta_id'], ['public.cuentas.espacio_id', 'public.cuentas.id'],
                              name='fk_gastos_espacio_id_cuenta_id_cuentas'),
         CheckConstraint("moneda IN ('ARS','USD','EUR')", name='ck_gastos_moneda'),
