@@ -15,6 +15,7 @@ class Gasto(Base):
         CheckConstraint("moneda IN ('ARS','USD','EUR')", name='ck_gastos_moneda'),
         CheckConstraint('importe > 0 AND importe < 1000000000000', name='ck_gastos_importe'),
         CheckConstraint('char_length(btrim(descripcion)) BETWEEN 1 AND 160', name='ck_gastos_descripcion'),
+        CheckConstraint("categoria IS NULL OR categoria IN ('alimentos','transporte','vivienda','servicios','salud','educacion','ocio','impuestos','auto','bancario','ropa','otros')", name='ck_gastos_categoria'),
         Index('ix_gastos_espacio_cuenta_fecha', 'espacio_id', 'cuenta_id', 'fecha'),
     )
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
@@ -25,3 +26,5 @@ class Gasto(Base):
     descripcion: Mapped[str] = mapped_column(Text, nullable=False)
     moneda: Mapped[str] = mapped_column(Text, nullable=False)
     importe: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+
+    categoria: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -4,12 +4,13 @@ import { AuthService } from './auth.service.js';
 import { boundedJson } from './token-verifier.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-type ExpenseInput = { id: string; fecha: string; descripcion: string; moneda: string; importe: string };
+const CATEGORIES = ["alimentos", "transporte", "vivienda", "servicios", "salud", "educacion", "ocio", "impuestos", "auto", "bancario", "ropa", "otros"];
+type ExpenseInput = { id: string; fecha: string; descripcion: string; moneda: string; importe: string; categoria?: string | null };
 type Expense = ExpenseInput & { espacio_id: string; cuenta_id: string };
 type ExpenseEdit = { original: ExpenseInput; nuevo: ExpenseInput };
 function valid(value: unknown): value is ExpenseInput {
   const row = value as ExpenseInput;
-  return !!row && typeof row.id === 'string' && UUID.test(row.id) && !/^0{8}-0{4}-0{4}-0{4}-0{12}$/.test(row.id) &&
+  return !!row && (row.categoria == null || CATEGORIES.includes(row.categoria)) && typeof row.id === 'string' && UUID.test(row.id) && !/^0{8}-0{4}-0{4}-0{4}-0{12}$/.test(row.id) &&
     typeof row.fecha === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(row.fecha) &&
     typeof row.descripcion === 'string' && [...row.descripcion.trim()].length >= 1 && [...row.descripcion.trim()].length <= 160 &&
     !/[\x00-\x1f\x7f]/.test(row.descripcion) && ['ARS','USD','EUR'].includes(row.moneda) &&
@@ -18,7 +19,7 @@ function valid(value: unknown): value is ExpenseInput {
 function expense(value: unknown, space: string, account: string): Expense {
   const row = value as Expense;
   if (!valid(row) || row.espacio_id !== space || row.cuenta_id !== account) throw new Error();
-  return { id: row.id, espacio_id: space, cuenta_id: account, fecha: row.fecha, descripcion: row.descripcion, moneda: row.moneda, importe: row.importe };
+  return { id: row.id, espacio_id: space, cuenta_id: account, fecha: row.fecha, descripcion: row.descripcion, moneda: row.moneda, importe: row.importe, ...(row.categoria !== undefined ? {categoria:row.categoria} : {}) };
 }
 
 @Controller('api/spaces/:space/accounts/:account/expenses')
@@ -26,11 +27,23 @@ export class ExpensesController {
   constructor(private readonly auth: AuthService) {}
 
   @Get()
-  async list(@Param('space') space: string, @Param('account') account: string, @Query('offset') offset: string | undefined, @Req() request: Request, @Res({ passthrough: true }) response: Response) {
+  async list(@Param('space') space: string, @Param('account') account: string, @Query() query: Record<string, unknown>, @Req() request: Request, @Res({ passthrough: true }) response: Response) {
     response.setHeader('Cache-Control', 'no-store');
     const token = await this.token(request, response);
+    const offset = query.offset;
     if (offset !== undefined && (typeof offset !== 'string' || !/^\d{1,6}$/.test(offset) || Number(offset) > 100000)) throw new BadRequestException('Pagina invalida');
-    return this.forward(token, space, account, undefined, Number(offset ?? 0));
+    const filters = new URLSearchParams();
+    for (const key of Object.keys(query)) {
+      if (!['offset','desde','hasta','categoria','moneda','texto'].includes(key)) throw new BadRequestException('Filtro invalido');
+      if (key === 'offset') continue;
+      const value = query[key];
+      if (typeof value !== 'string' || value.length > 160 || /[\x00-\x1f\x7f]/.test(value)) throw new BadRequestException('Filtro invalido');
+      if (['desde','hasta'].includes(key) && !/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new BadRequestException('Fecha invalida');
+      if (key === 'categoria' && ![...CATEGORIES,'sin_categoria'].includes(value)) throw new BadRequestException('Categoria invalida');
+      if (key === 'moneda' && !['ARS','USD','EUR'].includes(value)) throw new BadRequestException('Moneda invalida');
+      filters.set(key,value);
+    }
+    return this.forward(token, space, account, undefined, Number(offset ?? 0), undefined, filters);
   }
 
   @Post()
@@ -38,7 +51,7 @@ export class ExpensesController {
   async create(@Param('space') space: string, @Param('account') account: string, @Body() body: unknown, @Req() request: Request, @Res({ passthrough: true }) response: Response) {
     response.setHeader('Cache-Control', 'no-store');
     const token = await this.token(request, response);
-    if (!valid(body) || Object.keys(body).some(key => !['id','fecha','descripcion','moneda','importe'].includes(key))) throw new BadRequestException('Gasto invalido');
+    if (!valid(body) || Object.keys(body).some(key => !['id','fecha','descripcion','moneda','importe','categoria'].includes(key))) throw new BadRequestException('Gasto invalido');
     return this.forward(token, space, account, { ...body, id: body.id.toLowerCase(), descripcion: body.descripcion.trim() });
   }
 
@@ -63,11 +76,11 @@ export class ExpensesController {
     if (!UUID.test(id) || !body || !valid(body.original) || !valid(body.nuevo) ||
         body.original.id.toLowerCase() !== id.toLowerCase() || body.nuevo.id.toLowerCase() !== id.toLowerCase() ||
         Object.keys(body).some(k => !['original','nuevo'].includes(k)) ||
-        [body.original,body.nuevo].some(r => Object.keys(r).some(k => !['id','fecha','descripcion','moneda','importe'].includes(k)))) throw new BadRequestException('Edicion invalida');
+        [body.original,body.nuevo].some(r => Object.keys(r).some(k => !['id','fecha','descripcion','moneda','importe','categoria'].includes(k)))) throw new BadRequestException('Edicion invalida');
     return this.forward(token, space, account, body, 0, id.toLowerCase());
   }
 
-  private async forward(token: string, rawSpace: string, rawAccount: string, body?: ExpenseInput | ExpenseEdit, offset = 0, editId?: string) {
+  private async forward(token: string, rawSpace: string, rawAccount: string, body?: ExpenseInput | ExpenseEdit, offset = 0, editId?: string, filters = new URLSearchParams()) {
     if (!UUID.test(rawSpace) || !UUID.test(rawAccount)) throw new BadRequestException('Espacio invalido');
     const space = rawSpace.toLowerCase();
     const account = rawAccount.toLowerCase();
@@ -79,7 +92,7 @@ export class ExpensesController {
       const rawTimeout = process.env.API_TIMEOUT_MS ?? '5000';
       const timeout = Number(rawTimeout);
       if (!/^\d+$/.test(rawTimeout) || !Number.isSafeInteger(timeout) || timeout < 1 || timeout > 2147483647) throw new Error();
-      const result = await fetch(new URL(`/spaces/${space}/accounts/${account}/expenses${editId ? '/' + editId : '?offset=' + offset}`, base), {
+      const result = await fetch(new URL(`/spaces/${space}/accounts/${account}/expenses${editId ? '/' + editId : '?offset=' + offset + (filters.size ? '&' + filters.toString() : '')}`, base), {
         method: editId ? 'PATCH' : body ? 'POST' : 'GET', redirect: 'error', signal: AbortSignal.timeout(timeout),
         headers: { Accept: 'application/json', Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
         ...(body ? { body: JSON.stringify(body) } : {}),
