@@ -5,7 +5,7 @@ from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from app.accounts import AccountInput, create_account
-from app.expenses import ExpenseFilters, ExpenseInput, ExpenseEdit, edit_expense, create_expense, list_expenses
+from app.expenses import category_suggestion, ExpenseFilters, ExpenseInput, ExpenseEdit, edit_expense, create_expense, list_expenses
 from app.db.connection import create_runtime_engine, create_migration_engine
 from app.db.unit_of_work import runtime_transaction
 
@@ -129,6 +129,29 @@ def check_expenses_api(runtime_url, migration_url):
         assert [r['id'] for r in filtered(texto='CAFE',aproximada=False)['items']]==[str(accented.id)]
         print('OK: busqueda aproximada, tildes, opcion literal, permisos, filtros combinados y dos paginas completas.',flush=True)
         print('OK: categorias, clientes anteriores, filtros combinados, texto literal, aislamiento y paginacion filtrada.',flush=True)
+        def suggest(who=owner,space=owner,acct=account,description='Yerba mate'):
+            with runtime_transaction(runtime,usuario_id=who,espacio_id=space) as session:
+                return category_suggestion(session,who,space,acct,description)
+        assert suggest()['categoria'] is None
+        create(owner,owner,account,body(descripcion='Yerba mate',categoria='alimentos'))
+        assert suggest()['categoria'] is None
+        create(editor,owner,account,body(descripcion='Yerba mate',categoria='alimentos'))
+        create(owner,owner,account,body(descripcion='Yerba mate'))
+        for _ in range(3):create(other,other,foreign,body(descripcion='Yerba mate',categoria='salud'))
+        assert suggest()=={'categoria':'alimentos','coincidencias':2,'total':2}
+        assert suggest(who=reader)==suggest()
+        denied(lambda:suggest(who=other),403)
+        denied(lambda:suggest(acct=foreign),404)
+        assert suggest(who=other,space=other,acct=foreign)['categoria']=='salud'
+        # No hay aprendizaje global: las cuentas del mismo espacio tambien se separan.
+        second=uuid4()
+        with runtime_transaction(runtime,usuario_id=owner,espacio_id=owner) as session:
+            create_account(session,owner,owner,AccountInput(id=second,nombre='Segunda'))
+        assert suggest(acct=second)['categoria'] is None
+        create(owner,owner,account,body(descripcion='Yerba mate',categoria='ocio'))
+        create(owner,owner,account,body(descripcion='Yerba mate',categoria='ocio'))
+        assert suggest()['categoria'] is None
+        print('OK: sugerencias por historial, abstencion, lector, aislamiento entre espacios y cuentas.',flush=True)
         with migrator.begin() as c: c.execute(text('DELETE FROM public.miembros_espacio WHERE usuario_id=:u AND espacio_id=:s'),{'u':editor,'s':owner})
         denied(lambda:create(editor,owner,account,body()),403)
         print('OK: gastos multimoneda, precision, reintentos, roles, FK por espacio y paginacion.',flush=True)

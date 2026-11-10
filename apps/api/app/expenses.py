@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, field_validator
 from sqlalchemy import text
 from app.accounts import execute, require_member, NO_STORE
 from app.expense_search import ExpenseSearch
+from app.category_suggestions import suggest_category
 
 router = APIRouter()
 AMOUNT = re.compile(r'(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,2})?')
@@ -210,3 +211,17 @@ def get_expenses(space: UUID, account: UUID, request: Request, response: Respons
 @router.post('/spaces/{space}/accounts/{account}/expenses')
 def post_expense(space: UUID, account: UUID, body: ExpenseInput, request: Request, response: Response):
     return execute(request,response,space,lambda session,user: create_expense(session,user,space,account,body))
+
+
+def category_suggestion(session, user, space, account, description):
+    require_account(session, user, space, account)
+    rows = session.execute(text('''SELECT descripcion, categoria FROM public.gastos
+        WHERE espacio_id=:s AND cuenta_id=:a AND categoria IS NOT NULL
+        ORDER BY fecha DESC, id DESC LIMIT 500'''), {'s':space,'a':account}).mappings().all()
+    return suggest_category(description, rows)
+
+
+@router.get('/spaces/{space}/accounts/{account}/expenses/category-suggestion')
+def get_category_suggestion(space: UUID, account: UUID, request: Request, response: Response,
+                            descripcion: str = Query(min_length=4,max_length=160,pattern=r'^[^\x00-\x1f\x7f]*$')):
+    return execute(request,response,space,lambda session,user: category_suggestion(session,user,space,account,descripcion))

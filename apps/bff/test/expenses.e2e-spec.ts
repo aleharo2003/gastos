@@ -56,6 +56,33 @@ describe('Gastos HTTP', () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify({items:[{...row,coincidencia_aproximada:'true'}],next_offset:null})));
     await request(app.getHttpServer()).get(path).set('Authorization','Bearer token').expect(502);
   });
+  it('consulta sugerencias con token y sin cache',async()=>{
+    const result={categoria:'alimentos',coincidencias:2,total:3};
+    fetchMock.mockResolvedValue(new Response(JSON.stringify(result)));
+    await request(app.getHttpServer()).get(path+'/category-suggestion').query({descripcion:'Cerveza & pan'}).set('Authorization','Bearer token').expect(200).expect(result).expect('Cache-Control','no-store');
+    const [url,options]=fetchMock.mock.calls[0];expect(new URL(String(url)).pathname).toBe(`/spaces/${space}/accounts/${account}/expenses/category-suggestion`);
+    expect(new URL(String(url)).searchParams.get('descripcion')).toBe('Cerveza & pan');expect(options.headers.Authorization).toBe('Bearer token');
+  });
+  it('sugerencias exigen identidad y descripcion valida',async()=>{
+    await request(app.getHttpServer()).get(path+'/category-suggestion?descripcion=Cerveza').expect(401);
+    for(const query of ['descripcion=x','descripcion=a&descripcion=b','descripcion=Cerveza&usuario=otro']) {
+      await request(app.getHttpServer()).get(path+'/category-suggestion?'+query).set('Authorization','Bearer token').expect(400);
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+  it('rechaza sugerencias remotas incoherentes',async()=>{
+    for(const value of [{categoria:'secreto',coincidencias:2,total:2},{categoria:'ocio',coincidencias:1,total:1},{categoria:'ocio',coincidencias:2,total:10},{categoria:null,coincidencias:-1,total:0}]) {
+      fetchMock.mockResolvedValue(new Response(JSON.stringify(value)));
+      await request(app.getHttpServer()).get(path+'/category-suggestion?descripcion=Cerveza').set('Authorization','Bearer token').expect(502);
+    }
+  });
+  it('permite ausencia de sugerencia y conserva denegaciones',async()=>{
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({categoria:null,coincidencias:0,total:0})));
+    await request(app.getHttpServer()).get(path+'/category-suggestion?descripcion=Cerveza').set('Authorization','Bearer token').expect(200);
+    fetchMock.mockResolvedValue(new Response('private',{status:403}));
+    const result=await request(app.getHttpServer()).get(path+'/category-suggestion?descripcion=Cerveza').set('Authorization','Bearer token').expect(403);
+    expect(result.text).not.toContain('private');
+  });
   it('requiere token', async () => {
     await request(app.getHttpServer()).get(path).expect(401);
     expect(fetchMock).not.toHaveBeenCalled();

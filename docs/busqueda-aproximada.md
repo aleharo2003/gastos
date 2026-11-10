@@ -71,5 +71,5 @@ Después de publicar en test:
 4. Buscar `cerveza` y comprobar que el resultado literal no lleva la etiqueta.
 5. Combinar fecha, categoría y moneda; comprobar que siguen restringiendo resultados.
 
-Quedan para otros incrementos las sugerencias de categoría y los últimos gastos
-similares al consultar uno.
+Las [sugerencias de categoría](sugerencias-categoria.md) ya están disponibles.
+Los últimos gastos similares al consultar uno quedan para otro incremento.

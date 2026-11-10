@@ -48,6 +48,16 @@ export class ExpensesController {
     return this.forward(token, space, account, undefined, Number(offset ?? 0), undefined, filters);
   }
 
+  @Get('category-suggestion')
+  async suggestion(@Param('space') space: string, @Param('account') account: string, @Query() query: Record<string,unknown>, @Req() request: Request, @Res({passthrough:true}) response: Response) {
+    response.setHeader('Cache-Control','no-store');
+    const token = await this.token(request,response);
+    const description = query.descripcion;
+    if (Object.keys(query).some(k=>k!=='descripcion') || typeof description !== 'string' ||
+        [...description.trim()].length < 4 || [...description].length > 160 || /[\x00-\x1f\x7f]/.test(description)) throw new BadRequestException('Descripcion invalida');
+    return this.forward(token,space,account,undefined,0,undefined,new URLSearchParams({descripcion:description.trim()}),true);
+  }
+
   @Post()
   @HttpCode(200)
   async create(@Param('space') space: string, @Param('account') account: string, @Body() body: unknown, @Req() request: Request, @Res({ passthrough: true }) response: Response) {
@@ -82,7 +92,7 @@ export class ExpensesController {
     return this.forward(token, space, account, body, 0, id.toLowerCase());
   }
 
-  private async forward(token: string, rawSpace: string, rawAccount: string, body?: ExpenseInput | ExpenseEdit, offset = 0, editId?: string, filters = new URLSearchParams()) {
+  private async forward(token: string, rawSpace: string, rawAccount: string, body?: ExpenseInput | ExpenseEdit, offset = 0, editId?: string, filters = new URLSearchParams(), suggestion = false) {
     if (!UUID.test(rawSpace) || !UUID.test(rawAccount)) throw new BadRequestException('Espacio invalido');
     const space = rawSpace.toLowerCase();
     const account = rawAccount.toLowerCase();
@@ -94,7 +104,7 @@ export class ExpensesController {
       const rawTimeout = process.env.API_TIMEOUT_MS ?? '5000';
       const timeout = Number(rawTimeout);
       if (!/^\d+$/.test(rawTimeout) || !Number.isSafeInteger(timeout) || timeout < 1 || timeout > 2147483647) throw new Error();
-      const result = await fetch(new URL(`/spaces/${space}/accounts/${account}/expenses${editId ? '/' + editId : '?offset=' + offset + (filters.size ? '&' + filters.toString() : '')}`, base), {
+      const result = await fetch(new URL(`/spaces/${space}/accounts/${account}/expenses${suggestion ? '/category-suggestion?' + filters.toString() : editId ? '/' + editId : '?offset=' + offset + (filters.size ? '&' + filters.toString() : '')}`, base), {
         method: editId ? 'PATCH' : body ? 'POST' : 'GET', redirect: 'error', signal: AbortSignal.timeout(timeout),
         headers: { Accept: 'application/json', Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
         ...(body ? { body: JSON.stringify(body) } : {}),
@@ -102,6 +112,15 @@ export class ExpensesController {
       if ([400, 401, 403, 404, 409, 422, 503].includes(result.status)) throw new HttpException('No se pudo completar la operacion', result.status);
       if (!result.ok) throw new Error();
       const data = await boundedJson(result, 131072);
+      if (suggestion) {
+        const value=data as {categoria:unknown;coincidencias:unknown;total:unknown};
+        if (!value || typeof value.coincidencias !== 'number' || typeof value.total !== 'number' ||
+            !Number.isInteger(value.coincidencias) || !Number.isInteger(value.total) || value.total>500 || value.total<0 || value.coincidencias>value.total) throw new Error();
+        if (value.categoria===null) {
+          if(value.coincidencias!==0 || value.total!==0)throw new Error();
+        } else if(typeof value.categoria!=='string' || !CATEGORIES.includes(value.categoria) || value.coincidencias<2 || value.coincidencias*3<value.total*2)throw new Error();
+        return {categoria:value.categoria,coincidencias:value.coincidencias,total:value.total};
+      }
       if (body) return expense(data, space, account);
       const page = data as { items: unknown[]; next_offset: number | null };
       if (!page || !Array.isArray(page.items) || page.items.length > 100 ||
