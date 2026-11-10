@@ -5,6 +5,7 @@ import { AuthSession } from './auth-session';
 import { Receipts } from './receipts';
 
 type Expense = { id: string; espacio_id: string; cuenta_id: string; fecha: string; descripcion: string; moneda: string; importe: string; categoria?: string | null; coincidencia_aproximada?: boolean };
+type CategorySuggestion = {categoria:string|null;coincidencias:number;total:number};
 type Payload = Pick<Expense, 'id' | 'fecha' | 'descripcion' | 'moneda' | 'importe' | 'categoria'>;
 export function normalizeAmount(value: string): string | null {
   const text = value.trim().replace(',', '.');
@@ -39,6 +40,34 @@ export class Expenses implements OnInit {
     {id:'ropa',label:'Ropa'}, {id:'otros',label:'Otros'},
   ];
   category = '';
+  readonly suggestion = signal<CategorySuggestion|null>(null);
+  readonly suggesting = signal(false);
+  readonly suggestionNote = signal('');
+  private suggestionVersion = 0;
+  clearSuggestion() {
+    this.suggestionVersion++; this.suggestion.set(null); this.suggesting.set(false); this.suggestionNote.set('');
+  }
+  async requestSuggestion() {
+    this.clearSuggestion();
+    const description=this.description.trim();
+    if(this.editing || this.category || this.saving() || [...description].length<4 || [...description].length>160)return;
+    const version=this.suggestionVersion;
+    this.suggesting.set(true);
+    const current=()=>this.alive && version===this.suggestionVersion && !this.editing && !this.category && !this.saving() && this.description.trim()===description;
+    try {
+      const result=await this.auth.accountRequest<CategorySuggestion>('GET',`${this.path}/category-suggestion?${new URLSearchParams({descripcion:description})}`);
+      if(!current())return;
+      if(result.categoria && this.categories.some(c=>c.id===result.categoria))this.suggestion.set(result);
+      else this.suggestionNote.set('Todavía no hay antecedentes suficientes y consistentes en esta cuenta. Podés elegir la categoría.');
+    } catch {
+      if(current())this.suggestionNote.set('No pudimos buscar una sugerencia. Podés elegir la categoría y guardar igual.');
+    } finally {if(this.alive && version===this.suggestionVersion)this.suggesting.set(false);}
+  }
+  applySuggestion() {
+    const value=this.suggestion();
+    if(!value?.categoria || this.category || this.editing || this.saving())return;
+    this.category=value.categoria; this.clearSuggestion();
+  }
   filterApproximate = true;
   filterFrom = ''; filterTo = ''; filterCategory = ''; filterCurrency = ''; filterText = '';
   readonly appliedFilters = signal('');
@@ -72,6 +101,7 @@ export class Expenses implements OnInit {
   edit(item: Expense): void {
     if (this.saving() || this.loading()) return;
     if ((this.editing || this.description || this.amount) && !window.confirm('¿Descartar el formulario actual y editar este gasto?')) return;
+    this.clearSuggestion();
     this.editing = {id:item.id,fecha:item.fecha,descripcion:item.descripcion,moneda:item.moneda,importe:item.importe,categoria:item.categoria ?? null};
     this.category=item.categoria ?? ''; this.date=item.fecha; this.description=item.descripcion; this.currency=item.moneda; this.amount=item.importe;
     this.pending=undefined; this.error.set(''); this.notice.set('Editando el gasto seleccionado.');
@@ -79,6 +109,7 @@ export class Expenses implements OnInit {
   }
   cancelEdit(): void {
     if (this.saving() || !window.confirm('¿Descartar los cambios de este gasto?')) return;
+    this.clearSuggestion();
     this.editing=null; this.category=''; this.date=today(); this.description=''; this.amount=''; this.error.set(''); this.notice.set('Edición cancelada.');
   }
   constructor() { inject(DestroyRef).onDestroy(() => { this.alive = false; }); }
@@ -106,6 +137,7 @@ export class Expenses implements OnInit {
     if (!description || [...description].length > 160 || !this.date || !['ARS','USD','EUR'].includes(this.currency)) return;
     const values = {fecha: this.date, descripcion: description, moneda: this.currency, importe: amount, categoria: this.category || null};
     if (!this.pending || Object.entries(values).some(([key,value]) => this.pending![key as keyof Payload] !== value)) this.pending = { id: crypto.randomUUID(), ...values };
+    this.clearSuggestion();
     this.saving.set(true);
     let saved = false;
     try {
@@ -116,6 +148,7 @@ export class Expenses implements OnInit {
       if (!this.alive) return;
       this.items.update(items => [row, ...items.filter(item => item.id !== row.id)].sort((a,b) => b.fecha.localeCompare(a.fecha) || b.id.localeCompare(a.id)));
       this.pending = undefined; this.description = ''; this.amount = '';
+      this.clearSuggestion();
       this.editing=null; this.category=''; this.date=today();
       this.notice.set(editing ? 'Cambios guardados.' : 'Gasto guardado.');
       saved = true;

@@ -12,12 +12,23 @@
     <label for="expense-date">Fecha</label>
     <input id="expense-date" name="date" type="date" [(ngModel)]="date" required [disabled]="saving()">
     <label for="expense-description">Descripción</label>
-    <input id="expense-description" name="description" [(ngModel)]="description" maxlength="160" required placeholder="Por ejemplo, supermercado" [disabled]="saving()">
+    <input id="expense-description" name="description" [(ngModel)]="description" (ngModelChange)="clearSuggestion()" (blur)="requestSuggestion()" maxlength="160" required placeholder="Por ejemplo, supermercado" [disabled]="saving()">
     <label for="expense-category">Categoría <small>(opcional)</small></label>
-    <select id="expense-category" name="category" [(ngModel)]="category" [disabled]="saving()">
+    <select id="expense-category" name="category" [(ngModel)]="category" (ngModelChange)="clearSuggestion()" [disabled]="saving()">
       <option value="">Sin categoría</option>
       @for(c of categories; track c.id){<option [value]="c.id">{{ c.label }}</option>}
     </select>
+    @if(!editing && !category){
+      @if(suggesting()){<small role="status">Buscando una categoría en tus gastos anteriores…</small>}
+      @if(suggestion(); as proposed){
+        <div class="category-suggestion" role="status">
+          <p>{{ proposed.coincidencias }} de {{ proposed.total }} gastos similares de esta cuenta usan {{ categoryName(proposed.categoria) }}.</p>
+          <button type="button" class="secondary" (click)="applySuggestion()" [disabled]="saving()">Usar {{ categoryName(proposed.categoria) }}</button>
+          <small>La categoría sólo se aplica si la elegís.</small>
+        </div>
+      }
+      @if(suggestionNote()){<small role="status">{{ suggestionNote() }}</small>}
+    }
     <label for="expense-currency">Moneda</label>
     <select id="expense-currency" name="currency" [(ngModel)]="currency" [disabled]="saving()">
       <option value="ARS">ARS · Peso argentino</option><option value="USD">USD · Dólar estadounidense</option><option value="EUR">EUR · Euro</option>

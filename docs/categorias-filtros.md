@@ -63,7 +63,7 @@ Comprobación manual después del despliegue:
 
 ## Próximos incrementos
 
-La búsqueda tolerante a errores ya está disponible; ver [Búsqueda aproximada](busqueda-aproximada.md). Siguen pendientes las sugerencias de categoría, los gastos similares y la vista de gastos de todas las cuentas. Los gráficos y las exportaciones se implementarán en otros incrementos.
+La búsqueda tolerante a errores ya está disponible; ver [Búsqueda aproximada](busqueda-aproximada.md). Las [sugerencias de categoría](sugerencias-categoria.md) ya están disponibles. Siguen pendientes los gastos similares y la vista de gastos de todas las cuentas. Los gráficos y las exportaciones se implementarán en otros incrementos.
 
 Se conserva la paginación por offset existente: si otra sesión agrega registros
 entre páginas, puede ser necesario actualizar la lista. No es una instantánea
