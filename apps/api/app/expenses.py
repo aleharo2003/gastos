@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Request, Response, Query
 from pydantic import BaseModel, ConfigDict, field_validator
 from sqlalchemy import text
 from app.accounts import execute, require_member, NO_STORE
+from app.expense_search import ExpenseSearch
 
 router = APIRouter()
 AMOUNT = re.compile(r'(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,2})?')
@@ -116,6 +117,7 @@ class ExpenseFilters(BaseModel):
     categoria: str | None = None
     moneda: Literal['ARS','USD','EUR'] | None = None
     texto: str = ''
+    aproximada: bool = True
 
     @field_validator('categoria')
     @classmethod
@@ -151,14 +153,32 @@ def list_expenses(session, user, space, account, offset=0, filters=None):
         conditions.append('categoria=:categoria'); params['categoria'] = filters.categoria
     if filters.moneda:
         conditions.append('moneda=:moneda'); params['moneda'] = filters.moneda
-    if filters.texto:
-        # Literal substring: % and _ are text, never SQL wildcards.
-        conditions.append('strpos(lower(descripcion), lower(:texto)) > 0')
-        params['texto'] = filters.texto
-    rows = session.execute(text('SELECT * FROM public.gastos WHERE ' + ' AND '.join(conditions) +
-        ' ORDER BY fecha DESC, id DESC LIMIT 101 OFFSET :offset'), params).mappings().all()
-    return {'items':[public_expense(row) for row in rows[:100]],
-            'next_offset':offset + 100 if len(rows) > 100 else None}
+    statement = 'SELECT * FROM public.gastos WHERE ' + ' AND '.join(conditions) + ' ORDER BY fecha DESC, id DESC'
+    if not filters.texto:
+        rows = session.execute(text(statement + ' LIMIT 101 OFFSET :offset'), params).mappings().all()
+        return {'items':[public_expense(row) for row in rows[:100]],
+                'next_offset':offset + 100 if len(rows) > 100 else None}
+
+    # Filtrar antes de paginar: nunca buscar solo en los primeros 100 gastos.
+    # El cursor se mantiene dentro de la transaccion runtime y se cierra siempre.
+    search = ExpenseSearch(filters.texto, filters.aproximada)
+    result = session.execute(text(statement), params, execution_options={'yield_per':200})
+    found = 0
+    items = []
+    try:
+        for row in result.mappings():
+            kind = search.match(row['descripcion'])
+            if not kind:
+                continue
+            found += 1
+            if found <= offset:
+                continue
+            if len(items) == 100:
+                return {'items':items,'next_offset':offset+100}
+            items.append(public_expense(row) | {'coincidencia_aproximada':kind == 2})
+    finally:
+        result.close()
+    return {'items':items,'next_offset':None}
 
 
 def create_expense(session, user, space, account, body):
@@ -181,9 +201,10 @@ def get_expenses(space: UUID, account: UUID, request: Request, response: Respons
                  desde: date | None = None, hasta: date | None = None,
                  categoria: Literal['alimentos','transporte','vivienda','servicios','salud','educacion','ocio','impuestos','auto','bancario','ropa','otros','sin_categoria'] | None = None,
                  moneda: Literal['ARS','USD','EUR'] | None = None,
-                 texto: str = Query(default='', max_length=160, pattern=r'^[^\x00-\x1f\x7f]*$')):
+                 texto: str = Query(default='', max_length=160, pattern=r'^[^\x00-\x1f\x7f]*$'),
+                 aproximada: bool = True):
     return execute(request,response,space,lambda session,user: list_expenses(session,user,space,account,offset,
-        ExpenseFilters(desde=desde,hasta=hasta,categoria=categoria,moneda=moneda,texto=texto)))
+        ExpenseFilters(desde=desde,hasta=hasta,categoria=categoria,moneda=moneda,texto=texto,aproximada=aproximada)))
 
 
 @router.post('/spaces/{space}/accounts/{account}/expenses')

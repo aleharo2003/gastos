@@ -4,7 +4,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { AuthSession } from './auth-session';
 import { Receipts } from './receipts';
 
-type Expense = { id: string; espacio_id: string; cuenta_id: string; fecha: string; descripcion: string; moneda: string; importe: string; categoria?: string | null };
+type Expense = { id: string; espacio_id: string; cuenta_id: string; fecha: string; descripcion: string; moneda: string; importe: string; categoria?: string | null; coincidencia_aproximada?: boolean };
 type Payload = Pick<Expense, 'id' | 'fecha' | 'descripcion' | 'moneda' | 'importe' | 'categoria'>;
 export function normalizeAmount(value: string): string | null {
   const text = value.trim().replace(',', '.');
@@ -39,18 +39,20 @@ export class Expenses implements OnInit {
     {id:'ropa',label:'Ropa'}, {id:'otros',label:'Otros'},
   ];
   category = '';
+  filterApproximate = true;
   filterFrom = ''; filterTo = ''; filterCategory = ''; filterCurrency = ''; filterText = '';
   readonly appliedFilters = signal('');
   categoryName(id?:string|null) { return this.categories.find(c=>c.id===id)?.label ?? 'Sin categoría'; }
   receiptOutsideList() { return !!this.receiptExpense() && !this.items().some(r=>r.id===this.receiptExpense()); }
   async applyFilters(clear = false) {
     if(this.loading() || this.saving())return;
-    if(clear){this.filterFrom='';this.filterTo='';this.filterCategory='';this.filterCurrency='';this.filterText='';}
+    if(clear){this.filterApproximate=true;this.filterFrom='';this.filterTo='';this.filterCategory='';this.filterCurrency='';this.filterText='';}
     if(this.filterFrom && this.filterTo && this.filterFrom>this.filterTo){this.error.set('La fecha Desde no puede ser posterior a Hasta.');return;}
     const params=new URLSearchParams();
     for(const [key,value] of Object.entries({desde:this.filterFrom,hasta:this.filterTo,categoria:this.filterCategory,moneda:this.filterCurrency,texto:this.filterText.trim()})) {
       if(value)params.set(key,value);
     }
+    if(this.filterText.trim())params.set('aproximada',String(this.filterApproximate));
     this.appliedFilters.set(params.toString()); this.next.set(null); this.items.set([]);
     await this.load();
   }

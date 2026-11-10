@@ -21,6 +21,15 @@ describe('Filtros y categorías',()=>{
     expect(url.searchParams.get('categoria')).toBe('alimentos');
     await c.applyFilters(true);expect(request.mock.calls.at(-1)![1]).toMatch(/\?offset=0$/);
   });
+  it('conserva modo aplicado al paginar y permite buscar solo el texto',async()=>{
+    const {request,c}=await setup();c.filterText='serbesa';await c.applyFilters();
+    expect(new URL(request.mock.calls.at(-1)![1],'https://local.test').searchParams.get('aproximada')).toBe('true');
+    c.filterApproximate=false;await c.load(true);
+    expect(new URL(request.mock.calls.at(-1)![1],'https://local.test').searchParams.get('aproximada')).toBe('true');
+    await c.applyFilters();
+    expect(new URL(request.mock.calls.at(-1)![1],'https://local.test').searchParams.get('aproximada')).toBe('false');
+    await c.applyFilters(true);expect(c.filterApproximate).toBe(true);expect(request.mock.calls.at(-1)![1]).toMatch(/\?offset=0$/);
+  });
   it('rechaza rango invertido sin perder la lista',async()=>{
     const {request,c}=await setup();c.filterFrom='2026-12-01';c.filterTo='2026-11-01';await c.applyFilters();
     expect(request).toHaveBeenCalledTimes(1);expect(c.items()).toHaveLength(1);expect(c.error()).toContain('Desde');

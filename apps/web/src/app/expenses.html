@@ -34,7 +34,11 @@
     <form #filtersForm="ngForm" (ngSubmit)="applyFilters()">
       <label for="filter-text">Buscar en la descripción</label>
       <input id="filter-text" name="filterText" type="search" [(ngModel)]="filterText" maxlength="160" placeholder="Por ejemplo, cerveza" [disabled]="loading() || saving()">
-      <small>Busca el texto escrito, sin distinguir mayúsculas. Todavía no corrige errores de escritura.</small>
+      <label class="search-mode" for="filter-approximate">
+        <input id="filter-approximate" name="filterApproximate" type="checkbox" [(ngModel)]="filterApproximate" [disabled]="loading() || saving()">
+        Incluir coincidencias aproximadas
+      </label>
+      <small>Por ejemplo, «serbesa» puede encontrar «cerveza». Se ignoran mayúsculas y tildes. Desactivá la opción para buscar sólo el texto escrito.</small>
       <div class="date-range">
         <div><label for="filter-from">Desde</label><input id="filter-from" name="filterFrom" type="date" [(ngModel)]="filterFrom" [disabled]="loading() || saving()"></div>
         <div><label for="filter-to">Hasta (inclusive)</label><input id="filter-to" name="filterTo" type="date" [(ngModel)]="filterTo" [disabled]="loading() || saving()"></div>
@@ -56,7 +60,7 @@
   @if (loading()) { <p role="status">Cargando gastos…</p> }
   @if (!items().length && !loading() && !error()) { <p>{{ appliedFilters() ? 'No hay gastos que coincidan. Probá ampliar las fechas o limpiar los filtros.' : 'Todavía no registraste gastos en esta cuenta.' }}</p> }
   <ul>@for (item of items(); track item.id) {
-    <li><strong>{{ item.descripcion }}</strong><span>{{ categoryName(item.categoria) }}</span><span>{{ item.fecha.split('-').reverse().join('/') }}</span><b>{{ item.moneda }} {{ showAmount(item.importe) }}</b><button type="button" class="secondary" (click)="edit(item)" [disabled]="saving() || loading()" [attr.aria-label]="'Editar ' + item.descripcion">Editar</button>
+    <li><strong>{{ item.descripcion }}</strong>@if(item.coincidencia_aproximada){<span class="approximate">Coincidencia aproximada</span>}<span>{{ categoryName(item.categoria) }}</span><span>{{ item.fecha.split('-').reverse().join('/') }}</span><b>{{ item.moneda }} {{ showAmount(item.importe) }}</b><button type="button" class="secondary" (click)="edit(item)" [disabled]="saving() || loading()" [attr.aria-label]="'Editar ' + item.descripcion">Editar</button>
       <button type="button" class="secondary" (click)="openReceipts(receiptExpense()===item.id?null:item.id)" [attr.aria-expanded]="receiptExpense()===item.id">Comprobantes</button>
       @if(receiptExpense()===item.id){<app-receipts [id]="'receipts-'+item.id" [path]="receiptPath(item.id)" />}
     </li>

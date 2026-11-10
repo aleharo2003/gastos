@@ -5,3 +5,7 @@ summary{cursor:pointer;font-weight:700;min-height:44px;align-content:center}
 summary:focus-visible{outline:3px solid #80b6a2;outline-offset:2px}
 .date-range{display:grid;gap:.65rem;grid-template-columns:1fr 1fr}.date-range input{min-width:0;margin-top:.5rem}
 @media(max-width:420px){.date-range{grid-template-columns:1fr}}
+
+.search-mode{display:flex;align-items:center;gap:.65rem;min-height:44px;cursor:pointer}
+.search-mode input{width:22px;height:22px;flex-shrink:0;accent-color:#175440}
+.approximate{color:#325e50;font-size:.8rem;font-weight:600}

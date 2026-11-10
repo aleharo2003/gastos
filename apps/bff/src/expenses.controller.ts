@@ -6,7 +6,7 @@ import { boundedJson } from './token-verifier.js';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CATEGORIES = ["alimentos", "transporte", "vivienda", "servicios", "salud", "educacion", "ocio", "impuestos", "auto", "bancario", "ropa", "otros"];
 type ExpenseInput = { id: string; fecha: string; descripcion: string; moneda: string; importe: string; categoria?: string | null };
-type Expense = ExpenseInput & { espacio_id: string; cuenta_id: string };
+type Expense = ExpenseInput & { espacio_id: string; cuenta_id: string; coincidencia_aproximada?: boolean };
 type ExpenseEdit = { original: ExpenseInput; nuevo: ExpenseInput };
 function valid(value: unknown): value is ExpenseInput {
   const row = value as ExpenseInput;
@@ -18,8 +18,9 @@ function valid(value: unknown): value is ExpenseInput {
 }
 function expense(value: unknown, space: string, account: string): Expense {
   const row = value as Expense;
+  if (row?.coincidencia_aproximada !== undefined && typeof row.coincidencia_aproximada !== 'boolean') throw new Error();
   if (!valid(row) || row.espacio_id !== space || row.cuenta_id !== account) throw new Error();
-  return { id: row.id, espacio_id: space, cuenta_id: account, fecha: row.fecha, descripcion: row.descripcion, moneda: row.moneda, importe: row.importe, ...(row.categoria !== undefined ? {categoria:row.categoria} : {}) };
+  return { id: row.id, espacio_id: space, cuenta_id: account, fecha: row.fecha, descripcion: row.descripcion, moneda: row.moneda, importe: row.importe, ...(row.categoria !== undefined ? {categoria:row.categoria} : {}), ...(row.coincidencia_aproximada !== undefined ? {coincidencia_aproximada:row.coincidencia_aproximada} : {}) };
 }
 
 @Controller('api/spaces/:space/accounts/:account/expenses')
@@ -34,13 +35,14 @@ export class ExpensesController {
     if (offset !== undefined && (typeof offset !== 'string' || !/^\d{1,6}$/.test(offset) || Number(offset) > 100000)) throw new BadRequestException('Pagina invalida');
     const filters = new URLSearchParams();
     for (const key of Object.keys(query)) {
-      if (!['offset','desde','hasta','categoria','moneda','texto'].includes(key)) throw new BadRequestException('Filtro invalido');
+      if (!['offset','desde','hasta','categoria','moneda','texto','aproximada'].includes(key)) throw new BadRequestException('Filtro invalido');
       if (key === 'offset') continue;
       const value = query[key];
       if (typeof value !== 'string' || value.length > 160 || /[\x00-\x1f\x7f]/.test(value)) throw new BadRequestException('Filtro invalido');
       if (['desde','hasta'].includes(key) && !/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new BadRequestException('Fecha invalida');
       if (key === 'categoria' && ![...CATEGORIES,'sin_categoria'].includes(value)) throw new BadRequestException('Categoria invalida');
       if (key === 'moneda' && !['ARS','USD','EUR'].includes(value)) throw new BadRequestException('Moneda invalida');
+      if (key === 'aproximada' && !['true','false'].includes(value)) throw new BadRequestException('Modo de busqueda invalido');
       filters.set(key,value);
     }
     return this.forward(token, space, account, undefined, Number(offset ?? 0), undefined, filters);
