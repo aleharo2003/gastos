@@ -42,6 +42,20 @@ describe('Gastos HTTP', () => {
     }
     expect(fetchMock).not.toHaveBeenCalled();
   });
+  it('conserva la etiqueta aproximada y reenvia el modo de busqueda',async()=>{
+    const page={items:[{...row,coincidencia_aproximada:true}],next_offset:null};
+    fetchMock.mockResolvedValue(new Response(JSON.stringify(page)));
+    await request(app.getHttpServer()).get(path).query({texto:'serbesa',aproximada:'true'}).set('Authorization','Bearer token').expect(200).expect(page);
+    const url=new URL(String(fetchMock.mock.calls[0][0]));expect(url.searchParams.get('aproximada')).toBe('true');
+    expect(url.searchParams.get('texto')).toBe('serbesa');
+  });
+  it('rechaza modo invalido o repetido y etiqueta remota mal formada',async()=>{
+    await request(app.getHttpServer()).get(path+'?aproximada=maybe').set('Authorization','Bearer token').expect(400);
+    await request(app.getHttpServer()).get(path+'?aproximada=true&aproximada=false').set('Authorization','Bearer token').expect(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({items:[{...row,coincidencia_aproximada:'true'}],next_offset:null})));
+    await request(app.getHttpServer()).get(path).set('Authorization','Bearer token').expect(502);
+  });
   it('requiere token', async () => {
     await request(app.getHttpServer()).get(path).expect(401);
     expect(fetchMock).not.toHaveBeenCalled();

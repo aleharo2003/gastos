@@ -110,6 +110,24 @@ def check_expenses_api(runtime_url, migration_url):
         assert len({r['id'] for r in page['items']+following['items']})==102
         assert filtered(texto='10%_oferta')['next_offset']==100
         assert not filtered(texto='10X_oferta')['items']
+        for typo in ['cervesa','cerbeza','serbesa']:
+            page=filtered(texto=typo,categoria='ocio',moneda='ARS',desde='2026-10-01',hasta='2026-10-01')
+            following=filtered(offset=page['next_offset'],texto=typo,categoria='ocio',moneda='ARS',desde='2026-10-01',hasta='2026-10-01')
+            assert len(page['items'])==100 and len(following['items'])==2
+            assert all(r['coincidencia_aproximada'] for r in page['items']+following['items'])
+            assert len({r['id'] for r in page['items']+following['items']})==102
+            assert not filtered(texto=typo,aproximada=False)['items']
+            assert not filtered(texto=typo,categoria='alimentos')['items']
+            assert not filtered(texto=typo,moneda='USD')['items']
+            assert not filtered(texto=typo,desde='2026-10-02')['items']
+        assert not any(r['coincidencia_aproximada'] for r in filtered(texto='CERVEZA')['items'])
+        assert filtered(texto='serbesa',who=reader)['next_offset']==100
+        denied(lambda:filtered(texto='serbesa',who=other),403)
+        denied(lambda:filtered(texto='serbesa',acct=foreign),404)
+        accented=body(descripcion='Café con leche',categoria='alimentos')
+        create(owner,owner,account,accented)
+        assert [r['id'] for r in filtered(texto='CAFE',aproximada=False)['items']]==[str(accented.id)]
+        print('OK: busqueda aproximada, tildes, opcion literal, permisos, filtros combinados y dos paginas completas.',flush=True)
         print('OK: categorias, clientes anteriores, filtros combinados, texto literal, aislamiento y paginacion filtrada.',flush=True)
         with migrator.begin() as c: c.execute(text('DELETE FROM public.miembros_espacio WHERE usuario_id=:u AND espacio_id=:s'),{'u':editor,'s':owner})
         denied(lambda:create(editor,owner,account,body()),403)

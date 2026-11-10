@@ -16,16 +16,17 @@ En una cuenta, abrir **Filtrar gastos**. Se pueden combinar:
 - Desde y Hasta, ambos inclusive, sobre la fecha del gasto.
 - Categoría, incluida la opción Sin categoría.
 - Moneda original, sin conversiones.
-- Texto contenido en la descripción, sin distinguir mayúsculas.
+- Texto en la descripción, con coincidencias aproximadas opcionales.
 
 **Aplicar filtros** vuelve a la primera página. **Ver más gastos** conserva los
 filtros aplicados, aunque se haya modificado el formulario sin aplicarlo.
 **Limpiar filtros** restablece la consulta completa de esa cuenta.
 El contador indica resultados cargados, no el total de toda la consulta.
 
-Los filtros se aplican en PostgreSQL antes de paginar (100 registros por página),
-manteniendo los controles de espacio, cuenta y RLS. Se usan parámetros SQL;
-`%` y `_` se interpretan como texto literal. Un rango invertido se rechaza.
+Los filtros de fecha, categoría, moneda y cuenta se aplican en PostgreSQL,
+manteniendo los controles de espacio y RLS. La API aplica la búsqueda de texto
+antes de paginar las coincidencias (100 registros por página). Se usan parámetros
+SQL; `%` y `_` se interpretan como texto literal. Un rango invertido se rechaza.
 
 Después de guardar con filtros activos se vuelve a consultar la primera página.
 El gasto puede quedar fuera de los resultados; el acceso para adjuntarle un
@@ -62,11 +63,7 @@ Comprobación manual después del despliegue:
 
 ## Próximos incrementos
 
-La búsqueda actual no ignora tildes ni corrige errores: `cerveza` no coincide con
-`serbesa`. La búsqueda aproximada, las sugerencias de categoría y los gastos
-similares se incorporarán por separado. También queda pendiente la vista de
-gastos de todas las cuentas. No se agregan gráficos, exportaciones ni totales
-monetarios en este cambio.
+La búsqueda tolerante a errores ya está disponible; ver [Búsqueda aproximada](busqueda-aproximada.md). Siguen pendientes las sugerencias de categoría, los gastos similares y la vista de gastos de todas las cuentas. Los gráficos y las exportaciones se implementarán en otros incrementos.
 
 Se conserva la paginación por offset existente: si otra sesión agrega registros
 entre páginas, puede ser necesario actualizar la lista. No es una instantánea
