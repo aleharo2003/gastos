@@ -5,7 +5,7 @@ from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from app.accounts import AccountInput, create_account
-from app.expenses import category_suggestion, ExpenseFilters, ExpenseInput, ExpenseEdit, edit_expense, create_expense, list_expenses
+from app.expenses import list_similar_expenses, category_suggestion, ExpenseFilters, ExpenseInput, ExpenseEdit, edit_expense, create_expense, list_expenses
 from app.db.connection import create_runtime_engine, create_migration_engine
 from app.db.unit_of_work import runtime_transaction
 
@@ -152,8 +152,35 @@ def check_expenses_api(runtime_url, migration_url):
         create(owner,owner,account,body(descripcion='Yerba mate',categoria='ocio'))
         assert suggest()['categoria'] is None
         print('OK: sugerencias por historial, abstencion, lector, aislamiento entre espacios y cuentas.',flush=True)
+        reference=body(descripcion='Farmacia barrio',fecha='2025-02-09')
+        create(owner,owner,account,reference)
+        comparable=[]
+        for day in range(1,9):
+            candidate=body(descripcion='Farmacia del barrio',fecha=f'2025-02-{day:02}',moneda='USD' if day%2 else 'ARS')
+            create(owner,owner,account,candidate);comparable.append(str(candidate.id))
+        outside=body(descripcion='Farmacia barrio',fecha='2031-01-01')
+        create(other,other,foreign,outside)
+        create(owner,owner,second,body(descripcion='Farmacia barrio',fecha='2031-01-01'))
+        # Los similares pueden estar detras de mas de un lote de no coincidencias.
+        with migrator.begin() as c:
+            c.execute(text("INSERT INTO public.gastos(id,espacio_id,cuenta_id,usuario_id,fecha,descripcion,moneda,importe) VALUES (:id,:s,:a,:u,'2030-01-01','Seguro del auto','ARS',1)"),[params|{'id':uuid4(),'u':owner} for _ in range(210)])
+        def similar(who=owner,space=owner,acct=account,expense=reference.id):
+            with runtime_transaction(runtime,usuario_id=who,espacio_id=space) as session:
+                return list_similar_expenses(session,who,space,acct,expense)
+        result=similar()
+        assert result['referencia_id']==str(reference.id)
+        assert [r['id'] for r in result['items']]==list(reversed(comparable))[:5]
+        assert {r['moneda'] for r in result['items']}=={'ARS','USD'}
+        assert all(r['coincidencia_aproximada'] and r['importe']=='0.10' for r in result['items'])
+        assert similar(who=reader)==result
+        denied(lambda:similar(who=other),403)
+        denied(lambda:similar(acct=foreign),404)
+        denied(lambda:similar(expense=outside.id),404)
+        denied(lambda:similar(expense=uuid4()),404)
+        print('OK: cinco similares recientes, exclusion del original, monedas exactas, lectura y aislamiento.',flush=True)
         with migrator.begin() as c: c.execute(text('DELETE FROM public.miembros_espacio WHERE usuario_id=:u AND espacio_id=:s'),{'u':editor,'s':owner})
         denied(lambda:create(editor,owner,account,body()),403)
+        denied(lambda:similar(who=editor),403)
         print('OK: gastos multimoneda, precision, reintentos, roles, FK por espacio y paginacion.',flush=True)
     finally:
         with migrator.begin() as c:

@@ -83,6 +83,36 @@ describe('Gastos HTTP', () => {
     const result=await request(app.getHttpServer()).get(path+'/category-suggestion?descripcion=Cerveza').set('Authorization','Bearer token').expect(403);
     expect(result.text).not.toContain('private');
   });
+  it('consulta similares con token y conserva importes y monedas',async()=>{
+    const result={referencia_id:id,items:[{...row,id:randomUUID(),coincidencia_aproximada:true}]};
+    fetchMock.mockResolvedValue(new Response(JSON.stringify(result)));
+    await request(app.getHttpServer()).get(`${path}/${id}/similar`).set('Authorization','Bearer token').expect(200).expect(result).expect('Cache-Control','no-store');
+    const [url,options]=fetchMock.mock.calls[0];expect(String(url)).toBe(`https://api.example/spaces/${space}/accounts/${account}/expenses/${id}/similar`);
+    expect(options.method).toBe('GET');expect(options.headers.Authorization).toBe('Bearer token');
+  });
+  it('rechaza similares sin identidad o con ID invalido',async()=>{
+    await request(app.getHttpServer()).get(`${path}/${id}/similar`).expect(401);
+    await request(app.getHttpServer()).get(`${path}/invalid/similar`).set('Authorization','Bearer token').expect(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+  it('rechaza referencias ajenas, duplicados y respuesta fuera de alcance',async()=>{
+    const another={...row,id:randomUUID()};
+    for(const value of [
+      {referencia_id:randomUUID(),items:[]}, {referencia_id:id,items:[row]},
+      {referencia_id:id,items:[another,another]}, {referencia_id:id,items:[{...another,cuenta_id:randomUUID()}]},
+      {referencia_id:id,items:Array.from({length:6},()=>({...row,id:randomUUID()}))},
+    ]) {
+      fetchMock.mockResolvedValue(new Response(JSON.stringify(value)));
+      await request(app.getHttpServer()).get(`${path}/${id}/similar`).set('Authorization','Bearer token').expect(502);
+    }
+  });
+  it('conserva denegacion y ausencia del gasto sin detalles internos',async()=>{
+    for(const status of [403,404]) {
+      fetchMock.mockResolvedValue(new Response('private',{status}));
+      const result=await request(app.getHttpServer()).get(`${path}/${id}/similar`).set('Authorization','Bearer token').expect(status);
+      expect(result.text).not.toContain('private');
+    }
+  });
   it('requiere token', async () => {
     await request(app.getHttpServer()).get(path).expect(401);
     expect(fetchMock).not.toHaveBeenCalled();
