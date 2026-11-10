@@ -78,5 +78,5 @@ Prueba manual después de publicar:
 
 La revisión de 500 antecedentes limita el costo y también la evidencia disponible:
 un patrón más antiguo puede no generar propuesta. Las coincidencias aproximadas
-pueden equivocarse; siempre requieren confirmación. Los últimos gastos similares
-al consultar un gasto se implementarán en el siguiente incremento.
+pueden equivocarse; siempre requieren confirmación. Ya se pueden consultar los [últimos gastos similares](gastos-similares.md)
+desde cada gasto de la lista.

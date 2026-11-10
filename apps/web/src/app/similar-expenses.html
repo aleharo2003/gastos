@@ -1,0 +1,19 @@
+<section aria-label="Gastos similares">
+  <h4>Últimos gastos similares</h4>
+  <p>Hasta cinco de esta cuenta, del más reciente al más antiguo. Se consulta todo el historial, sin los filtros de la lista.</p>
+  <small>Las monedas se muestran por separado, sin conversiones ni sumas.</small>
+  @if(loading()){<p role="status">Buscando gastos similares…</p>}
+  @if(error()){
+    <p class="error" role="alert">{{ error() }}</p>
+    <button type="button" (click)="load()" [disabled]="loading()">Volver a intentar</button>
+  }
+  @if(!loading() && !error() && !items().length){<p role="status">No encontramos otros gastos con una descripción parecida en esta cuenta.</p>}
+  <ul>@for(item of items();track item.id){
+    <li>
+      <strong>{{ item.descripcion }}</strong>
+      <span>{{ item.fecha.split('-').reverse().join('/') }} · {{ categoryName(item.categoria) }}</span>
+      <b>{{ item.moneda }} {{ amount(item.importe) }}</b>
+      @if(item.coincidencia_aproximada){<small>Descripción parecida</small>}
+    </li>
+  }</ul>
+</section>

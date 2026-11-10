@@ -30,6 +30,12 @@ describe('Filtros y categorías',()=>{
     expect(new URL(request.mock.calls.at(-1)![1],'https://local.test').searchParams.get('aproximada')).toBe('false');
     await c.applyFilters(true);expect(c.filterApproximate).toBe(true);expect(request.mock.calls.at(-1)![1]).toMatch(/\?offset=0$/);
   });
+  it('abrir y cerrar similares conserva filtros y formulario',async()=>{
+    const {request,c}=await setup();c.filterText='cerveza';await c.applyFilters();c.description='Borrador sin guardar';c.amount='15';
+    const filters=c.appliedFilters();const calls=request.mock.calls.length;
+    c.toggleSimilar('expense');expect(c.similarExpense()).toBe('expense');c.toggleSimilar('expense');
+    expect(c.similarExpense()).toBeNull();expect(c.appliedFilters()).toBe(filters);expect(c.description).toBe('Borrador sin guardar');expect(c.amount).toBe('15');expect(request.mock.calls.length).toBe(calls);
+  });
   it('rechaza rango invertido sin perder la lista',async()=>{
     const {request,c}=await setup();c.filterFrom='2026-12-01';c.filterTo='2026-11-01';await c.applyFilters();
     expect(request).toHaveBeenCalledTimes(1);expect(c.items()).toHaveLength(1);expect(c.error()).toContain('Desde');

@@ -3,6 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { AuthSession } from './auth-session';
 import { Receipts } from './receipts';
+import { SimilarExpenses } from './similar-expenses';
 
 type Expense = { id: string; espacio_id: string; cuenta_id: string; fecha: string; descripcion: string; moneda: string; importe: string; categoria?: string | null; coincidencia_aproximada?: boolean };
 type CategorySuggestion = {categoria:string|null;coincidencias:number;total:number};
@@ -21,7 +22,7 @@ function today() {
   const date = new Date();
   return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
 }
-@Component({ selector: 'app-expenses', imports: [FormsModule, Receipts], templateUrl: './expenses.html', styleUrl: './expenses.css' })
+@Component({ selector: 'app-expenses', imports: [FormsModule, Receipts, SimilarExpenses], templateUrl: './expenses.html', styleUrl: './expenses.css' })
 export class Expenses implements OnInit {
   @Input({ required: true }) space = '';
   @Input({ required: true }) account = { id: '', nombre: '' };
@@ -90,6 +91,9 @@ export class Expenses implements OnInit {
   private readonly auth = inject(AuthSession);
   private alive = true;
   private pending?: Payload;
+  readonly similarExpense=signal<string|null>(null);
+  similarPath(id:string){return `${this.path}/${id}/similar`;}
+  toggleSimilar(id:string){if(!this.loading() && !this.saving())this.similarExpense.set(this.similarExpense()===id?null:id);}
   readonly receiptExpense=signal<string|null>(null);
   readonly lastSaved=signal<string|null>(null);
   receiptPath(id:string){return `${this.path}/${id}/receipts`;}
@@ -102,6 +106,7 @@ export class Expenses implements OnInit {
     if (this.saving() || this.loading()) return;
     if ((this.editing || this.description || this.amount) && !window.confirm('¿Descartar el formulario actual y editar este gasto?')) return;
     this.clearSuggestion();
+    this.similarExpense.set(null);
     this.editing = {id:item.id,fecha:item.fecha,descripcion:item.descripcion,moneda:item.moneda,importe:item.importe,categoria:item.categoria ?? null};
     this.category=item.categoria ?? ''; this.date=item.fecha; this.description=item.descripcion; this.currency=item.moneda; this.amount=item.importe;
     this.pending=undefined; this.error.set(''); this.notice.set('Editando el gasto seleccionado.');
@@ -119,6 +124,7 @@ export class Expenses implements OnInit {
     if (this.loading() || this.saving()) return;
     const offset = more ? this.next() : 0;
     if (offset === null) return;
+    if(!more)this.similarExpense.set(null);
     this.loading.set(true); this.error.set('');
     try {
       const page = await this.auth.accountRequest<{items: Expense[]; next_offset: number|null}>('GET', `${this.path}?offset=${offset}${this.appliedFilters() ? '&' + this.appliedFilters() : ''}`);
@@ -152,6 +158,7 @@ export class Expenses implements OnInit {
       this.editing=null; this.category=''; this.date=today();
       this.notice.set(editing ? 'Cambios guardados.' : 'Gasto guardado.');
       saved = true;
+      this.similarExpense.set(null);
       this.lastSaved.set(row.id);
       if(this.appliedFilters()){this.notice.set('Guardado. La lista respeta los filtros; el gasto puede quedar fuera de los resultados.');}
     } catch (error) {

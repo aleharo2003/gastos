@@ -58,6 +58,14 @@ export class ExpensesController {
     return this.forward(token,space,account,undefined,0,undefined,new URLSearchParams({descripcion:description.trim()}),true);
   }
 
+  @Get(':id/similar')
+  async similar(@Param('space') space:string,@Param('account') account:string,@Param('id') id:string,@Req() request:Request,@Res({passthrough:true}) response:Response) {
+    response.setHeader('Cache-Control','no-store');
+    const token=await this.token(request,response);
+    if(!UUID.test(id))throw new BadRequestException('Gasto invalido');
+    return this.forward(token,space,account,undefined,0,undefined,new URLSearchParams(),false,id.toLowerCase());
+  }
+
   @Post()
   @HttpCode(200)
   async create(@Param('space') space: string, @Param('account') account: string, @Body() body: unknown, @Req() request: Request, @Res({ passthrough: true }) response: Response) {
@@ -92,7 +100,7 @@ export class ExpensesController {
     return this.forward(token, space, account, body, 0, id.toLowerCase());
   }
 
-  private async forward(token: string, rawSpace: string, rawAccount: string, body?: ExpenseInput | ExpenseEdit, offset = 0, editId?: string, filters = new URLSearchParams(), suggestion = false) {
+  private async forward(token: string, rawSpace: string, rawAccount: string, body?: ExpenseInput | ExpenseEdit, offset = 0, editId?: string, filters = new URLSearchParams(), suggestion = false, similarId?:string) {
     if (!UUID.test(rawSpace) || !UUID.test(rawAccount)) throw new BadRequestException('Espacio invalido');
     const space = rawSpace.toLowerCase();
     const account = rawAccount.toLowerCase();
@@ -104,7 +112,7 @@ export class ExpensesController {
       const rawTimeout = process.env.API_TIMEOUT_MS ?? '5000';
       const timeout = Number(rawTimeout);
       if (!/^\d+$/.test(rawTimeout) || !Number.isSafeInteger(timeout) || timeout < 1 || timeout > 2147483647) throw new Error();
-      const result = await fetch(new URL(`/spaces/${space}/accounts/${account}/expenses${suggestion ? '/category-suggestion?' + filters.toString() : editId ? '/' + editId : '?offset=' + offset + (filters.size ? '&' + filters.toString() : '')}`, base), {
+      const result = await fetch(new URL(`/spaces/${space}/accounts/${account}/expenses${similarId ? '/' + similarId + '/similar' : suggestion ? '/category-suggestion?' + filters.toString() : editId ? '/' + editId : '?offset=' + offset + (filters.size ? '&' + filters.toString() : '')}`, base), {
         method: editId ? 'PATCH' : body ? 'POST' : 'GET', redirect: 'error', signal: AbortSignal.timeout(timeout),
         headers: { Accept: 'application/json', Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
         ...(body ? { body: JSON.stringify(body) } : {}),
@@ -112,6 +120,13 @@ export class ExpensesController {
       if ([400, 401, 403, 404, 409, 422, 503].includes(result.status)) throw new HttpException('No se pudo completar la operacion', result.status);
       if (!result.ok) throw new Error();
       const data = await boundedJson(result, 131072);
+      if(similarId) {
+        const value=data as {referencia_id:unknown;items:unknown[]};
+        if(!value || value.referencia_id!==similarId || !Array.isArray(value.items) || value.items.length>5)throw new Error();
+        const items=value.items.map(item=>expense(item,space,account));
+        if(items.some(item=>item.id===similarId) || new Set(items.map(item=>item.id)).size!==items.length)throw new Error();
+        return {referencia_id:similarId,items};
+      }
       if (suggestion) {
         const value=data as {categoria:unknown;coincidencias:unknown;total:unknown};
         if (!value || typeof value.coincidencias !== 'number' || typeof value.total !== 'number' ||

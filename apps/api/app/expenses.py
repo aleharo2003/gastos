@@ -10,6 +10,7 @@ from sqlalchemy import text
 from app.accounts import execute, require_member, NO_STORE
 from app.expense_search import ExpenseSearch
 from app.category_suggestions import suggest_category
+from app.similar_expenses import similarity
 
 router = APIRouter()
 AMOUNT = re.compile(r'(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,2})?')
@@ -225,3 +226,29 @@ def category_suggestion(session, user, space, account, description):
 def get_category_suggestion(space: UUID, account: UUID, request: Request, response: Response,
                             descripcion: str = Query(min_length=4,max_length=160,pattern=r'^[^\x00-\x1f\x7f]*$')):
     return execute(request,response,space,lambda session,user: category_suggestion(session,user,space,account,descripcion))
+
+
+def list_similar_expenses(session,user,space,account,expense_id):
+    require_account(session,user,space,account)
+    params={'s':space,'a':account,'id':expense_id}
+    source=session.execute(text('SELECT descripcion FROM public.gastos WHERE espacio_id=:s AND cuenta_id=:a AND id=:id'),params).scalar_one_or_none()
+    if source is None:
+        raise HTTPException(404,'Gasto no disponible',headers=NO_STORE)
+    result=session.execute(text('SELECT * FROM public.gastos WHERE espacio_id=:s AND cuenta_id=:a AND id<>:id ORDER BY fecha DESC, id DESC'),params,execution_options={'yield_per':200})
+    items=[]
+    try:
+        for row in result.mappings():
+            kind=similarity(source,row['descripcion'])
+            if not kind:
+                continue
+            items.append(public_expense(row)|{'coincidencia_aproximada':kind==2})
+            if len(items)==5:
+                break
+    finally:
+        result.close()
+    return {'referencia_id':str(expense_id),'items':items}
+
+
+@router.get('/spaces/{space}/accounts/{account}/expenses/{expense_id}/similar')
+def get_similar_expenses(space:UUID,account:UUID,expense_id:UUID,request:Request,response:Response):
+    return execute(request,response,space,lambda session,user:list_similar_expenses(session,user,space,account,expense_id))
