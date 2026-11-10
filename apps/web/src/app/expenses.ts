@@ -2,6 +2,7 @@ import { Component, DestroyRef, inject, Input, OnInit, signal } from '@angular/c
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { AuthSession } from './auth-session';
+import { Receipts } from './receipts';
 
 type Expense = { id: string; espacio_id: string; cuenta_id: string; fecha: string; descripcion: string; moneda: string; importe: string };
 type Payload = Pick<Expense, 'id' | 'fecha' | 'descripcion' | 'moneda' | 'importe'>;
@@ -19,7 +20,7 @@ function today() {
   const date = new Date();
   return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
 }
-@Component({ selector: 'app-expenses', imports: [FormsModule], templateUrl: './expenses.html', styleUrl: './expenses.css' })
+@Component({ selector: 'app-expenses', imports: [FormsModule, Receipts], templateUrl: './expenses.html', styleUrl: './expenses.css' })
 export class Expenses implements OnInit {
   @Input({ required: true }) space = '';
   @Input({ required: true }) account = { id: '', nombre: '' };
@@ -34,6 +35,13 @@ export class Expenses implements OnInit {
   private readonly auth = inject(AuthSession);
   private alive = true;
   private pending?: Payload;
+  readonly receiptExpense=signal<string|null>(null);
+  readonly lastSaved=signal<string|null>(null);
+  receiptPath(id:string){return `${this.path}/${id}/receipts`;}
+  openReceipts(id:string|null){
+    this.receiptExpense.set(id);
+    if(id)setTimeout(()=>{if(this.alive)document.getElementById('receipts-'+id)?.scrollIntoView({block:'nearest'});});
+  }
   editing: Payload | null = null;
   edit(item: Expense): void {
     if (this.saving() || this.loading()) return;
@@ -83,6 +91,7 @@ export class Expenses implements OnInit {
       this.pending = undefined; this.description = ''; this.amount = '';
       this.editing=null; this.date=today();
       this.notice.set(editing ? 'Cambios guardados.' : 'Gasto guardado.');
+      this.lastSaved.set(row.id);
     } catch (error) {
       if (this.alive) this.error.set(error instanceof HttpErrorResponse && error.status === 409 && this.editing
         ? 'El gasto cambió desde otra sesión. Tu formulario se conserva. Actualizá la lista y volvé a seleccionar Editar para revisar los valores actuales.'

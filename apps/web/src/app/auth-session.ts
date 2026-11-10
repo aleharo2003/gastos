@@ -142,6 +142,27 @@ export class AuthSession {
     return result;
   }
 
+  async uploadReceipt<T>(path: string, file: File): Promise<T> {
+    const session=this.session;
+    if(!session||!this.verified()) throw new Error('Sesion no disponible');
+    const result=await firstValueFrom(this.http.post<T>(`${environment.bffBaseUrl}${path}`,file,{
+      headers:{Authorization:`Bearer ${session.access_token}`,'Content-Type':'application/octet-stream','X-Receipt-Name':encodeURIComponent(file.name)},
+      timeout:environment.requestTimeoutMs,
+    }));
+    if(this.session!==session) throw new Error('La sesion cambio');
+    return result;
+  }
+
+  async downloadReceipt(path: string): Promise<Blob> {
+    const session=this.session;
+    if(!session||!this.verified()) throw new Error('Sesion no disponible');
+    const result=await firstValueFrom(this.http.get(`${environment.bffBaseUrl}${path}`,{
+      headers:{Authorization:`Bearer ${session.access_token}`},responseType:'blob',timeout:environment.requestTimeoutMs,
+    }));
+    if(this.session!==session) throw new Error('La sesion cambio');
+    return result;
+  }
+
   async logout(): Promise<void> {
     if (!this.client || this.busy()) return;
     this.busy.set(true);
