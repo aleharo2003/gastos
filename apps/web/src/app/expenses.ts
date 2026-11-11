@@ -2,10 +2,11 @@ import { Component, DestroyRef, inject, Input, OnInit, signal, ViewChildren, Que
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { AuthSession } from './auth-session';
+import { ExpenseTotals } from './expense-totals';
 import { Receipts } from './receipts';
 import { SimilarExpenses } from './similar-expenses';
 
-type Expense = { id: string; espacio_id: string; cuenta_id: string; fecha: string; descripcion: string; moneda: string; importe: string; categoria?: string | null; coincidencia_aproximada?: boolean };
+type Expense = { id: string; espacio_id: string; cuenta_id: string; fecha: string; descripcion: string; moneda: string; importe: string; categoria?: string | null; coincidencia_aproximada?: boolean; cuenta_nombre?: string };
 type CategorySuggestion = {categoria:string|null;coincidencias:number;total:number};
 type Payload = Pick<Expense, 'id' | 'fecha' | 'descripcion' | 'moneda' | 'importe' | 'categoria'>;
 export function normalizeAmount(value: string): string | null {
@@ -22,10 +23,15 @@ function today() {
   const date = new Date();
   return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
 }
-@Component({ selector: 'app-expenses', imports: [FormsModule, Receipts, SimilarExpenses], templateUrl: './expenses.html', styleUrl: './expenses.css' })
+@Component({ selector: 'app-expenses', imports: [FormsModule, Receipts, SimilarExpenses, ExpenseTotals], templateUrl: './expenses.html', styleUrl: './expenses.css' })
 export class Expenses implements OnInit {
   @Input({ required: true }) space = '';
   @Input({ required: true }) account = { id: '', nombre: '' };
+  @Input() accounts: {id:string;nombre:string}[] = [];
+  createAccount = '';
+  editAccount = '';
+  private savedAccount = '';
+  readonly summaryRevision = signal(0);
   readonly items = signal<Expense[]>([]);
   readonly loading = signal(false);
   readonly saving = signal(false);
@@ -51,12 +57,12 @@ export class Expenses implements OnInit {
   async requestSuggestion() {
     this.clearSuggestion();
     const description=this.description.trim();
-    if(this.editing || this.category || this.saving() || [...description].length<4 || [...description].length>160)return;
+    if(!(this.account.id || this.createAccount) || this.editing || this.category || this.saving() || [...description].length<4 || [...description].length>160)return;
     const version=this.suggestionVersion;
     this.suggesting.set(true);
     const current=()=>this.alive && version===this.suggestionVersion && !this.editing && !this.category && !this.saving() && this.description.trim()===description;
     try {
-      const result=await this.auth.accountRequest<CategorySuggestion>('GET',`${this.path}/category-suggestion?${new URLSearchParams({descripcion:description})}`);
+      const result=await this.auth.accountRequest<CategorySuggestion>('GET',`${this.writePath}/category-suggestion?${new URLSearchParams({descripcion:description})}`);
       if(!current())return;
       if(result.categoria && this.categories.some(c=>c.id===result.categoria))this.suggestion.set(result);
       else this.suggestionNote.set('Todavía no hay antecedentes suficientes y consistentes en esta cuenta. Podés elegir la categoría.');
@@ -92,11 +98,11 @@ export class Expenses implements OnInit {
   private alive = true;
   private pending?: Payload;
   readonly similarExpense=signal<string|null>(null);
-  similarPath(id:string){return `${this.path}/${id}/similar`;}
+  similarPath(id:string){return `${this.itemPath(id)}/${id}/similar`;}
   toggleSimilar(id:string){if(!this.loading() && !this.saving())this.similarExpense.set(this.similarExpense()===id?null:id);}
   readonly receiptExpense=signal<string|null>(null);
   readonly lastSaved=signal<string|null>(null);
-  receiptPath(id:string){return `${this.path}/${id}/receipts`;}
+  receiptPath(id:string){return `${this.itemPath(id)}/${id}/receipts`;}
   openReceipts(id:string|null){
     this.receiptExpense.set(id);
     if(id)setTimeout(()=>{if(this.alive)document.getElementById('receipts-'+id)?.scrollIntoView({block:'nearest'});});
@@ -114,6 +120,7 @@ export class Expenses implements OnInit {
     this.clearSuggestion();
     this.editorOpen = true;
     this.similarExpense.set(null);
+    this.editAccount = item.cuenta_id;
     this.editing = {id:item.id,fecha:item.fecha,descripcion:item.descripcion,moneda:item.moneda,importe:item.importe,categoria:item.categoria ?? null};
     this.category=item.categoria ?? ''; this.date=item.fecha; this.description=item.descripcion; this.currency=item.moneda; this.amount=item.importe;
     this.pending=undefined; this.error.set(''); this.notice.set('Editando el gasto seleccionado.');
@@ -126,12 +133,19 @@ export class Expenses implements OnInit {
   }
   constructor() { inject(DestroyRef).onDestroy(() => { this.alive = false; }); }
   ngOnInit() { void this.load(); }
-  private get path() { return `/api/spaces/${encodeURIComponent(this.space)}/accounts/${encodeURIComponent(this.account.id)}/expenses`; }
+  private accountPath(id:string) { return `/api/spaces/${encodeURIComponent(this.space)}/accounts/${encodeURIComponent(id)}/expenses`; }
+  private get path() { return this.account.id ? this.accountPath(this.account.id) : `/api/spaces/${encodeURIComponent(this.space)}/expenses`; }
+  private get writePath() { return this.accountPath(this.editing ? this.editAccount : this.account.id || this.createAccount); }
+  private itemPath(id:string) { return this.accountPath(this.items().find(row=>row.id===id)?.cuenta_id ?? (this.lastSaved()===id ? this.savedAccount : this.account.id)); }
+  accountName(id:string) { return this.accounts.find(row=>row.id===id)?.nombre ?? this.items().find(row=>row.cuenta_id===id)?.cuenta_nombre ?? (this.account.id===id ? this.account.nombre : 'Cuenta'); }
+  changeCreateAccount() { this.clearSuggestion(); this.pending=undefined; }
+
   async load(more = false): Promise<void> {
     if (this.loading() || this.saving()) return;
     const offset = more ? this.next() : 0;
     if (offset === null) return;
     if(!more)this.similarExpense.set(null);
+    if(!more)this.summaryRevision.update(n=>n+1);
     this.loading.set(true); this.error.set('');
     try {
       const page = await this.auth.accountRequest<{items: Expense[]; next_offset: number|null}>('GET', `${this.path}?offset=${offset}${this.appliedFilters() ? '&' + this.appliedFilters() : ''}`);
@@ -144,6 +158,7 @@ export class Expenses implements OnInit {
   }
   async save(): Promise<void> {
     if (this.saving() || this.loading()) return;
+    if (!(this.editing ? this.editAccount : this.account.id || this.createAccount)) { this.error.set('Elegí la cuenta del gasto.'); return; }
     const amount = normalizeAmount(this.amount), description = this.description.trim();
     this.error.set(''); this.notice.set('');
     if (!amount) { this.error.set('Ingresá un importe mayor que cero, sin separador de miles y con hasta dos decimales.'); return; }
@@ -156,8 +171,8 @@ export class Expenses implements OnInit {
     try {
       const editing = this.editing;
       const row = editing
-        ? await this.auth.accountRequest<Expense>('PATCH', `${this.path}/${editing.id}`, {original:editing,nuevo:{id:editing.id,...values}})
-        : await this.auth.accountRequest<Expense>('POST', this.path, this.pending);
+        ? await this.auth.accountRequest<Expense>('PATCH', `${this.writePath}/${editing.id}`, {original:editing,nuevo:{id:editing.id,...values}})
+        : await this.auth.accountRequest<Expense>('POST', this.writePath, this.pending);
       if (!this.alive) return;
       this.items.update(items => [row, ...items.filter(item => item.id !== row.id)].sort((a,b) => b.fecha.localeCompare(a.fecha) || b.id.localeCompare(a.id)));
       this.pending = undefined; this.description = ''; this.amount = '';
@@ -166,7 +181,8 @@ export class Expenses implements OnInit {
       this.notice.set(editing ? 'Cambios guardados.' : 'Gasto guardado.');
       saved = true;
       this.similarExpense.set(null);
-      this.lastSaved.set(row.id);
+      this.lastSaved.set(row.id); this.savedAccount=row.cuenta_id;
+      this.summaryRevision.update(n=>n+1);
       if(this.appliedFilters()){this.notice.set('Guardado. La lista respeta los filtros; el gasto puede quedar fuera de los resultados.');}
     } catch (error) {
       if (this.alive) this.error.set(error instanceof HttpErrorResponse && error.status === 409 && this.editing

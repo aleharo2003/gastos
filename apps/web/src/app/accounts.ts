@@ -14,7 +14,7 @@ type Page = { items: Account[]; next_offset: number | null };
 export class Accounts implements OnInit {
   @Input({ required: true }) space = '';
   readonly items = signal<Account[]>([]);
-  readonly selected = signal<Account[]>([]);
+  readonly selected = signal<Account[]>([{id:'',espacio_id:'',nombre:'Todas las cuentas'}]);
   readonly loading = signal(false);
   readonly saving = signal(false);
   readonly error = signal('');
@@ -23,7 +23,7 @@ export class Accounts implements OnInit {
   readonly tab = signal<'expenses' | 'accounts'>('expenses');
   @ViewChild(Expenses) expenses?: Expenses;
   choose(id: string): void {
-    const account = this.items().find(row => row.id === id);
+    const account = id === '' ? {id:'',espacio_id:this.space,nombre:'Todas las cuentas'} : this.items().find(row => row.id === id);
     if (!account) return;
     if (this.selected()[0]?.id !== id) {
       if (this.expenses?.hasPendingWork()) {
@@ -58,7 +58,7 @@ export class Accounts implements OnInit {
       const rows = more ? [...this.items(), ...page.items] : page.items;
       this.items.set([...new Map(rows.map(row => [row.id, row])).values()]);
       this.next.set(page.next_offset);
-      if (!this.selected().length && this.items().length) this.selected.set([this.items()[0]]);
+
     } catch {
       if (this.alive) this.error.set('No pudimos cargar tus cuentas. Volvé a intentar.');
     } finally { if (this.alive) this.loading.set(false); }

@@ -1,6 +1,7 @@
 <section aria-labelledby="expenses-title">
-  <h3 id="expenses-title">Gastos de {{ account.nombre }}</h3>
-  <p>Cada gasto tiene su moneda. No se convierten ni se suman monedas distintas.</p>
+  <app-expense-totals [space]="space" [account]="account.id" [revision]="summaryRevision()" />
+  <h3 id="expenses-title">{{ account.id ? "Gastos de " + account.nombre : "Gastos · Todas las cuentas" }}</h3>
+  <p>Los importes de cada gasto conservan su moneda original. Los totales convertidos son una referencia.</p>
   @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
   @if (notice()) { <p class="notice" role="status">{{ notice() }}</p> }
   @if(lastSaved()){<button type="button" class="secondary" (click)="openReceipts(lastSaved())">Adjuntar comprobante al gasto guardado</button>}
@@ -10,7 +11,15 @@
   <details class="expense-editor" [open]="editorOpen" (toggle)="editorOpen = editorPanel.open" #editorPanel>
     <summary>{{ editing ? 'Editar gasto' : '+ Agregar gasto' }}</summary>
   <form #expenseForm="ngForm" (ngSubmit)="save()">
-    @if (editing) { <h4>Editar gasto</h4> }
+    @if (editing) { <h4>Editar gasto · {{ accountName(editAccount) }}</h4> }
+    @if (!account.id && !editing) {
+      <label for="expense-account">Cuenta del gasto</label>
+      <select id="expense-account" name="expenseAccount" [(ngModel)]="createAccount" (ngModelChange)="changeCreateAccount()" required [disabled]="saving()">
+        <option value="">Elegí dónde lo pagaste</option>
+        @for (item of accounts; track item.id) { <option [value]="item.id">{{ item.nombre }}</option> }
+      </select>
+      <small>Si falta una cuenta, cargá más cuentas desde el selector superior o agregala en Cuentas.</small>
+    }
     <label for="expense-date">Fecha</label>
     <input id="expense-date" name="date" type="date" [(ngModel)]="date" required [disabled]="saving()">
     <label for="expense-description">Descripción</label>
@@ -74,7 +83,7 @@
   @if (loading()) { <p role="status">Cargando gastos…</p> }
   @if (!items().length && !loading() && !error()) { <p>{{ appliedFilters() ? 'No hay gastos que coincidan. Probá ampliar las fechas o limpiar los filtros.' : 'Todavía no registraste gastos en esta cuenta.' }}</p> }
   <ul>@for (item of items(); track item.id) {
-    <li class="expense-item"><strong>{{ item.descripcion }}</strong>@if(item.coincidencia_aproximada){<span class="approximate">Coincidencia aproximada</span>}<span>{{ categoryName(item.categoria) }}</span><span>{{ item.fecha.split('-').reverse().join('/') }}</span><b>{{ item.moneda }} {{ showAmount(item.importe) }}</b><div class="row-actions"><button type="button" class="secondary" (click)="edit(item)" [disabled]="saving() || loading()" [attr.aria-label]="'Editar ' + item.descripcion">Editar</button>
+    <li class="expense-item"><strong>{{ item.descripcion }}</strong>@if (!account.id) { <span>Cuenta: {{ accountName(item.cuenta_id) }}</span> }@if(item.coincidencia_aproximada){<span class="approximate">Coincidencia aproximada</span>}<span>{{ categoryName(item.categoria) }}</span><span>{{ item.fecha.split('-').reverse().join('/') }}</span><b>{{ item.moneda }} {{ showAmount(item.importe) }}</b><div class="row-actions"><button type="button" class="secondary" (click)="edit(item)" [disabled]="saving() || loading()" [attr.aria-label]="'Editar ' + item.descripcion">Editar</button>
       <button type="button" class="secondary" (click)="openReceipts(receiptExpense()===item.id?null:item.id)" [attr.aria-expanded]="receiptExpense()===item.id">Comprobantes</button>
       <button type="button" class="secondary" (click)="toggleSimilar(item.id)" [disabled]="saving() || loading()" [attr.aria-expanded]="similarExpense()===item.id" [attr.aria-controls]="'similar-'+item.id">{{ similarExpense()===item.id ? 'Ocultar similares' : 'Ver gastos similares' }}</button>
       </div>

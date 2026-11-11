@@ -30,14 +30,14 @@
   @if (items().length) {
     <label for="active-account">Cuenta</label>
     <select id="active-account" [value]="selected()[0]?.id ?? ''" (change)="selectAccount($event)" [disabled]="loading() || saving()">
-      @if (!selected().length) { <option value="">Elegí una cuenta</option> }
+      <option value="">Todas las cuentas</option>
       @for (account of items(); track account.id) { <option [value]="account.id">{{ account.nombre }}</option> }
     </select>
     @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
     @if (next() !== null) { <button type="button" class="secondary" (click)="load(true)" [disabled]="loading() || saving()">Cargar más cuentas</button> }
   }
 @for (account of selected(); track account.id) {
-  <app-expenses [space]="space" [account]="account" />
+  <app-expenses [space]="space" [account]="account" [accounts]="items()" />
 }
 
 </div>

@@ -38,5 +38,5 @@ class SearchTests(unittest.TestCase):
             def execute(self,*args,**kwargs):return result
         with patch('app.expenses.require_account'),patch('app.expenses.ExpenseSearch.match',side_effect=RuntimeError('test')):
             with self.assertRaises(RuntimeError):
-                list_expenses(Session(),None,None,None,filters=ExpenseFilters(texto='cerveza'))
+                list_expenses(Session(),None,None,"account",filters=ExpenseFilters(texto='cerveza'))
         self.assertTrue(result.closed)

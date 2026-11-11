@@ -169,4 +169,26 @@ describe('Gastos HTTP', () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify(page)));
     await request(app.getHttpServer()).get(path).set('Authorization','Bearer token').expect(200).expect(page);
   });
+
+  it('lista todas las cuentas sin aceptar filas de otro espacio',async()=>{
+    const globalPath=`/api/spaces/${space}/expenses`;
+    const page={items:[row,{...row,id:randomUUID(),cuenta_id:randomUUID()}],next_offset:null};
+    fetchMock.mockResolvedValue(new Response(JSON.stringify(page)));
+    await request(app.getHttpServer()).get(globalPath).set('Authorization','Bearer token').expect(200).expect(page);
+    expect(new URL(String(fetchMock.mock.calls[0][0])).pathname).toBe(`/spaces/${space}/expenses`);
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({items:[{...row,espacio_id:randomUUID()}],next_offset:null})));
+    await request(app.getHttpServer()).get(globalPath).set('Authorization','Bearer token').expect(502);
+    await request(app.getHttpServer()).post(globalPath).set('Authorization','Bearer token').send(payload).expect(404);
+  });
+  it('reenvia resumen completo y rechaza importes flotantes y parametros ajenos',async()=>{
+    const globalPath=`/api/spaces/${space}/expense-summary`;
+    const summary={fecha:'2026-11-11',mes:'2026-11',totales:[{moneda:'ARS',dia:'100.00',mes:'1234.50'}]};
+    fetchMock.mockResolvedValue(new Response(JSON.stringify(summary)));
+    await request(app.getHttpServer()).get(globalPath).expect(401);
+    await request(app.getHttpServer()).get(globalPath).query({account}).set('Authorization','Bearer token').expect(200).expect(summary).expect('Cache-Control','no-store');
+    expect(new URL(String(fetchMock.mock.calls[0][0])).searchParams.get('account')).toBe(account);
+    await request(app.getHttpServer()).get(globalPath).query({usuario_id:randomUUID()}).set('Authorization','Bearer token').expect(400);
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({...summary,totales:[{moneda:'ARS',dia:0.1,mes:'1234.50'}]})));
+    await request(app.getHttpServer()).get(globalPath).set('Authorization','Bearer token').expect(502);
+  });
 });

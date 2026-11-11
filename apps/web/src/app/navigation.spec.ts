@@ -28,7 +28,7 @@ describe('Navegación del espacio', () => {
     const {fixture,component}=await setup();
     component.expenses!.description='Compra pendiente';
     component.choose('two');
-    expect(component.selected()[0].id).toBe('one');
+    expect(component.selected()[0].id).toBe('');
     expect(component.error()).toContain('Terminá');
     component.expenses!.description=''; component.choose('two'); fixture.detectChanges();
     expect(component.selected()[0].id).toBe('two');
