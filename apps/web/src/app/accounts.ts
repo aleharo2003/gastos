@@ -1,5 +1,5 @@
 import { Expenses } from './expenses';
-import { Component, DestroyRef, inject, Input, OnInit, signal } from '@angular/core';
+import { Component, DestroyRef, inject, Input, OnInit, signal, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { AuthSession } from './auth-session';
@@ -20,6 +20,25 @@ export class Accounts implements OnInit {
   readonly error = signal('');
   readonly notice = signal('');
   readonly next = signal<number | null>(null);
+  readonly tab = signal<'expenses' | 'accounts'>('expenses');
+  @ViewChild(Expenses) expenses?: Expenses;
+  choose(id: string): void {
+    const account = this.items().find(row => row.id === id);
+    if (!account) return;
+    if (this.selected()[0]?.id !== id) {
+      if (this.expenses?.hasPendingWork()) {
+        this.error.set('Terminá o cancelá el formulario y los comprobantes antes de cambiar de cuenta.');
+        return;
+      }
+      this.selected.set([account]);
+    }
+    this.error.set(''); this.tab.set('expenses');
+  }
+  selectAccount(event: Event): void {
+    const select = event.target as HTMLSelectElement;
+    this.choose(select.value);
+    select.value = this.selected()[0]?.id ?? '';
+  }
   name = '';
   private readonly auth = inject(AuthSession);
   private alive = true;
@@ -39,6 +58,7 @@ export class Accounts implements OnInit {
       const rows = more ? [...this.items(), ...page.items] : page.items;
       this.items.set([...new Map(rows.map(row => [row.id, row])).values()]);
       this.next.set(page.next_offset);
+      if (!this.selected().length && this.items().length) this.selected.set([this.items()[0]]);
     } catch {
       if (this.alive) this.error.set('No pudimos cargar tus cuentas. Volvé a intentar.');
     } finally { if (this.alive) this.loading.set(false); }

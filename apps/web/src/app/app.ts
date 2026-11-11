@@ -1,5 +1,6 @@
 import { Component, inject, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { Theme } from './theme';
 import { Accounts } from './accounts';
 import { AuthSession } from './auth-session';
 
@@ -8,6 +9,7 @@ import { AuthSession } from './auth-session';
   templateUrl: './app.html', styleUrl: './app.css',
 })
 export class App implements OnInit {
+  protected readonly theme = inject(Theme);
   protected readonly auth = inject(AuthSession);
   protected email = '';
   protected password = '';
