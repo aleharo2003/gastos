@@ -7,7 +7,7 @@ describe('Filtros y categorías',()=>{
   const row={id:'expense',espacio_id:'space',cuenta_id:'account',fecha:'2026-11-06',descripcion:'Cerveza',moneda:'ARS',importe:'10.00',categoria:'alimentos'};
   async function setup(){
     const request=vi.fn().mockResolvedValue({items:[row],next_offset:100});
-    TestBed.configureTestingModule({imports:[Expenses],providers:[{provide:AuthSession,useValue:{accountRequest:request}}]});
+    TestBed.configureTestingModule({imports:[Expenses],providers:[{provide:AuthSession,useValue:{accountRequest:(...args:unknown[]) => String(args[1]).includes('expense-summary') ? Promise.resolve({fecha:'2026-11-11',mes:'2026-11',totales:[]}) : request(...args)}}]});
     const fixture=TestBed.createComponent(Expenses);
     fixture.componentRef.setInput('space','space');fixture.componentRef.setInput('account',{id:'account',nombre:'Banco'});
     fixture.detectChanges();await fixture.whenStable();

@@ -1,11 +1,12 @@
 """Gastos: dinero exacto, aislamiento y reintento contra la base desechable."""
+from datetime import date
 from concurrent.futures import ThreadPoolExecutor
 from uuid import uuid4
 from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from app.accounts import AccountInput, create_account
-from app.expenses import list_similar_expenses, category_suggestion, ExpenseFilters, ExpenseInput, ExpenseEdit, edit_expense, create_expense, list_expenses
+from app.expenses import expense_summary, list_similar_expenses, category_suggestion, ExpenseFilters, ExpenseInput, ExpenseEdit, edit_expense, create_expense, list_expenses
 from app.db.connection import create_runtime_engine, create_migration_engine
 from app.db.unit_of_work import runtime_transaction
 
@@ -178,6 +179,26 @@ def check_expenses_api(runtime_url, migration_url):
         denied(lambda:similar(expense=outside.id),404)
         denied(lambda:similar(expense=uuid4()),404)
         print('OK: cinco similares recientes, exclusion del original, monedas exactas, lectura y aislamiento.',flush=True)
+        # Global sums must include >100 rows, another account, and respect RLS.
+        for day,amount in [('2024-02-01','2.00'),('2024-02-29','3.00'),('2024-03-01','9.00')]:
+            create(owner,owner,second,body(fecha=day,importe=amount))
+        for _ in range(101): create(owner,owner,account,body(fecha='2024-02-29',importe='0.10'))
+        create(other,other,foreign,body(fecha='2024-02-29',importe='999.00'))
+        def summary(who=owner,space=owner,acct=None):
+            with runtime_transaction(runtime,usuario_id=who,espacio_id=space) as session:
+                return expense_summary(session,who,space,acct,date(2024,2,29))
+        assert summary()['totales']==[{'moneda':'ARS','dia':'13.10','mes':'15.10'}]
+        assert summary(acct=account)['totales']==[{'moneda':'ARS','dia':'10.10','mes':'10.10'}]
+        assert summary(who=reader)==summary()
+        denied(lambda:summary(who=other),403)
+        denied(lambda:summary(acct=foreign),404)
+        with runtime_transaction(runtime,usuario_id=owner,espacio_id=owner) as session:
+            all_page=list_expenses(session,owner,owner,None,filters=ExpenseFilters(desde='2024-02-01',hasta='2024-02-29'))
+            more=list_expenses(session,owner,owner,None,all_page['next_offset'],ExpenseFilters(desde='2024-02-01',hasta='2024-02-29'))
+            combined=all_page['items']+more['items']
+            assert len(combined)==103 and {r['cuenta_id'] for r in combined}=={str(account),str(second)}
+        print('OK: todas las cuentas, sumas completas, mes bisiesto, lector y aislamiento del resumen.',flush=True)
+
         with migrator.begin() as c: c.execute(text('DELETE FROM public.miembros_espacio WHERE usuario_id=:u AND espacio_id=:s'),{'u':editor,'s':owner})
         denied(lambda:create(editor,owner,account,body()),403)
         denied(lambda:similar(who=editor),403)

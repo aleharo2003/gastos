@@ -1,5 +1,6 @@
 """Gastos con importes decimales, moneda explicita y pertenencia al espacio."""
-from datetime import date
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 from decimal import Decimal
 import re
 from typing import Literal
@@ -106,7 +107,7 @@ def patch_expense(space: UUID, account: UUID, expense_id: UUID, body: ExpenseEdi
 def public_expense(row):
     return {'id':str(row['id']), 'espacio_id':str(row['espacio_id']), 'cuenta_id':str(row['cuenta_id']),
             'fecha':row['fecha'].isoformat(), 'descripcion':row['descripcion'], 'moneda':row['moneda'],
-            'importe':format(row['importe'], '.2f'), 'categoria':row['categoria']}
+            'importe':format(row['importe'], '.2f'), 'categoria':row['categoria']} | ({'cuenta_nombre':row['cuenta_nombre']} if 'cuenta_nombre' in row else {})
 
 
 CATEGORIES = ['alimentos', 'transporte', 'vivienda', 'servicios', 'salud', 'educacion', 'ocio', 'impuestos', 'auto', 'bancario', 'ropa', 'otros']
@@ -138,11 +139,13 @@ class ExpenseFilters(BaseModel):
 
 
 def list_expenses(session, user, space, account, offset=0, filters=None):
-    require_account(session, user, space, account)
+    if account is None: require_member(session, user, space)
+    else: require_account(session, user, space, account)
     filters = filters or ExpenseFilters()
     if filters.desde and filters.hasta and filters.desde > filters.hasta:
         raise HTTPException(422, 'La fecha desde no puede superar hasta', headers=NO_STORE)
-    conditions = ['espacio_id=:s', 'cuenta_id=:a']
+    conditions = ['espacio_id=:s']
+    if account is not None: conditions.append('cuenta_id=:a')
     params = {'s':space,'a':account,'offset':offset}
     for field, operator in [('desde','>='), ('hasta','<=')]:
         value = getattr(filters, field)
@@ -155,7 +158,7 @@ def list_expenses(session, user, space, account, offset=0, filters=None):
         conditions.append('categoria=:categoria'); params['categoria'] = filters.categoria
     if filters.moneda:
         conditions.append('moneda=:moneda'); params['moneda'] = filters.moneda
-    statement = 'SELECT * FROM public.gastos WHERE ' + ' AND '.join(conditions) + ' ORDER BY fecha DESC, id DESC'
+    statement = 'SELECT *, (SELECT nombre FROM public.cuentas WHERE id=public.gastos.cuenta_id AND espacio_id=public.gastos.espacio_id) AS cuenta_nombre FROM public.gastos WHERE ' + ' AND '.join(conditions) + ' ORDER BY fecha DESC, id DESC'
     if not filters.texto:
         rows = session.execute(text(statement + ' LIMIT 101 OFFSET :offset'), params).mappings().all()
         return {'items':[public_expense(row) for row in rows[:100]],
@@ -252,3 +255,36 @@ def list_similar_expenses(session,user,space,account,expense_id):
 @router.get('/spaces/{space}/accounts/{account}/expenses/{expense_id}/similar')
 def get_similar_expenses(space:UUID,account:UUID,expense_id:UUID,request:Request,response:Response):
     return execute(request,response,space,lambda session,user:list_similar_expenses(session,user,space,account,expense_id))
+
+@router.get('/spaces/{space}/expenses')
+def get_all_expenses(space: UUID, request: Request, response: Response,
+                 offset: int = Query(default=0, ge=0, le=100000),
+                 desde: date | None = None, hasta: date | None = None,
+                 categoria: Literal['alimentos','transporte','vivienda','servicios','salud','educacion','ocio','impuestos','auto','bancario','ropa','otros','sin_categoria'] | None = None,
+                 moneda: Literal['ARS','USD','EUR'] | None = None,
+                 texto: str = Query(default='', max_length=160, pattern=r'^[^\x00-\x1f\x7f]*$'),
+                 aproximada: bool = True):
+    return execute(request,response,space,lambda session,user: list_expenses(session,user,space,None,offset,
+        ExpenseFilters(desde=desde,hasta=hasta,categoria=categoria,moneda=moneda,texto=texto,aproximada=aproximada)))
+
+
+
+def expense_summary(session, user, space, account=None, day=None):
+    if account is None: require_member(session, user, space)
+    else: require_account(session, user, space, account)
+    day = day or datetime.now(ZoneInfo('America/Argentina/Buenos_Aires')).date()
+    first = day.replace(day=1)
+    until = date(day.year + 1, 1, 1) if day.month == 12 else date(day.year, day.month + 1, 1)
+    account_filter = ' AND cuenta_id=:a' if account is not None else ''
+    rows = session.execute(text("""SELECT moneda,
+        COALESCE(SUM(importe) FILTER (WHERE fecha=:d),0) AS dia,
+        SUM(importe) AS mes FROM public.gastos
+        WHERE espacio_id=:s AND fecha>=:f AND fecha<:u""" + account_filter + ' GROUP BY moneda'),
+        {'s':space,'a':account,'d':day,'f':first,'u':until}).mappings().all()
+    return {'fecha':day.isoformat(), 'mes':day.strftime('%Y-%m'),
+            'totales':[{'moneda':r['moneda'],'dia':format(r['dia'],'.2f'),'mes':format(r['mes'],'.2f')} for r in rows]}
+
+
+@router.get('/spaces/{space}/expense-summary')
+def get_expense_summary(space: UUID, request: Request, response: Response, account: UUID | None = None):
+    return execute(request,response,space,lambda session,user: expense_summary(session,user,space,account))

@@ -7,7 +7,7 @@ describe('Sugerencias de categoria',()=>{
   const suggestion={categoria:'alimentos',coincidencias:2,total:2};
   async function setup(){
     const request=vi.fn().mockResolvedValue({items:[],next_offset:null});
-    TestBed.configureTestingModule({imports:[Expenses],providers:[{provide:AuthSession,useValue:{accountRequest:request}}]});
+    TestBed.configureTestingModule({imports:[Expenses],providers:[{provide:AuthSession,useValue:{accountRequest:(...args:unknown[]) => String(args[1]).includes('expense-summary') ? Promise.resolve({fecha:'2026-11-11',mes:'2026-11',totales:[]}) : request(...args)}}]});
     const fixture=TestBed.createComponent(Expenses);
     fixture.componentRef.setInput('space','space');fixture.componentRef.setInput('account',{id:'account',nombre:'Banco'});
     fixture.detectChanges();await fixture.whenStable();

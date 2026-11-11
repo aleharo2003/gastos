@@ -6,7 +6,7 @@ import { boundedJson } from './token-verifier.js';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CATEGORIES = ["alimentos", "transporte", "vivienda", "servicios", "salud", "educacion", "ocio", "impuestos", "auto", "bancario", "ropa", "otros"];
 type ExpenseInput = { id: string; fecha: string; descripcion: string; moneda: string; importe: string; categoria?: string | null };
-type Expense = ExpenseInput & { espacio_id: string; cuenta_id: string; coincidencia_aproximada?: boolean };
+type Expense = ExpenseInput & { espacio_id: string; cuenta_id: string; coincidencia_aproximada?: boolean; cuenta_nombre?: string };
 type ExpenseEdit = { original: ExpenseInput; nuevo: ExpenseInput };
 function valid(value: unknown): value is ExpenseInput {
   const row = value as ExpenseInput;
@@ -16,19 +16,33 @@ function valid(value: unknown): value is ExpenseInput {
     !/[\x00-\x1f\x7f]/.test(row.descripcion) && ['ARS','USD','EUR'].includes(row.moneda) &&
     typeof row.importe === 'string' && /^(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,2})?$/.test(row.importe) && /[1-9]/.test(row.importe);
 }
-function expense(value: unknown, space: string, account: string): Expense {
+function expense(value: unknown, space: string, account: string | undefined): Expense {
   const row = value as Expense;
   if (row?.coincidencia_aproximada !== undefined && typeof row.coincidencia_aproximada !== 'boolean') throw new Error();
-  if (!valid(row) || row.espacio_id !== space || row.cuenta_id !== account) throw new Error();
-  return { id: row.id, espacio_id: space, cuenta_id: account, fecha: row.fecha, descripcion: row.descripcion, moneda: row.moneda, importe: row.importe, ...(row.categoria !== undefined ? {categoria:row.categoria} : {}), ...(row.coincidencia_aproximada !== undefined ? {coincidencia_aproximada:row.coincidencia_aproximada} : {}) };
+  if (row?.cuenta_nombre !== undefined && (typeof row.cuenta_nombre !== 'string' || row.cuenta_nombre.length < 1 || row.cuenta_nombre.length > 160)) throw new Error();
+  if (!valid(row) || row.espacio_id !== space || (account !== undefined ? row.cuenta_id !== account : typeof row.cuenta_id !== 'string' || !UUID.test(row.cuenta_id))) throw new Error();
+  return { id: row.id, espacio_id: space, cuenta_id: row.cuenta_id, fecha: row.fecha, descripcion: row.descripcion, moneda: row.moneda, importe: row.importe, ...(row.cuenta_nombre !== undefined ? {cuenta_nombre:row.cuenta_nombre} : {}), ...(row.categoria !== undefined ? {categoria:row.categoria} : {}), ...(row.coincidencia_aproximada !== undefined ? {coincidencia_aproximada:row.coincidencia_aproximada} : {}) };
 }
 
-@Controller('api/spaces/:space/accounts/:account/expenses')
+@Controller('api/spaces/:space')
 export class ExpensesController {
   constructor(private readonly auth: AuthService) {}
 
-  @Get()
-  async list(@Param('space') space: string, @Param('account') account: string, @Query() query: Record<string, unknown>, @Req() request: Request, @Res({ passthrough: true }) response: Response) {
+  @Get('expenses')
+  async all(@Param('space') space: string, @Query() query: Record<string, unknown>, @Req() request: Request, @Res({passthrough:true}) response: Response) {
+    return this.list(space, undefined, query, request, response);
+  }
+
+  @Get('expense-summary')
+  async summary(@Param('space') space: string, @Query() query: Record<string,unknown>, @Req() request: Request, @Res({passthrough:true}) response: Response) {
+    response.setHeader('Cache-Control','no-store');
+    const token = await this.token(request,response);
+    if (Object.keys(query).some(k => k !== 'account') || (query.account !== undefined && (typeof query.account !== 'string' || !UUID.test(query.account)))) throw new BadRequestException('Cuenta invalida');
+    return this.forward(token,space,query.account as string | undefined,undefined,0,undefined,new URLSearchParams(),false,undefined,true);
+  }
+
+  @Get('accounts/:account/expenses')
+  async list(@Param('space') space: string, @Param('account') account: string | undefined, @Query() query: Record<string, unknown>, @Req() request: Request, @Res({ passthrough: true }) response: Response) {
     response.setHeader('Cache-Control', 'no-store');
     const token = await this.token(request, response);
     const offset = query.offset;
@@ -48,7 +62,7 @@ export class ExpensesController {
     return this.forward(token, space, account, undefined, Number(offset ?? 0), undefined, filters);
   }
 
-  @Get('category-suggestion')
+  @Get('accounts/:account/expenses/category-suggestion')
   async suggestion(@Param('space') space: string, @Param('account') account: string, @Query() query: Record<string,unknown>, @Req() request: Request, @Res({passthrough:true}) response: Response) {
     response.setHeader('Cache-Control','no-store');
     const token = await this.token(request,response);
@@ -58,7 +72,7 @@ export class ExpensesController {
     return this.forward(token,space,account,undefined,0,undefined,new URLSearchParams({descripcion:description.trim()}),true);
   }
 
-  @Get(':id/similar')
+  @Get('accounts/:account/expenses/:id/similar')
   async similar(@Param('space') space:string,@Param('account') account:string,@Param('id') id:string,@Req() request:Request,@Res({passthrough:true}) response:Response) {
     response.setHeader('Cache-Control','no-store');
     const token=await this.token(request,response);
@@ -66,7 +80,7 @@ export class ExpensesController {
     return this.forward(token,space,account,undefined,0,undefined,new URLSearchParams(),false,id.toLowerCase());
   }
 
-  @Post()
+  @Post('accounts/:account/expenses')
   @HttpCode(200)
   async create(@Param('space') space: string, @Param('account') account: string, @Body() body: unknown, @Req() request: Request, @Res({ passthrough: true }) response: Response) {
     response.setHeader('Cache-Control', 'no-store');
@@ -88,7 +102,7 @@ export class ExpensesController {
     }
   }
 
-  @Patch(':id')
+  @Patch('accounts/:account/expenses/:id')
   async edit(@Param('space') space: string, @Param('account') account: string, @Param('id') id: string, @Body() value: unknown, @Req() request: Request, @Res({ passthrough: true }) response: Response) {
     response.setHeader('Cache-Control', 'no-store');
     const token = await this.token(request, response);
@@ -100,10 +114,10 @@ export class ExpensesController {
     return this.forward(token, space, account, body, 0, id.toLowerCase());
   }
 
-  private async forward(token: string, rawSpace: string, rawAccount: string, body?: ExpenseInput | ExpenseEdit, offset = 0, editId?: string, filters = new URLSearchParams(), suggestion = false, similarId?:string) {
-    if (!UUID.test(rawSpace) || !UUID.test(rawAccount)) throw new BadRequestException('Espacio invalido');
+  private async forward(token: string, rawSpace: string, rawAccount: string | undefined, body?: ExpenseInput | ExpenseEdit, offset = 0, editId?: string, filters = new URLSearchParams(), suggestion = false, similarId?:string, summary = false) {
+    if (!UUID.test(rawSpace) || (rawAccount !== undefined && !UUID.test(rawAccount)) || (rawAccount === undefined && !!(body || editId || suggestion || similarId))) throw new BadRequestException('Espacio invalido');
     const space = rawSpace.toLowerCase();
-    const account = rawAccount.toLowerCase();
+    const account = rawAccount?.toLowerCase();
     try {
       const base = new URL(process.env.API_BASE_URL ?? 'http://127.0.0.1:8000');
       const local = ['localhost', '127.0.0.1', '[::1]', 'api'].includes(base.hostname);
@@ -112,7 +126,7 @@ export class ExpensesController {
       const rawTimeout = process.env.API_TIMEOUT_MS ?? '5000';
       const timeout = Number(rawTimeout);
       if (!/^\d+$/.test(rawTimeout) || !Number.isSafeInteger(timeout) || timeout < 1 || timeout > 2147483647) throw new Error();
-      const result = await fetch(new URL(`/spaces/${space}/accounts/${account}/expenses${similarId ? '/' + similarId + '/similar' : suggestion ? '/category-suggestion?' + filters.toString() : editId ? '/' + editId : '?offset=' + offset + (filters.size ? '&' + filters.toString() : '')}`, base), {
+      const result = await fetch(new URL(summary ? `/spaces/${space}/expense-summary${account ? '?account='+account : ''}` : `/spaces/${space}${account ? '/accounts/'+account : ''}/expenses${similarId ? '/' + similarId + '/similar' : suggestion ? '/category-suggestion?' + filters.toString() : editId ? '/' + editId : '?offset=' + offset + (filters.size ? '&' + filters.toString() : '')}`, base), {
         method: editId ? 'PATCH' : body ? 'POST' : 'GET', redirect: 'error', signal: AbortSignal.timeout(timeout),
         headers: { Accept: 'application/json', Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
         ...(body ? { body: JSON.stringify(body) } : {}),
@@ -120,6 +134,12 @@ export class ExpensesController {
       if ([400, 401, 403, 404, 409, 422, 503].includes(result.status)) throw new HttpException('No se pudo completar la operacion', result.status);
       if (!result.ok) throw new Error();
       const data = await boundedJson(result, 131072);
+      if(summary) {
+        const value=data as {fecha:unknown;mes:unknown;totales:{moneda:string;dia:string;mes:string}[]};
+        const amount=(v:unknown)=>typeof v==='string' && /^(?:0|[1-9][0-9]{0,30})\.[0-9]{2}$/.test(v);
+        if(!value || typeof value.fecha!=='string' || !/^\d{4}-\d{2}-\d{2}$/.test(value.fecha) || value.mes!==value.fecha.slice(0,7) || !Array.isArray(value.totales) || value.totales.length>3 || new Set(value.totales.map(r=>r?.moneda)).size!==value.totales.length || value.totales.some(r=>!r || !['ARS','USD','EUR'].includes(r.moneda) || !amount(r.dia) || !amount(r.mes))) throw new Error();
+        return {fecha:value.fecha,mes:value.mes,totales:value.totales.map(r=>({moneda:r.moneda,dia:r.dia,mes:r.mes}))};
+      }
       if(similarId) {
         const value=data as {referencia_id:unknown;items:unknown[]};
         if(!value || value.referencia_id!==similarId || !Array.isArray(value.items) || value.items.length>5)throw new Error();

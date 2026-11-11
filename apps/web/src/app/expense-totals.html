@@ -1,0 +1,31 @@
+<aside aria-label="Totales de gastos">
+  <div class="toolbar">
+    <label>Ver en <select [(ngModel)]="currency" aria-label="Moneda de referencia"><option>USD</option><option>ARS</option></select></label>
+    <button type="button" (click)="toggle()" [attr.aria-label]="hidden() ? 'Mostrar totales' : 'Ocultar totales'" [attr.aria-pressed]="hidden()">{{ hidden() ? '◉ Mostrar' : '◉ Ocultar' }}</button>
+  </div>
+  <div class="totals">
+    <div><span>Hoy</span><strong>{{ hidden() ? '••••••' : total('dia') }}</strong></div>
+    <div><span>Este mes</span><strong>{{ hidden() ? '••••••' : total('mes') }}</strong></div>
+  </div>
+  @if(error()) { <p role="alert">{{ error() }} <button type="button" (click)="load()">Reintentar</button></p> }
+  @else if(!data()) { <p role="status">Actualizando totales…</p> }
+  <small>{{ account ? 'Cuenta seleccionada' : 'Todas las cuentas del espacio' }} · Independientes de los filtros de la lista · Hora argentina.</small>
+</aside>
+@if(!hidden()) {
+  <details class="reference">
+    <summary>Cotización y desglose</summary>
+    <p>Referencia actual: {{ rate ? '1 USD = ARS ' + rate + ' · Actualizada ' + rateDate : 'Sin cotización' }}.</p>
+    <form (ngSubmit)="saveRate()">
+      <label for="reference-rate">Pesos por 1 USD</label>
+      <input id="reference-rate" name="referenceRate" [(ngModel)]="draftRate" inputmode="decimal" required maxlength="13" placeholder="Por ejemplo, 1585">
+      <button type="submit">Aplicar referencia</button>
+    </form>
+    @if(rateError) { <p role="alert">{{ rateError }}</p> }
+    <p>Se guarda en este navegador para este espacio. No modifica los gastos ni su moneda original. No es una cotización histórica.</p>
+    @if(data(); as summary) {
+      <p>Día: {{ summary.fecha }} · Mes: {{ summary.mes }}.</p>
+      <ul>@for(row of summary.totales;track row.moneda) { <li>{{ row.moneda }} · Hoy {{ native(row.dia) }} · Mes {{ native(row.mes) }}</li> }</ul>
+    }
+    <small>Si hay EUR o falta una cotización necesaria, el total indica «Conversión pendiente» para evitar mostrar una suma incompleta.</small>
+  </details>
+}
