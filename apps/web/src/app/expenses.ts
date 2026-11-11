@@ -1,4 +1,4 @@
-import { Component, DestroyRef, inject, Input, OnInit, signal } from '@angular/core';
+import { Component, DestroyRef, inject, Input, OnInit, signal, ViewChildren, QueryList } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { AuthSession } from './auth-session';
@@ -101,16 +101,23 @@ export class Expenses implements OnInit {
     this.receiptExpense.set(id);
     if(id)setTimeout(()=>{if(this.alive)document.getElementById('receipts-'+id)?.scrollIntoView({block:'nearest'});});
   }
+  @ViewChildren(Receipts) receiptPanels!: QueryList<Receipts>;
+  editorOpen = false;
+  hasPendingWork(): boolean {
+    return this.saving() || !!(this.editing || this.description || this.amount || this.category)
+      || !!this.receiptPanels?.some(panel => panel.busy() || !!panel.selected());
+  }
   editing: Payload | null = null;
   edit(item: Expense): void {
     if (this.saving() || this.loading()) return;
     if ((this.editing || this.description || this.amount) && !window.confirm('¿Descartar el formulario actual y editar este gasto?')) return;
     this.clearSuggestion();
+    this.editorOpen = true;
     this.similarExpense.set(null);
     this.editing = {id:item.id,fecha:item.fecha,descripcion:item.descripcion,moneda:item.moneda,importe:item.importe,categoria:item.categoria ?? null};
     this.category=item.categoria ?? ''; this.date=item.fecha; this.description=item.descripcion; this.currency=item.moneda; this.amount=item.importe;
     this.pending=undefined; this.error.set(''); this.notice.set('Editando el gasto seleccionado.');
-    document.getElementById('expense-date')?.focus();
+    setTimeout(() => { if (this.alive) document.getElementById('expense-date')?.focus(); });
   }
   cancelEdit(): void {
     if (this.saving() || !window.confirm('¿Descartar los cambios de este gasto?')) return;

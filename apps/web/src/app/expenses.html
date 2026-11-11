@@ -7,6 +7,8 @@
   @if(receiptOutsideList()){
     @for(id of [receiptExpense()!]; track id){<app-receipts [id]="'receipts-'+id" [path]="receiptPath(id)" />}
   }
+  <details class="expense-editor" [open]="editorOpen" (toggle)="editorOpen = editorPanel.open" #editorPanel>
+    <summary>{{ editing ? 'Editar gasto' : '+ Agregar gasto' }}</summary>
   <form #expenseForm="ngForm" (ngSubmit)="save()">
     @if (editing) { <h4>Editar gasto</h4> }
     <label for="expense-date">Fecha</label>
@@ -39,6 +41,7 @@
     <button type="submit" [disabled]="expenseForm.invalid || saving() || loading()">{{ saving() ? 'Guardando…' : editing ? 'Guardar cambios' : 'Registrar gasto' }}</button>
     @if (editing) { <button type="button" class="secondary" (click)="cancelEdit()" [disabled]="saving()">Cancelar edición</button> }
   </form>
+  </details>
   <h4>Gastos registrados</h4>
   <details class="filters" [open]="!!appliedFilters()">
     <summary>Filtrar gastos {{ appliedFilters() ? '· Filtros aplicados' : '' }}</summary>
@@ -71,9 +74,10 @@
   @if (loading()) { <p role="status">Cargando gastos…</p> }
   @if (!items().length && !loading() && !error()) { <p>{{ appliedFilters() ? 'No hay gastos que coincidan. Probá ampliar las fechas o limpiar los filtros.' : 'Todavía no registraste gastos en esta cuenta.' }}</p> }
   <ul>@for (item of items(); track item.id) {
-    <li><strong>{{ item.descripcion }}</strong>@if(item.coincidencia_aproximada){<span class="approximate">Coincidencia aproximada</span>}<span>{{ categoryName(item.categoria) }}</span><span>{{ item.fecha.split('-').reverse().join('/') }}</span><b>{{ item.moneda }} {{ showAmount(item.importe) }}</b><button type="button" class="secondary" (click)="edit(item)" [disabled]="saving() || loading()" [attr.aria-label]="'Editar ' + item.descripcion">Editar</button>
+    <li class="expense-item"><strong>{{ item.descripcion }}</strong>@if(item.coincidencia_aproximada){<span class="approximate">Coincidencia aproximada</span>}<span>{{ categoryName(item.categoria) }}</span><span>{{ item.fecha.split('-').reverse().join('/') }}</span><b>{{ item.moneda }} {{ showAmount(item.importe) }}</b><div class="row-actions"><button type="button" class="secondary" (click)="edit(item)" [disabled]="saving() || loading()" [attr.aria-label]="'Editar ' + item.descripcion">Editar</button>
       <button type="button" class="secondary" (click)="openReceipts(receiptExpense()===item.id?null:item.id)" [attr.aria-expanded]="receiptExpense()===item.id">Comprobantes</button>
       <button type="button" class="secondary" (click)="toggleSimilar(item.id)" [disabled]="saving() || loading()" [attr.aria-expanded]="similarExpense()===item.id" [attr.aria-controls]="'similar-'+item.id">{{ similarExpense()===item.id ? 'Ocultar similares' : 'Ver gastos similares' }}</button>
+      </div>
       @if(similarExpense()===item.id){<app-similar-expenses [id]="'similar-'+item.id" [path]="similarPath(item.id)" [categories]="categories" />}
       @if(receiptExpense()===item.id){<app-receipts [id]="'receipts-'+item.id" [path]="receiptPath(item.id)" />}
     </li>

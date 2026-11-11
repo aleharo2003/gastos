@@ -1,4 +1,8 @@
-<section aria-labelledby="accounts-title">
+<nav class="sections" aria-label="Secciones del espacio">
+  <button type="button" (click)="tab.set('expenses')" [attr.aria-current]="tab() === 'expenses' ? 'page' : null">Gastos</button>
+  <button type="button" (click)="tab.set('accounts')" [attr.aria-current]="tab() === 'accounts' ? 'page' : null">Cuentas</button>
+</nav>
+<section [hidden]="tab() !== 'accounts' && items().length > 0" aria-labelledby="accounts-title">
   <h3 id="accounts-title">Tus cuentas</h3>
   <p>Una cuenta indica dónde tenés tu dinero: efectivo, banco o billetera.</p>
   @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
@@ -6,7 +10,7 @@
   @if (loading()) { <p role="status">Cargando cuentas…</p> }
   @if (!items().length && !loading() && !error()) { <p>Todavía no tenés cuentas. Agregá la primera.</p> }
   <ul>
-    @for (account of items(); track account.id) { <li>{{ account.nombre }}<button type="button" class="secondary" (click)="selected.set([account])">Ver gastos de {{ account.nombre }}</button></li> }
+    @for (account of items(); track account.id) { <li>{{ account.nombre }}<button type="button" class="secondary" (click)="choose(account.id)">Ver gastos de {{ account.nombre }}</button></li> }
   </ul>
   <button type="button" class="secondary" (click)="load()" [disabled]="loading() || saving()">Actualizar lista</button>
   @if (next() !== null) {
@@ -22,6 +26,18 @@
   </form>
 </section>
 
+<div [hidden]="tab() !== 'expenses'">
+  @if (items().length) {
+    <label for="active-account">Cuenta</label>
+    <select id="active-account" [value]="selected()[0]?.id ?? ''" (change)="selectAccount($event)" [disabled]="loading() || saving()">
+      @if (!selected().length) { <option value="">Elegí una cuenta</option> }
+      @for (account of items(); track account.id) { <option [value]="account.id">{{ account.nombre }}</option> }
+    </select>
+    @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
+    @if (next() !== null) { <button type="button" class="secondary" (click)="load(true)" [disabled]="loading() || saving()">Cargar más cuentas</button> }
+  }
 @for (account of selected(); track account.id) {
   <app-expenses [space]="space" [account]="account" />
 }
+
+</div>

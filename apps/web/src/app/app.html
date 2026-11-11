@@ -1,17 +1,23 @@
 <main>
-  <header><span class="mark" aria-hidden="true">G</span> Gastos</header>
-  <section class="card" aria-labelledby="page-title">
+  <header><div class="brand"><span class="mark" aria-hidden="true">🐷</span> Mis gastos</div>
+    <label class="theme-picker">Tema
+      <select aria-label="Tema" [ngModel]="theme.mode()" (ngModelChange)="theme.set($event)">
+        <option value="system">Dispositivo</option><option value="light">Claro</option><option value="dark">Oscuro</option>
+      </select>
+    </label>
+  </header>
+  <section class="card" [class.workspace]="auth.verified() && !!auth.personalSpace()" aria-labelledby="page-title">
     @if (!auth.ready()) {
       <h1 id="page-title">Bienvenido a Gastos</h1>
       <p role="status">Preparando tu sesión…</p>
     } @else if (auth.signedIn()) {
       <p class="eyebrow">TU ESPACIO PERSONAL</p>
-      <h1 id="page-title">Hola, bienvenido</h1>
-      <p class="email">{{ auth.email() }}</p>
+      <h1 id="page-title" [class.sr-only]="!!auth.personalSpace()">Hola, bienvenido</h1>
+
       @if (auth.checking()) {
         <p role="status">Conectando con Gastos… La primera conexión puede tardar unos minutos.</p>
       } @else if (auth.verified()) {
-        <p class="success" role="status">✓ Tu sesión está verificada</p>
+        <p class="success sr-only" role="status">✓ Tu sesión está verificada</p>
         @if (auth.personalSpace()) {
           <h2>{{ auth.personalSpace() }}</h2>
           <app-accounts [space]="auth.personalSpaceId()" />
@@ -26,7 +32,8 @@
       @if (!auth.checking() && !auth.verified()) {
         <button (click)="auth.verify()" [disabled]="auth.busy()">Volver a intentar</button>
       }
-      <button class="secondary" (click)="auth.logout()" [disabled]="auth.busy()">Cerrar sesión</button>
+      <p class="email">{{ auth.email() }}</p>
+      <button class="secondary logout" (click)="auth.logout()" [disabled]="auth.busy()">Cerrar sesión</button>
     } @else {
       <p class="eyebrow">TUS FINANZAS, EN UN SOLO LUGAR</p>
       <h1 id="page-title">Iniciá sesión</h1>
