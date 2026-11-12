@@ -23,6 +23,7 @@ from check_transaction_context import check_transaction_context
 from check_read_rls import check_read_rls
 from check_personal_space import check_personal_space
 from check_accounts_api import check_accounts_api
+from check_planning import check_planning
 from check_expenses_api import check_expenses_api
 from check_receipts import check_receipts
 from check_accounts_rls import check_accounts_rls
@@ -278,6 +279,7 @@ def check_database(fixture):
         check_personal_space(urls[RUNTIME], urls[MIGRATOR])
         check_accounts_api(urls[RUNTIME], urls[MIGRATOR])
         check_expenses_api(urls[RUNTIME], urls[MIGRATOR])
+        check_planning(urls[RUNTIME], urls[MIGRATOR])
         check_receipts(urls[RUNTIME], urls[MIGRATOR])
         try:
             check_rls_coverage(urls[MIGRATOR])

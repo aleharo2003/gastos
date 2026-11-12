@@ -6,7 +6,7 @@ import { AuthSession } from './auth-session';
 describe('Cuentas', () => {
   function setup() {
     const request = vi.fn().mockResolvedValue({ items: [], next_offset: null });
-    TestBed.configureTestingModule({ imports:[Accounts], providers:[{provide:AuthSession,useValue:{accountRequest:(...args:unknown[]) => String(args[1]).includes('expense-summary') ? Promise.resolve({fecha:'2026-11-11',mes:'2026-11',totales:[]}) : String(args[1]).includes('/expenses') ? Promise.resolve({items:[],next_offset:null}) : request(...args)}}] });
+    TestBed.configureTestingModule({ imports:[Accounts], providers:[{provide:AuthSession,useValue:{accountRequest:(...args:unknown[]) => String(args[1]).includes('spending-plan') ? Promise.resolve({version:0,datos:{limites:{diario:null,semanal:null},conceptos:[]}}) : String(args[1]).includes('expense-summary') ? Promise.resolve({fecha:'2026-11-11',mes:'2026-11',totales:[]}) : String(args[1]).includes('/expenses') ? Promise.resolve({items:[],next_offset:null}) : request(...args)}}] });
     const fixture = TestBed.createComponent(Accounts);
     fixture.componentRef.setInput('space','space-1'); fixture.detectChanges();
     return { fixture, request, component:fixture.componentInstance };

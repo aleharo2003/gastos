@@ -187,8 +187,8 @@ def check_expenses_api(runtime_url, migration_url):
         def summary(who=owner,space=owner,acct=None):
             with runtime_transaction(runtime,usuario_id=who,espacio_id=space) as session:
                 return expense_summary(session,who,space,acct,date(2024,2,29))
-        assert summary()['totales']==[{'moneda':'ARS','dia':'13.10','mes':'15.10'}]
-        assert summary(acct=account)['totales']==[{'moneda':'ARS','dia':'10.10','mes':'10.10'}]
+        assert summary()['totales']==[{'moneda':'ARS','dia':'13.10','mes':'15.10','semana':'22.10'}]
+        assert summary(acct=account)['totales']==[{'moneda':'ARS','dia':'10.10','mes':'10.10','semana':'10.10'}]
         assert summary(who=reader)==summary()
         denied(lambda:summary(who=other),403)
         denied(lambda:summary(acct=foreign),404)

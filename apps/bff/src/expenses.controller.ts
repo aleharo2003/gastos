@@ -135,10 +135,11 @@ export class ExpensesController {
       if (!result.ok) throw new Error();
       const data = await boundedJson(result, 131072);
       if(summary) {
-        const value=data as {fecha:unknown;mes:unknown;totales:{moneda:string;dia:string;mes:string}[]};
+        const value=data as {fecha:unknown;mes:unknown;semana_desde?:unknown;semana_hasta?:unknown;totales:{moneda:string;dia:string;mes:string;semana?:string}[]};
         const amount=(v:unknown)=>typeof v==='string' && /^(?:0|[1-9][0-9]{0,30})\.[0-9]{2}$/.test(v);
-        if(!value || typeof value.fecha!=='string' || !/^\d{4}-\d{2}-\d{2}$/.test(value.fecha) || value.mes!==value.fecha.slice(0,7) || !Array.isArray(value.totales) || value.totales.length>3 || new Set(value.totales.map(r=>r?.moneda)).size!==value.totales.length || value.totales.some(r=>!r || !['ARS','USD','EUR'].includes(r.moneda) || !amount(r.dia) || !amount(r.mes))) throw new Error();
-        return {fecha:value.fecha,mes:value.mes,totales:value.totales.map(r=>({moneda:r.moneda,dia:r.dia,mes:r.mes}))};
+        if(!value || typeof value.fecha!=='string' || !/^\d{4}-\d{2}-\d{2}$/.test(value.fecha) || value.mes!==value.fecha.slice(0,7) || !Array.isArray(value.totales) || value.totales.length>3 || new Set(value.totales.map(r=>r?.moneda)).size!==value.totales.length || value.totales.some(r=>!r || !['ARS','USD','EUR'].includes(r.moneda) || !amount(r.dia) || !amount(r.mes) || (r.semana!==undefined && !amount(r.semana)))) throw new Error();
+        if((value.semana_desde!==undefined && (typeof value.semana_desde!=='string' || !/^\d{4}-\d{2}-\d{2}$/.test(value.semana_desde))) || (value.semana_hasta!==undefined && (typeof value.semana_hasta!=='string' || !/^\d{4}-\d{2}-\d{2}$/.test(value.semana_hasta))))throw new Error();
+        return {fecha:value.fecha,mes:value.mes,...(value.semana_desde ? {semana_desde:value.semana_desde,semana_hasta:value.semana_hasta} : {}),totales:value.totales.map(r=>({moneda:r.moneda,dia:r.dia,mes:r.mes,...(r.semana!==undefined ? {semana:r.semana} : {})}))};
       }
       if(similarId) {
         const value=data as {referencia_id:unknown;items:unknown[]};

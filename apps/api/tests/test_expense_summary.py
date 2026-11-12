@@ -15,7 +15,7 @@ class SummaryTests(unittest.TestCase):
 
     @patch('app.expenses.require_member')
     def test_december_bounds_and_decimal_serialization(self,_):
-        session=Mock();session.execute.return_value.mappings.return_value.all.return_value=[{'moneda':'ARS','dia':Decimal('0.10'),'mes':Decimal('9007199254740993.01')}]
+        session=Mock();session.execute.return_value.mappings.return_value.all.return_value=[{'moneda':'ARS','dia':Decimal('0.10'),'mes':Decimal('9007199254740993.01'),'semana':Decimal('0.10')}]
         result=expense_summary(session,uuid4(),uuid4(),day=date(2026,12,31))
         params=session.execute.call_args.args[1]
         self.assertEqual(params['f'],date(2026,12,1));self.assertEqual(params['u'],date(2027,1,1))

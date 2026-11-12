@@ -1,0 +1,79 @@
+<section aria-label="Presupuesto y límites globales" class="planning" [class.compact]="compact">
+  <header><h3>{{ compact ? '🐷 Tu chanchito, al día' : 'Presupuesto y límites' }}</h3>
+    @if(compact){<button type="button" (click)="configure.emit()">Configurar</button>}
+  </header>
+  <p class="scope">Siempre cuenta todo el espacio: todas las cuentas y categorías.</p>
+  @if(error()){<p class="error" role="alert">{{ error() }} <button type="button" (click)="load()" [disabled]="loading()||saving()">Recargar</button></p>}
+  @if(loading()){<p role="status">Cargando presupuesto…</p>}
+  @if(hidden()){
+    <p>🐷 El chanchito guarda el secreto.</p><button type="button" (click)="show()">Mostrar importes</button>
+  } @else {
+    @if(usageError()){<p class="error" role="alert">{{ usageError() }} <button type="button" (click)="loadUsage()">Actualizar consumo</button></p>}
+    <div class="limit-grid">
+      @for(period of periods;track period){
+        @if(limit(period);as item){
+          <article [class.exceeded]="item.progress?.exceeded" [class.warning]="item.progress?.warning && !item.progress?.exceeded">
+            <h4>Límite {{ period }}</h4>
+            <p>{{ item.moneda }} {{ money(item.amount) }}</p>
+            @if(item.spent !== null && item.progress){
+              <strong>{{ item.progress.text }} usado · {{ item.moneda }} {{ money(item.spent) }}</strong>
+              <div class="bar" role="progressbar" [attr.aria-label]="'Consumo del límite ' + period" [attr.aria-valuenow]="item.progress.width" aria-valuemin="0" aria-valuemax="100" [attr.aria-valuetext]="item.progress.text + ' del límite'"><span [style.width.%]="item.progress.width"></span></div>
+              <p>{{ item.progress.exceeded ? 'Superaste el límite por' : 'Te quedan' }} {{ item.moneda }} {{ money(item.difference!) }}.</p>
+              @if(item.progress.exceeded){<p>🐷 Hora de revisar las próximas compras.</p>}
+              @else if(item.progress.warning){<p>🐷 Estás cerca del límite.</p>}
+            } @else {<p>{{ summary() ? 'Conversión pendiente: revisá la cotización o las monedas.' : 'Consumo pendiente de actualizar.' }}</p>}
+          </article>
+        }
+      }
+    </div>
+    @if(saved() && !saved()!.datos.limites.diario && !saved()!.datos.limites.semanal){<p>No hay límites configurados. Podés empezar con uno semanal.</p>}
+    @if(summary();as current){<small>Hoy: {{ current.fecha }} · Semana: {{ current.semana_desde }} al {{ current.semana_hasta }} (lunes a domingo, Argentina).</small>}
+    @if(!compact && saved()){
+      <div class="reference"><label>Ver proyección en <select [(ngModel)]="currency" aria-label="Moneda del presupuesto"><option>USD</option><option>ARS</option></select></label>
+        <small>{{ rate() ? 'Referencia: 1 USD = ARS ' + rate() : 'Sin cotización de referencia' }}. Podés editarla en Gastos → Cotización y desglose.</small>
+      </div>
+      <div class="projection-grid">
+        <article><h4>Conceptos semanales</h4><strong>{{ projection('semana')===null ? 'Conversión pendiente' : currency+' '+money(projection('semana')!) }}</strong></article>
+        <article><h4>Promedio mensual proyectado</h4><strong>{{ projection('mes')===null ? 'Conversión pendiente' : currency+' '+money(projection('mes')!) }}</strong></article>
+      </div>
+      <p>El promedio mensual usa semanales × 52 ÷ 12, más los conceptos mensuales. Es una estimación, no un gasto registrado.</p>
+      @if(saved()!.datos.conceptos.length){
+        <h4>Gasto real del mes frente a la proyección</h4>
+        <p>{{ month()===null ? 'Consumo o conversión pendiente' : currency+' '+money(month()!)+' registrados este mes' }}.</p>
+        @if(comparison();as comparison){
+          <p>{{ comparison.text }} de la proyección mensual{{ comparison.exceeded ? ' · La superaste.' : '.' }}</p>
+          <div class="bar" role="progressbar" aria-label="Gasto real frente a la proyección mensual" [attr.aria-valuenow]="comparison.width" aria-valuemin="0" aria-valuemax="100" [attr.aria-valuetext]="comparison.text"><span [style.width.%]="comparison.width"></span></div>
+        }
+        <h4>Cómo se reparte tu proyección mensual</h4>
+        @for(row of distribution();track row.id){
+          <div class="distribution"><span>{{ row.label }} · {{ row.text }} · {{ currency }} {{ money(row.amount) }}</span><div class="bar" aria-hidden="true"><span [style.width.%]="row.width"></span></div></div>
+        }
+        <small>Los gráficos muestran el plan guardado. Los porcentajes y equivalencias están redondeados.</small>
+      }
+      <h3>Editar el plan</h3>
+      <p>Los límites son controles independientes del presupuesto estimado. Dejá un límite vacío para desactivarlo.</p>
+      @if(notice()){<p class="notice" role="status">{{ notice() }}</p>}
+      <form (ngSubmit)="save()" #planForm="ngForm">
+        <fieldset [disabled]="saving()||loading()">
+          <legend>Límites globales</legend>
+          <label for="daily-limit">Límite diario</label><div class="money-input"><input id="daily-limit" name="daily" inputmode="decimal" [(ngModel)]="daily" (ngModelChange)="dirty=true" placeholder="Sin límite"><select name="dailyCurrency" aria-label="Moneda del límite diario" [(ngModel)]="dailyCurrency" (ngModelChange)="dirty=true"><option>USD</option><option>ARS</option></select></div>
+          <label for="weekly-limit">Límite semanal</label><div class="money-input"><input id="weekly-limit" name="weekly" inputmode="decimal" [(ngModel)]="weekly" (ngModelChange)="dirty=true" placeholder="Por ejemplo, 200"><select name="weeklyCurrency" aria-label="Moneda del límite semanal" [(ngModel)]="weeklyCurrency" (ngModelChange)="dirty=true"><option>USD</option><option>ARS</option></select></div>
+          <h4>Conceptos proyectados</h4>
+          @for(row of draft.conceptos;track row.id;let i=$index){
+            <div class="concept">
+              <label [for]="'concept-'+row.id">Concepto {{ i+1 }}</label><input [id]="'concept-'+row.id" [name]="'concept-'+row.id" [(ngModel)]="row.concepto" (ngModelChange)="dirty=true" required maxlength="80" placeholder="Por ejemplo, verduras">
+              <label [for]="'amount-'+row.id">Importe estimado</label><div class="money-input"><input [id]="'amount-'+row.id" [name]="'amount-'+row.id" inputmode="decimal" [(ngModel)]="row.importe" (ngModelChange)="dirty=true" required><select [name]="'currency-'+row.id" [attr.aria-label]="'Moneda del concepto '+(i+1)" [(ngModel)]="row.moneda" (ngModelChange)="dirty=true"><option>ARS</option><option>USD</option></select></div>
+              <label [for]="'period-'+row.id">Frecuencia</label><select [id]="'period-'+row.id" [name]="'period-'+row.id" [(ngModel)]="row.frecuencia" (ngModelChange)="dirty=true"><option value="semana">Por semana</option><option value="mes">Por mes</option></select>
+              <button type="button" (click)="remove(row.id)" [attr.aria-label]="'Quitar concepto '+(i+1)">Quitar</button>
+            </div>
+          }
+          <button type="button" (click)="add()" [disabled]="draft.conceptos.length>=40">Agregar concepto</button>
+          <p>Hasta 40 conceptos. Usá coma o punto decimal, sin separador de miles. Esto no crea vencimientos ni gastos reales.</p>
+          <button type="submit" class="primary" [disabled]="planForm.invalid">{{ saving() ? 'Guardando…' : 'Guardar presupuesto y límites' }}</button>
+          <button type="button" (click)="load()">Recargar plan guardado</button>
+          @if(dirty){<p role="status">Tenés cambios sin guardar.</p>}
+        </fieldset>
+      </form>
+    }
+  }
+</section>

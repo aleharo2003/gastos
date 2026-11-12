@@ -1,7 +1,9 @@
 <nav class="sections" aria-label="Secciones del espacio">
   <button type="button" (click)="tab.set('expenses')" [attr.aria-current]="tab() === 'expenses' ? 'page' : null">Gastos</button>
   <button type="button" (click)="tab.set('accounts')" [attr.aria-current]="tab() === 'accounts' ? 'page' : null">Cuentas</button>
+  <button type="button" (click)="tab.set('plan')" [attr.aria-current]="tab() === 'plan' ? 'page' : null">Presupuesto</button>
 </nav>
+<app-planning [space]="space" [compact]="tab() !== 'plan'" [hidden]="tab() === 'accounts'" [revision]="planRevision()" (configure)="tab.set('plan')" />
 <section [hidden]="tab() !== 'accounts' && items().length > 0" aria-labelledby="accounts-title">
   <h3 id="accounts-title">Tus cuentas</h3>
   <p>Una cuenta indica dónde tenés tu dinero: efectivo, banco o billetera.</p>
@@ -37,7 +39,7 @@
     @if (next() !== null) { <button type="button" class="secondary" (click)="load(true)" [disabled]="loading() || saving()">Cargar más cuentas</button> }
   }
 @for (account of selected(); track account.id) {
-  <app-expenses [space]="space" [account]="account" [accounts]="items()" />
+  <app-expenses [space]="space" [account]="account" [accounts]="items()" (summaryChanged)="planRevision.update(incrementPlan)" />
 }
 
 </div>

@@ -1,5 +1,5 @@
 """Gastos con importes decimales, moneda explicita y pertenencia al espacio."""
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 from decimal import Decimal
 import re
@@ -275,14 +275,17 @@ def expense_summary(session, user, space, account=None, day=None):
     day = day or datetime.now(ZoneInfo('America/Argentina/Buenos_Aires')).date()
     first = day.replace(day=1)
     until = date(day.year + 1, 1, 1) if day.month == 12 else date(day.year, day.month + 1, 1)
+    week = day - timedelta(days=day.weekday())
+    week_end = week + timedelta(days=7)
     account_filter = ' AND cuenta_id=:a' if account is not None else ''
     rows = session.execute(text("""SELECT moneda,
         COALESCE(SUM(importe) FILTER (WHERE fecha=:d),0) AS dia,
-        SUM(importe) AS mes FROM public.gastos
-        WHERE espacio_id=:s AND fecha>=:f AND fecha<:u""" + account_filter + ' GROUP BY moneda'),
-        {'s':space,'a':account,'d':day,'f':first,'u':until}).mappings().all()
-    return {'fecha':day.isoformat(), 'mes':day.strftime('%Y-%m'),
-            'totales':[{'moneda':r['moneda'],'dia':format(r['dia'],'.2f'),'mes':format(r['mes'],'.2f')} for r in rows]}
+        COALESCE(SUM(importe) FILTER (WHERE fecha>=:f AND fecha<:u),0) AS mes,
+        COALESCE(SUM(importe) FILTER (WHERE fecha>=:w AND fecha<:we),0) AS semana FROM public.gastos
+        WHERE espacio_id=:s AND fecha>=LEAST(:f,:w) AND fecha<GREATEST(:u,:we)""" + account_filter + ' GROUP BY moneda'),
+        {'s':space,'a':account,'d':day,'f':first,'u':until,'w':week,'we':week_end}).mappings().all()
+    return {'fecha':day.isoformat(), 'mes':day.strftime('%Y-%m'),'semana_desde':week.isoformat(),'semana_hasta':(week_end-timedelta(days=1)).isoformat(),
+            'totales':[{'moneda':r['moneda'],'dia':format(r['dia'],'.2f'),'mes':format(r['mes'],'.2f'),'semana':format(r['semana'],'.2f')} for r in rows]}
 
 
 @router.get('/spaces/{space}/expense-summary')

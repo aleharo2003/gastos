@@ -1,3 +1,4 @@
+import { Planning } from './planning';
 import { Expenses } from './expenses';
 import { Component, DestroyRef, inject, Input, OnInit, signal, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
@@ -8,7 +9,7 @@ type Account = { id: string; espacio_id: string; nombre: string };
 type Page = { items: Account[]; next_offset: number | null };
 
 @Component({
-  selector: 'app-accounts', imports: [FormsModule, Expenses],
+  selector: 'app-accounts', imports: [FormsModule, Expenses, Planning],
   templateUrl: './accounts.html', styleUrl: './accounts.css',
 })
 export class Accounts implements OnInit {
@@ -20,7 +21,7 @@ export class Accounts implements OnInit {
   readonly error = signal('');
   readonly notice = signal('');
   readonly next = signal<number | null>(null);
-  readonly tab = signal<'expenses' | 'accounts'>('expenses');
+  readonly tab = signal<'expenses' | 'accounts' | 'plan'>('expenses');
   @ViewChild(Expenses) expenses?: Expenses;
   choose(id: string): void {
     const account = id === '' ? {id:'',espacio_id:this.space,nombre:'Todas las cuentas'} : this.items().find(row => row.id === id);
@@ -39,6 +40,8 @@ export class Accounts implements OnInit {
     this.choose(select.value);
     select.value = this.selected()[0]?.id ?? '';
   }
+  readonly planRevision=signal(0);
+  readonly incrementPlan=(value:number)=>value+1;
   name = '';
   private readonly auth = inject(AuthSession);
   private alive = true;
