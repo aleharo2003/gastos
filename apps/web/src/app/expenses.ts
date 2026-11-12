@@ -1,4 +1,4 @@
-import { Component, DestroyRef, inject, Input, OnInit, signal, ViewChildren, QueryList } from '@angular/core';
+import { Component, DestroyRef, EventEmitter, Output, inject, Input, OnInit, signal, ViewChildren, QueryList } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { AuthSession } from './auth-session';
@@ -28,6 +28,7 @@ export class Expenses implements OnInit {
   @Input({ required: true }) space = '';
   @Input({ required: true }) account = { id: '', nombre: '' };
   @Input() accounts: {id:string;nombre:string}[] = [];
+  @Output() summaryChanged=new EventEmitter<void>();
   createAccount = '';
   editAccount = '';
   private savedAccount = '';
@@ -145,7 +146,7 @@ export class Expenses implements OnInit {
     const offset = more ? this.next() : 0;
     if (offset === null) return;
     if(!more)this.similarExpense.set(null);
-    if(!more)this.summaryRevision.update(n=>n+1);
+    if(!more){this.summaryRevision.update(n=>n+1); this.summaryChanged.emit();}
     this.loading.set(true); this.error.set('');
     try {
       const page = await this.auth.accountRequest<{items: Expense[]; next_offset: number|null}>('GET', `${this.path}?offset=${offset}${this.appliedFilters() ? '&' + this.appliedFilters() : ''}`);
@@ -182,7 +183,7 @@ export class Expenses implements OnInit {
       saved = true;
       this.similarExpense.set(null);
       this.lastSaved.set(row.id); this.savedAccount=row.cuenta_id;
-      this.summaryRevision.update(n=>n+1);
+      this.summaryRevision.update(n=>n+1); this.summaryChanged.emit();
       if(this.appliedFilters()){this.notice.set('Guardado. La lista respeta los filtros; el gasto puede quedar fuera de los resultados.');}
     } catch (error) {
       if (this.alive) this.error.set(error instanceof HttpErrorResponse && error.status === 409 && this.editing

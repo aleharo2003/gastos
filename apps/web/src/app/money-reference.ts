@@ -1,4 +1,4 @@
-export type CurrencyTotal = {moneda:string;dia:string;mes:string};
+export type CurrencyTotal = {moneda:string;dia:string;mes:string;semana?:string};
 export function rateUnits(value:string): bigint | null {
   const normalized=value.trim().replace(',', '.');
   if(!/^(?:0|[1-9][0-9]{0,7})(?:\.[0-9]{1,4})?$/.test(normalized)) return null;
@@ -13,10 +13,10 @@ export function cents(value:string):bigint {
 export function money(value:bigint):string {
   return (value/100n).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'.')+','+(value%100n).toString().padStart(2,'0');
 }
-export function reference(rows:CurrencyTotal[],period:'dia'|'mes',currency:'ARS'|'USD',rate:bigint|null):bigint|null {
+export function reference(rows:CurrencyTotal[],period:'dia'|'mes'|'semana',currency:'ARS'|'USD',rate:bigint|null):bigint|null {
   let native=0n,other=0n;
   for(const row of rows) {
-    const amount=cents(row[period]);
+    const amount=cents(row[period] ?? 'invalid');
     if(row.moneda===currency) native+=amount;
     else if(['ARS','USD'].includes(row.moneda)) other+=amount;
     else if(amount!==0n) return null;

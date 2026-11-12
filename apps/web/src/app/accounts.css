@@ -2,3 +2,5 @@ section{border-top:1px solid var(--g-border);padding-top:12px;margin-top:20px}h3
 
 .sections{display:flex;gap:8px;margin:20px 0}.sections button{margin:0;flex:1;background:var(--g-surface);color:var(--g-ink)}.sections button[aria-current]{background:var(--g-accent);color:var(--g-on-accent)}
 #active-account{box-sizing:border-box;width:100%;min-height:44px;padding:10px;margin-top:8px;border:1px solid var(--g-border);border-radius:12px;background:var(--g-surface);color:var(--g-ink);font:inherit}
+
+.sections button{min-width:0;padding:10px 6px;font-size:14px}
