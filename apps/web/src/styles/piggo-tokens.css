@@ -1,0 +1,57 @@
+/* Piggo v1. Brand samples and semantic pairs: docs/piggo-design-system.md. */
+:root {
+  color-scheme: light dark;
+  --piggo-brand-primary: #FEBA0E;
+  --piggo-brand-gold: #FFCA28;
+  --piggo-brand-ink: #52270D;
+  --piggo-brand-mascot: #F7A4B4;
+  --piggo-background: light-dark(#FFF8EF, #1D1713);
+  --piggo-surface: light-dark(#FFFFFF, #2B221C);
+  --piggo-text: light-dark(#52270D, #FFF3E4);
+  --piggo-muted: light-dark(#735D4D, #D4BEAB);
+  --piggo-border: light-dark(#997E67, #AA8F77);
+  --piggo-focus: light-dark(#875000, #FFCA28);
+  --piggo-soft: light-dark(#FFF3DE, #352A21);
+  --piggo-stripe: light-dark(#FFF8EF, #30261F);
+  --piggo-action-background: #FEBA0E;
+  --piggo-action-foreground: #52270D;
+  --piggo-action-hover: #FFCA28;
+  --piggo-action-text: light-dark(#754000, #FFCA28);
+  --piggo-on-action-text: light-dark(#FFFFFF, #1D1713);
+  --piggo-positive: light-dark(#17613B, #93DDB1);
+  --piggo-positive-surface: light-dark(#E9F7EE, #203B2B);
+  --piggo-warning: light-dark(#805000, #FFD078);
+  --piggo-warning-surface: light-dark(#FFF1CE, #42321C);
+  --piggo-danger: light-dark(#A02C29, #FFB6AF);
+  --piggo-danger-surface: light-dark(#FFF0ED, #472521);
+  --piggo-font-body: 'Nunito Sans', system-ui, sans-serif;
+  --piggo-font-size-body: 1rem;
+  --piggo-line-height: 1.5;
+  --piggo-space-1: 0.25rem;
+  --piggo-space-2: 0.5rem;
+  --piggo-space-3: 0.75rem;
+  --piggo-space-4: 1rem;
+  --piggo-space-6: 1.5rem;
+  --piggo-space-8: 2rem;
+  --piggo-radius-control: 0.75rem;
+  --piggo-radius-card: 1.25rem;
+  --piggo-shadow-card: 0 8px 28px light-dark(#52270D0D, #00000026);
+  --piggo-touch-target: 3rem;
+
+  /* Compatibility aliases for existing screens. */
+  --g-bg: var(--piggo-background);
+  --g-surface: var(--piggo-surface);
+  --g-ink: var(--piggo-text);
+  --g-muted: var(--piggo-muted);
+  --g-accent: var(--piggo-action-text);
+  --g-on-accent: var(--piggo-on-action-text);
+  --g-border: var(--piggo-border);
+  --g-focus: var(--piggo-focus);
+  --g-soft: var(--piggo-soft);
+  --g-stripe: var(--piggo-stripe);
+  --g-success: var(--piggo-positive-surface);
+  --g-error-bg: var(--piggo-danger-surface);
+  --g-error: var(--piggo-danger);
+}
+:root[data-theme='light'] { color-scheme: light; }
+:root[data-theme='dark'] { color-scheme: dark; }
