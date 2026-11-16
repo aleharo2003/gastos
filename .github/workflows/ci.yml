@@ -44,6 +44,8 @@ jobs:
         run: npm ci
       - name: Ejecutar pruebas
         run: npm test -- --watch=false
+      - name: Comprobar contraste y recursos aprobados de Piggo
+        run: npm run test:brand
       - name: Compilar
         run: npm run build
       - name: Compilar para el entorno remoto de prueba

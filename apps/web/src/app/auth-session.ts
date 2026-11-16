@@ -107,7 +107,7 @@ export class AuthSession {
       if (revision !== this.generation) return;
       this.message.set(error instanceof HttpErrorResponse && error.status === 401
         ? 'Tu sesión no pudo validarse. Cerrá sesión y volvé a ingresar.'
-        : 'No pudimos conectar con Gastos. Podés volver a intentarlo.');
+        : 'No pudimos conectar con Piggo. Podés volver a intentarlo.');
     } finally { if (revision === this.generation) this.checking.set(false); }
   }
 

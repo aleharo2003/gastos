@@ -7,6 +7,7 @@
     "build": "ng build && node ../../infra/build/write-auth-config.mjs",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
+    "test:brand": "node --test scripts/piggo-brand.test.mjs",
     "build:test": "ng build --configuration production,test && node ../../infra/build/write-web-version.mjs && node ../../infra/build/write-auth-config.mjs",
     "prestart": "node scripts/write-auth-config.mjs --local"
   },

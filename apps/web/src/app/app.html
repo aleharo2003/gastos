@@ -1,5 +1,5 @@
 <main>
-  <header><div class="brand"><span class="mark" aria-hidden="true">🐷</span> Mis gastos</div>
+  <header><div class="brand"><img src="brand/piggo/logo-aprobado.png" alt="Piggo · Tu futuro, gasto a gasto" width="112" height="112" fetchpriority="high"></div>
     <label class="theme-picker">Tema
       <select aria-label="Tema" [ngModel]="theme.mode()" (ngModelChange)="theme.set($event)">
         <option value="system">Dispositivo</option><option value="light">Claro</option><option value="dark">Oscuro</option>
@@ -8,14 +8,14 @@
   </header>
   <section class="card" [class.workspace]="auth.verified() && !!auth.personalSpace()" aria-labelledby="page-title">
     @if (!auth.ready()) {
-      <h1 id="page-title">Bienvenido a Gastos</h1>
+      <h1 id="page-title">Bienvenido a Piggo</h1>
       <p role="status">Preparando tu sesión…</p>
     } @else if (auth.signedIn()) {
       <p class="eyebrow">TU ESPACIO PERSONAL</p>
       <h1 id="page-title" [class.sr-only]="!!auth.personalSpace()">Hola, bienvenido</h1>
 
       @if (auth.checking()) {
-        <p role="status">Conectando con Gastos… La primera conexión puede tardar unos minutos.</p>
+        <p role="status">Conectando con Piggo… La primera conexión puede tardar unos minutos.</p>
       } @else if (auth.verified()) {
         <p class="success sr-only" role="status">✓ Tu sesión está verificada</p>
         @if (auth.personalSpace()) {
@@ -53,5 +53,5 @@
       <p class="note">Acceso para usuarios de prueba. El registro de nuevas cuentas estará disponible más adelante.</p>
     }
   </section>
-  <footer>Un paso a la vez, tus cuentas más claras.</footer>
+  <footer>Tu futuro, gasto a gasto</footer>
 </main>
