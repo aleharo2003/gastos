@@ -1,0 +1,129 @@
+<section aria-labelledby="commitments-title">
+  <h3 id="commitments-title">Deudas y gastos mensuales</h3>
+  <p>Registrá deudas en cuotas o gastos mensuales fijos o variables sin fecha final. Crear un plan no descuenta dinero; cada pago sí. Los gastos sin fecha final generan una cuota por mes hasta que los pauses. Los montos variables se revisan antes de pagar.</p>
+  @if(moreAccounts){<button type="button" class="secondary" (click)="loadAccounts.emit()" [disabled]="accountsLoading||saving()||paying()">Cargar más cuentas</button>}
+  @if(error()){<p class="error" role="alert">{{ error() }}</p>}
+  @if(notice()){<p class="notice" role="status">{{ notice() }}</p>}
+  <section class="draft-review" aria-labelledby="drafts-title">
+    <h4 id="drafts-title">Montos por confirmar</h4>
+    <p>Hay {{ draftCount() }} cuotas estimadas en este espacio. Revisá los importes antes de confirmar; la confirmación no registra pagos.</p>
+    @if(draftError()){<p class="error" role="alert">{{ draftError() }}</p>}
+    @if(draftLoading()){<p role="status">Cargando estimados…</p>}
+    @if(!hidden()&&drafts().length){
+      <form (ngSubmit)="confirmDrafts()">
+        <ul>@for(q of drafts();track q.id){<li>
+          <label class="checkbox"><input type="checkbox" [name]="'select-'+q.id" [(ngModel)]="draftValues[q.id].selected" (ngModelChange)="draftDirty=true" [disabled]="saving()||paying()"> {{ q.nombre }} · {{ q.moneda }} · Cuota {{ q.numero }}</label>
+          <p>Vence {{ q.vencimiento.split('-').reverse().join('/') }} · Monto estimado · Sin confirmar</p>
+          <label [for]="'estimate-'+q.id">Importe a confirmar en {{ q.moneda }}</label>
+          <input [id]="'estimate-'+q.id" [name]="'amount-'+q.id" inputmode="decimal" [(ngModel)]="draftValues[q.id].amount" (ngModelChange)="draftDirty=true" [disabled]="saving()||paying()||!draftValues[q.id].selected" required>
+        </li>}</ul>
+        <button type="submit" [disabled]="saving()||paying()||draftLoading()">Confirmar cuotas seleccionadas</button>
+      </form>
+    }
+    @if(hidden()&&draftCount()){<p>Mostrá los importes para revisar los montos estimados.</p>}
+    <button type="button" class="secondary" (click)="loadDrafts()" [disabled]="draftLoading()||saving()||paying()">Actualizar estimados</button>
+    @if(draftDirty){<button type="button" class="secondary" (click)="discardDrafts()" [disabled]="saving()||paying()">Descartar cambios y actualizar</button>}
+    @if(draftOffset>0){<button type="button" class="secondary" (click)="loadDrafts(draftOffset-100)" [disabled]="draftLoading()||saving()||paying()">Estimados anteriores</button>}
+    @if(draftNext()!==null){<button type="button" class="secondary" (click)="loadDrafts(draftNext()!)" [disabled]="draftLoading()||saving()||paying()">Estimados siguientes</button>}
+  </section>
+  <section class="monthly" aria-labelledby="monthly-title">
+    <h4 id="monthly-title">Cuánto debo este mes</h4>
+    <p>Cuotas por mes de vencimiento, con todos sus pagos registrados, incluso si se pagaron en otro mes. Incluye deudas en cuotas y las cuotas generadas de tus gastos fijos mensuales.</p>
+    <form (ngSubmit)="loadMonth()">
+      <label for="debt-month">Mes de vencimiento</label>
+      <input id="debt-month" name="debtMonth" type="month" [(ngModel)]="month" required [disabled]="saving()||paying()">
+      <button type="submit" class="secondary" [disabled]="monthLoading()||saving()||paying()">Consultar mes</button>
+    </form>
+    @if(monthError()){<p class="error" role="alert">{{ monthError() }}</p>}
+    @if(monthLoading()){<p role="status">Cargando resumen mensual…</p>}
+    @if(appliedMonth()){
+      <p>Mostrando vencimientos de {{ appliedMonth().split('-').reverse().join('/') }}.</p>
+      <ul class="monthly-totals">@for(t of monthTotals();track t.moneda){<li>
+        <strong>{{ t.moneda }} · {{ t.cuotas_pagadas }} de {{ t.cuotas }} cuotas completas</strong>
+        <p>Comprometido: {{ hidden()?'••••':showAmount(t.total) }} · Pagado: {{ hidden()?'••••':showAmount(t.pagado) }}</p>
+        <p>Pendiente: {{ hidden()?'••••':showAmount(t.pendiente) }} · <span class="overdue-text">Vencido: {{ hidden()?'••••':showAmount(t.vencido) }}</span></p>
+        @if(t.borradores){<p>{{ t.borradores }} cuotas estimadas incluidas en los totales: {{ hidden()?'••••':showAmount(t.estimado!) }} {{ t.moneda }}.</p>}
+      </li>}</ul>
+      <p>No se suman monedas distintas. Lo vencido forma parte de lo pendiente.</p>
+      @if(!monthTotals().length){<p>No hay cuotas con vencimiento en este mes.</p>}
+      <ul>@for(q of monthItems();track q.id){<li [class.overdue]="q.vencida">
+        <strong>{{ q.nombre }} · Cuota {{ q.numero }}</strong>
+        <p>{{ q.vencimiento.split('-').reverse().join('/') }} · {{ q.estimado?'Monto estimado (sin confirmar)':q.estado==='pagada'?'Pagada':q.estado==='parcial'?'Pago parcial':'Pendiente' }}{{ q.vencida?' · Vencida':'' }}</p>
+        <p>{{ q.moneda }} {{ hidden()?'••••':showAmount(q.importe) }} · Falta: {{ hidden()?'••••':showAmount(q.pendiente) }}</p>
+        <button type="button" class="secondary" (click)="openMonthly(q)" [disabled]="paying()||saving()||detailLoading()">Ver cuota y pagos</button>
+      </li>}</ul>
+      @if(monthNext()!==null){<button type="button" class="secondary" (click)="loadMonth(true)" [disabled]="monthLoading()||saving()||paying()">Ver más cuotas del mes</button>}
+    }
+  </section>
+  @if(!hidden()){
+    <details><summary>Registrar deuda o gasto mensual</summary>
+      <form #debtForm="ngForm" (ngSubmit)="save()">
+        <label for="debt-name">Nombre</label><input id="debt-name" name="debtName" [(ngModel)]="name" required maxlength="160" placeholder="Por ejemplo, pagarés de la casa" [disabled]="saving()">
+        <label for="debt-account">Cuenta sugerida para pagar</label>
+        <select id="debt-account" name="debtAccount" [(ngModel)]="account" required [disabled]="saving()"><option value="">Elegí una cuenta</option>@for(a of accounts;track a.id){<option [value]="a.id">{{ a.nombre }}</option>}</select>
+        <label for="debt-currency">Moneda</label><select id="debt-currency" name="debtCurrency" [(ngModel)]="currency" [disabled]="saving()"><option>ARS</option><option>USD</option><option>EUR</option></select>
+        <label for="debt-amount">Importe de cada cuota / estimado inicial</label><input id="debt-amount" name="debtAmount" inputmode="decimal" [(ngModel)]="amount" required placeholder="250,00" [disabled]="saving()">
+        <small>Sin separador de miles; hasta dos decimales.</small>
+        <label class="checkbox"><input type="checkbox" name="indefinite" [(ngModel)]="indefinite" [disabled]="saving()"> Gasto mensual sin cantidad final de cuotas</label>
+        @if(indefinite){<label class="checkbox"><input type="checkbox" name="variable" [(ngModel)]="variable" [disabled]="saving()"> El importe cambia cada mes (luz, agua, tarjeta)</label><p>Para variables, el importe inicial será un estimado que deberás confirmar.</p>}
+        @if(!indefinite){<label for="debt-count">Cantidad total de cuotas</label><input id="debt-count" name="debtCount" type="number" min="1" max="600" step="1" [(ngModel)]="count" required [disabled]="saving()">}
+        <label for="debt-first">Primer vencimiento</label><input id="debt-first" name="debtFirst" type="date" [(ngModel)]="first" required [disabled]="saving()">
+        <small>Si el día no existe en otro mes, vence el último día de ese mes. Los gastos mensuales sin fin deben empezar este mes o en uno futuro.</small>
+        <label for="debt-category">Categoría (opcional)</label><select id="debt-category" name="debtCategory" [(ngModel)]="category" [disabled]="saving()"><option value="">Sin categoría</option>@for(c of categories;track c[0]){<option [value]="c[0]">{{ c[1] }}</option>}</select>
+        @if(total();as total){<p>Total del plan: <strong>{{ currency }} {{ total }}</strong></p>}
+        <button type="submit" [disabled]="debtForm.invalid||saving()||loading()||paying()">{{ saving()?'Guardando…':(indefinite?'Crear gasto mensual':'Crear deuda y cuotas') }}</button>
+        <button type="button" class="secondary" (click)="clear()" [disabled]="saving()">Limpiar formulario</button>
+      </form>
+    </details>
+  }
+  @if(loading()){<p role="status">Cargando deudas…</p>}
+  @if(!items().length&&!loading()){<p>Todavía no hay deudas registradas.</p>}
+  <ul>@for(item of items();track item.id){<li><strong>{{ item.nombre }}</strong>@if(item.variable){<p>Importe variable · Revisá los estimados antes de pagar.</p>}
+    @if(item.total_cuotas!==null){<p>{{ item.cuotas_pagadas }} de {{ item.total_cuotas }} cuotas pagadas · {{ item.total_cuotas-item.cuotas_pagadas }} por completar</p>}
+    @else{<p>{{ item.cuotas_pagadas }} cuotas pagadas · Sin fecha final · {{ item.pausado?'Pausado':'Activo' }}</p>}
+    <p>{{ item.total_cuotas===null?'Total generado hasta ahora':'Total' }}: {{ item.moneda }} {{ hidden()?'••••':showAmount(item.total) }} · Pagado: {{ hidden()?'••••':showAmount(item.pagado) }} · Pendiente: {{ hidden()?'••••':showAmount(item.pendiente) }}</p>
+    <p>{{ item.proximo_vencimiento?'Próximo pendiente: '+item.proximo_vencimiento!.split('-').reverse().join('/'):(item.total_cuotas===null?'Sin cuotas pendientes generadas':'Deuda saldada') }}</p>
+    @if(item.total_cuotas===null){<button type="button" class="secondary" (click)="pause(item)" [disabled]="paying()||saving()||loading()||detailLoading()">{{ item.pausado?'Reactivar gasto mensual':'Pausar gasto mensual' }}</button>}
+    <button type="button" class="secondary" (click)="choose(item)" [disabled]="paying()||saving()||detailLoading()">Ver cuotas y pagos</button>
+  </li>}</ul>
+  <button type="button" class="secondary" (click)="load()" [disabled]="loading()||saving()||paying()">Actualizar deudas</button>
+  @if(next()!==null){<button type="button" class="secondary" (click)="load(true)" [disabled]="loading()||saving()||paying()">Ver más deudas</button>}
+  @if(selected();as debt){
+    <h4>Cuotas · {{ debt.nombre }}</h4>
+    @if(detailLoading()){<p role="status">Cargando cuotas…</p>}
+    @if(!detailLoading()&&!installments().length){<p>Todavía no hay cuotas generadas para este plan.</p>}
+    <ul>@for(item of installments();track item.id){<li [class.overdue]="item.vencida">
+      <strong>Cuota {{ item.numero }} @if(debt.total_cuotas!==null){<span>de {{ debt.total_cuotas }}</span>}</strong>
+      <p>{{ item.vencimiento.split('-').reverse().join('/') }} · {{ item.estimado?'Monto estimado (sin confirmar)':item.estado==='pagada'?'Pagada':item.estado==='parcial'?'Pago parcial':'Pendiente' }}{{ item.vencida?' · Vencida':'' }}</p>
+      <p>{{ debt.moneda }} {{ hidden()?'••••':showAmount(item.importe) }} · Falta: {{ hidden()?'••••':showAmount(item.pendiente) }}</p>
+      <button type="button" class="secondary" (click)="selectQuota(item)" [disabled]="paying()||saving()||detailLoading()">Ver pagos{{ item.estado!=='pagada'?' / pagar':'' }}</button>
+    </li>}</ul>
+    <div class="actions">
+      @if(installmentOffset>0){<button type="button" class="secondary" (click)="loadInstallments(installmentOffset-100)" [disabled]="detailLoading()||paying()">Cuotas anteriores</button>}
+      <button type="button" class="secondary" (click)="loadInstallments()" [disabled]="detailLoading()||paying()">Actualizar cuotas</button>
+      @if(nextInstallment()!==null){<button type="button" class="secondary" (click)="loadInstallments(nextInstallment()!)" [disabled]="detailLoading()||paying()">Cuotas siguientes</button>}
+    </div>
+    @if(quota();as installment){
+      <h4>Pagos de la cuota {{ installment.numero }}</h4>
+      @if(installment.estimado){<p>Esta cuota tiene un monto estimado. Revisalo en «Montos por confirmar» antes de pagar.</p>}
+      @if(!installment.estimado&&installment.estado!=='pagada'&&!hidden()){
+        <p>Pendiente: {{ debt.moneda }} {{ showAmount(installment.pendiente) }}. Podés pagar una parte o completar la cuota.</p>
+        <form #paymentForm="ngForm" (ngSubmit)="pay()">
+          <label for="payment-account">Cuenta desde la que pagaste</label><select id="payment-account" name="paymentAccount" [(ngModel)]="payAccount" (ngModelChange)="payDirty=true" required [disabled]="paying()"><option value="">Elegí una cuenta</option>@for(a of accounts;track a.id){<option [value]="a.id">{{ a.nombre }}</option>}</select>
+          <label for="payment-date">Fecha de pago</label><input id="payment-date" name="paymentDate" type="date" [(ngModel)]="payDate" (ngModelChange)="payDirty=true" required [disabled]="paying()">
+          <label for="payment-amount">Importe pagado en {{ debt.moneda }}</label><input id="payment-amount" name="paymentAmount" inputmode="decimal" [(ngModel)]="payAmount" (ngModelChange)="payDirty=true" required [disabled]="paying()">
+          <small>El pago crea un gasto y descuenta saldo. No cargues ese mismo pago otra vez desde Gastos. No se convierte moneda.</small>
+          <button type="submit" [disabled]="paymentForm.invalid||paying()||saving()||detailLoading()">{{ paying()?'Registrando…':'Registrar pago' }}</button>
+        </form>
+      }
+      <button type="button" class="secondary" (click)="cancelPayment()" [disabled]="paying()">Cerrar / cancelar formulario de pago</button>
+      @if(historyLoading()){<p role="status">Cargando pagos…</p>}
+      @if(!historyLoading()&&!payments().length){<p>Todavía no hay pagos registrados en esta cuota.</p>}
+      <ul>@for(p of payments();track p.id){<li><strong>{{ p.fecha.split('-').reverse().join('/') }}</strong><p>{{ accountName(p.cuenta_id) }} · {{ p.moneda }} {{ hidden()?'••••':showAmount(p.importe) }}</p><button type="button" class="secondary" (click)="receipts(p)" [disabled]="paying()">Comprobantes de este pago</button></li>}</ul>
+      <button type="button" class="secondary" (click)="loadPayments()" [disabled]="historyLoading()||paying()">Actualizar pagos</button>
+      @if(nextPayment()!==null){<button type="button" class="secondary" (click)="loadPayments(true)" [disabled]="historyLoading()||paying()">Ver más pagos</button>}
+    }
+  }
+  @if(lastPayment();as p){<button type="button" class="secondary" (click)="receipts(p)" [disabled]="paying()">Adjuntar comprobante al pago guardado</button>}
+  @if(receiptPayment()){@for(p of [receiptPayment()!];track p.id){<app-receipts [path]="receiptPath(p)" />}}
+</section>

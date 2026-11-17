@@ -24,6 +24,10 @@ from check_read_rls import check_read_rls
 from check_personal_space import check_personal_space
 from check_accounts_api import check_accounts_api
 from check_planning import check_planning
+from check_commitments import check_commitments
+from check_recurrences import check_recurrences
+from check_variable_commitments import check_variable_commitments
+from jobs_role import provision_jobs
 from check_savings_goals import check_savings_goals
 from check_transfers import check_transfers
 from check_incomes import check_incomes
@@ -285,6 +289,14 @@ def check_database(fixture):
         check_incomes(urls[RUNTIME], urls[MIGRATOR])
         check_transfers(urls[RUNTIME], urls[MIGRATOR])
         check_savings_goals(urls[RUNTIME], urls[MIGRATOR])
+        check_commitments(urls[RUNTIME], urls[MIGRATOR])
+        jobs_password=secrets.token_urlsafe(32)
+        provision_jobs(database,jobs_password)
+        with engines[MIGRATOR].begin() as connection:
+            connection.exec_driver_sql((ROOT/'infra/postgres/grant-jobs.sql').read_text(encoding='utf8'))
+        jobs_url=urls[RUNTIME].set(username='app_jobs',password=jobs_password)
+        check_recurrences(urls[RUNTIME],urls[MIGRATOR],jobs_url)
+        check_variable_commitments(urls[RUNTIME],urls[MIGRATOR],jobs_url)
         check_planning(urls[RUNTIME], urls[MIGRATOR])
         check_receipts(urls[RUNTIME], urls[MIGRATOR])
         try:

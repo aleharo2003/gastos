@@ -1,3 +1,4 @@
+import { Commitments } from './commitments';
 import { SavingsGoals, type GoalTransfer } from './savings-goals';
 import { Transfers } from './transfers';
 import { Incomes } from './incomes';
@@ -12,7 +13,7 @@ type Account = { id: string; espacio_id: string; nombre: string };
 type Page = { items: Account[]; next_offset: number | null };
 
 @Component({
-  selector: 'app-accounts', imports: [FormsModule, Expenses, Planning, Incomes, Transfers, SavingsGoals],
+  selector: 'app-accounts', imports: [FormsModule, Expenses, Planning, Incomes, Transfers, SavingsGoals, Commitments],
   templateUrl: './accounts.html', styleUrl: './accounts.css',
 })
 export class Accounts implements OnInit {
@@ -24,7 +25,7 @@ export class Accounts implements OnInit {
   readonly error = signal('');
   readonly notice = signal('');
   readonly next = signal<number | null>(null);
-  readonly tab = signal<'expenses' | 'accounts' | 'plan' | 'savings'>('expenses');
+  readonly tab = signal<'expenses' | 'accounts' | 'plan' | 'savings' | 'debts'>('expenses');
   @ViewChild(Expenses) expenses?: Expenses;
   @ViewChild(Incomes) incomes?: Incomes;
   @ViewChild(Transfers) transfers?: Transfers;
@@ -49,6 +50,7 @@ export class Accounts implements OnInit {
     this.choose(select.value);
     select.value = this.selected()[0]?.id ?? '';
   }
+  readonly draftCount=signal(0);
   readonly planRevision=signal(0);
   readonly incrementPlan=(value:number)=>value+1;
   name = '';
