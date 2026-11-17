@@ -7,7 +7,7 @@ import psycopg
 def generate(connector=psycopg.connect):
     dsn=os.environ.get('JOBS_DATABASE_URL','')
     if not dsn:raise RuntimeError('Falta configurar JOBS_DATABASE_URL.')
-    with connector(dsn,connect_timeout=10,options='-c statement_timeout=120000 -c lock_timeout=30000') as connection:
+    with connector(dsn,connect_timeout=10) as connection:
         with connection.cursor() as cursor:
             cursor.execute("""SELECT session_user,current_user,rolsuper,rolbypassrls,rolcreatedb,
                 rolcreaterole,rolreplication,rolinherit,
@@ -15,6 +15,8 @@ def generate(connector=psycopg.connect):
                 FROM pg_roles r WHERE rolname=current_user""")
             if cursor.fetchone()!=('app_jobs','app_jobs',False,False,False,False,False,False,0):
                 raise RuntimeError('La conexion no cumple el contrato de app_jobs.')
+            cursor.execute("SET LOCAL statement_timeout='120s'")
+            cursor.execute("SET LOCAL lock_timeout='30s'")
             cursor.execute('SELECT public.generar_cuotas_mes()')
             count=cursor.fetchone()[0]
             if not isinstance(count,int) or count<0:raise RuntimeError('Respuesta de generacion invalida.')

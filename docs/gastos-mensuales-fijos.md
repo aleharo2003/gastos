@@ -76,12 +76,15 @@ No se usan conexiones de administrador o migrador en el workflow.
    El script pide una contraseña dedicada con el mecanismo de psql, sin incluirla
    en el SQL versionado. Conserva la separacion de roles y falla ante privilegios
    incompatibles. Para desarrollo local, jobs_role.provision_jobs reutiliza Docker.
-4. Guardar en el entorno GitHub test el secreto JOBS_DATABASE_URL, URL PostgreSQL
+4. Con una conexion app_migrator, ejecutar infra/postgres/grant-jobs.sql: solo el
+   propietario concede EXECUTE sobre su funcion. No se otorga propiedad al administrador
+   ni membresia del migrador a app_jobs.
+5. Guardar en el entorno GitHub test el secreto JOBS_DATABASE_URL, URL PostgreSQL
    del usuario app_jobs (o su usuario de pooler), con TLS para el destino remoto.
    Es distinta de DATABASE_URL y MIGRATION_DATABASE_URL; nunca usar service_role.
-5. Con el workflow en main, ejecutar Generar cuotas mensuales test manualmente.
+6. Con el workflow en main, ejecutar Generar cuotas mensuales test manualmente.
    Revisar resultado y repetir: la segunda ejecucion debe crear cero cuotas.
-6. Confirmar que Actions programadas y avisos de fallo estan habilitados. Consultar
+7. Confirmar que Actions programadas y avisos de fallo estan habilitados. Consultar
    sus ejecuciones para el registro de errores y reintentos diarios.
 
 Sin esos pasos, el PR no deja el proceso remoto activado. No requiere instalar

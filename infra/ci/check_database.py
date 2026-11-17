@@ -291,6 +291,8 @@ def check_database(fixture):
         check_commitments(urls[RUNTIME], urls[MIGRATOR])
         jobs_password=secrets.token_urlsafe(32)
         provision_jobs(database,jobs_password)
+        with engines[MIGRATOR].begin() as connection:
+            connection.exec_driver_sql((ROOT/'infra/postgres/grant-jobs.sql').read_text(encoding='utf8'))
         jobs_url=urls[RUNTIME].set(username='app_jobs',password=jobs_password)
         check_recurrences(urls[RUNTIME],urls[MIGRATOR],jobs_url)
         check_planning(urls[RUNTIME], urls[MIGRATOR])

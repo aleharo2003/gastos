@@ -35,7 +35,6 @@ BEGIN
     THEN RAISE EXCEPTION 'app_jobs tiene permisos de datos o DDL incompatibles.'; END IF;
     EXECUTE format('GRANT CONNECT ON DATABASE %I TO app_jobs',current_database());
     GRANT USAGE ON SCHEMA public TO app_jobs;
-    GRANT EXECUTE ON FUNCTION public.generar_cuotas_mes() TO app_jobs;
     EXECUTE format('ALTER ROLE app_jobs IN DATABASE %I SET search_path=public',current_database());
 END
 $setup$;
