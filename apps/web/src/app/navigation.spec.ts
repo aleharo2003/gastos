@@ -1,3 +1,5 @@
+import { By } from '@angular/platform-browser';
+import { Transfers } from './transfers';
 import { TestBed } from '@angular/core/testing';
 import { Accounts } from './accounts';
 import { AuthSession } from './auth-session';
@@ -39,6 +41,14 @@ describe('Navegación del espacio', () => {
     expect(component.selected()[0].id).toBe('');
     component.incomes!.cancel();component.choose('two');fixture.detectChanges();
     expect(component.selected()[0].id).toBe('two');
+  });
+  it('conserva el borrador de ahorro al cambiar de seccion', async () => {
+    const {fixture,component}=await setup();
+    const transfers=fixture.debugElement.query(By.directive(Transfers)).componentInstance as Transfers;
+    component.tab.set('savings');fixture.detectChanges();transfers.origin='one';transfers.destination='two';transfers.amount='100';transfers.description='Ahorro pendiente';
+    component.tab.set('accounts');fixture.detectChanges();component.tab.set('savings');fixture.detectChanges();
+    expect(fixture.debugElement.query(By.directive(Transfers)).componentInstance).toBe(transfers);
+    expect(transfers.amount).toBe('100');expect(transfers.description).toBe('Ahorro pendiente');
   });
   it('abre el formulario cuando se elige editar un gasto', async () => {
     const {fixture,component}=await setup();
