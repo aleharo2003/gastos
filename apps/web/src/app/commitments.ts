@@ -12,7 +12,7 @@ export type Payment={id:string;espacio_id:string;cuota_id:string;cuenta_id:strin
 export type MonthlyItem=Installment & {nombre:string;moneda:string;cuenta_id:string};
 export type MonthlyTotal={moneda:string;cuotas:number;cuotas_pagadas:number;total:string;pagado:string;pendiente:string;vencido:string};
 export type MonthlyPage={mes:string;items:MonthlyItem[];totales:MonthlyTotal[];next_offset:number|null};
-type Create={id:string;cuenta_id:string;nombre:string;moneda:string;importe:string;categoria:string|null;primer_vencimiento:string;total_cuotas:number};
+type Create={id:string;cuenta_id:string;nombre:string;moneda:string;importe:string;categoria:string|null;primer_vencimiento:string;total_cuotas:number|null};
 type Pay={id:string;cuenta_id:string;fecha:string;importe:string};
 const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Argentina/Buenos_Aires',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 @Component({selector:'app-commitments',imports:[FormsModule,Receipts],templateUrl:'./commitments.html',styleUrl:'./commitments.css'})

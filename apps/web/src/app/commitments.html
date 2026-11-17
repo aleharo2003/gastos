@@ -55,7 +55,8 @@
   @if(loading()){<p role="status">Cargando deudas…</p>}
   @if(!items().length&&!loading()){<p>Todavía no hay deudas registradas.</p>}
   <ul>@for(item of items();track item.id){<li><strong>{{ item.nombre }}</strong>
-    <p>{{ item.cuotas_pagadas }} cuotas pagadas@if(item.total_cuotas!==null){ de {{ item.total_cuotas }} · {{ item.total_cuotas-item.cuotas_pagadas }} por completar}@else{ · Sin fecha final · {{ item.pausado?'Pausado':'Activo' }}</p>
+    @if(item.total_cuotas!==null){<p>{{ item.cuotas_pagadas }} de {{ item.total_cuotas }} cuotas pagadas · {{ item.total_cuotas-item.cuotas_pagadas }} por completar</p>}
+    @else{<p>{{ item.cuotas_pagadas }} cuotas pagadas · Sin fecha final · {{ item.pausado?'Pausado':'Activo' }}</p>}
     <p>{{ item.total_cuotas===null?'Total generado hasta ahora':'Total' }}: {{ item.moneda }} {{ hidden()?'••••':showAmount(item.total) }} · Pagado: {{ hidden()?'••••':showAmount(item.pagado) }} · Pendiente: {{ hidden()?'••••':showAmount(item.pendiente) }}</p>
     <p>{{ item.proximo_vencimiento?'Próximo pendiente: '+item.proximo_vencimiento!.split('-').reverse().join('/'):(item.total_cuotas===null?'Sin cuotas pendientes generadas':'Deuda saldada') }}</p>
     @if(item.total_cuotas===null){<button type="button" class="secondary" (click)="pause(item)" [disabled]="paying()||saving()||loading()||detailLoading()">{{ item.pausado?'Reactivar gasto mensual':'Pausar gasto mensual' }}</button>}
@@ -68,7 +69,7 @@
     @if(detailLoading()){<p role="status">Cargando cuotas…</p>}
     @if(!detailLoading()&&!installments().length){<p>Todavía no hay cuotas generadas para este plan.</p>}
     <ul>@for(item of installments();track item.id){<li [class.overdue]="item.vencida">
-      <strong>Cuota {{ item.numero }}@if(debt.total_cuotas!==null){ de {{ debt.total_cuotas }}}</strong>
+      <strong>Cuota {{ item.numero }} @if(debt.total_cuotas!==null){<span>de {{ debt.total_cuotas }}</span>}</strong>
       <p>{{ item.vencimiento.split('-').reverse().join('/') }} · {{ item.estado==='pagada'?'Pagada':item.estado==='parcial'?'Pago parcial':'Pendiente' }}{{ item.vencida?' · Vencida':'' }}</p>
       <p>{{ debt.moneda }} {{ hidden()?'••••':showAmount(item.importe) }} · Falta: {{ hidden()?'••••':showAmount(item.pendiente) }}</p>
       <button type="button" class="secondary" (click)="selectQuota(item)" [disabled]="paying()||saving()||detailLoading()">Ver pagos{{ item.estado!=='pagada'?' / pagar':'' }}</button>
