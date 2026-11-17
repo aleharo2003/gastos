@@ -141,4 +141,18 @@ describe('Deudas y pagos HTTP',()=>{
     remote.mockImplementation(async()=>new Response(JSON.stringify({...result,version:3})));
     await request(app.getHttpServer()).post(url).set('Authorization','Bearer token').send({version:1}).expect(502);
   });
+  it('expone el resumen de vencimientos con autenticación y valida su grupo',async()=>{
+    const route=base+'/due-overview';
+    const empty={cantidad:0,totales:[],items:[]};
+    const item={id:quota,nombre:'Casa',numero:1,vencimiento:'2026-11-17',moneda:'USD',pendiente:'220.00',estimado:false};
+    const data={fecha:'2026-11-17',fin_semana:'2026-11-22',
+      grupos:{hoy:{cantidad:1,totales:[{moneda:'USD',pendiente:'220.00'}],items:[item]},semana:empty,vencidas:empty},
+      resumen_mes:[{moneda:'USD',pendiente:'220.00',pagado:'30.00'}]};
+    remote.mockImplementation(async()=>new Response(JSON.stringify(data)));
+    await request(app.getHttpServer()).get(route).expect(401);
+    await request(app.getHttpServer()).get(route).set('Authorization','Bearer token').expect(200).expect(data);
+    await request(app.getHttpServer()).get(route+'?fecha=2026-11-17').set('Authorization','Bearer token').expect(400);
+    item.vencimiento='2026-11-16';
+    await request(app.getHttpServer()).get(route).set('Authorization','Bearer token').expect(502);
+  });
 });

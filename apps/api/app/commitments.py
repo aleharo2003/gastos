@@ -1,6 +1,6 @@
 """Deudas fijas finitas: calendario mensual y pagos exactos sin doble gasto."""
 from calendar import monthrange
-from datetime import date,datetime
+from datetime import date,datetime,timedelta
 from decimal import Decimal
 from typing import Literal
 from uuid import UUID,uuid5
@@ -443,3 +443,71 @@ def post_installment_skip(space: UUID, identifier: UUID, body: SkipInstallmentIn
                           request: Request, response: Response):
     return execute(request, response, space,
                    lambda session, user: skip_installment(session, user, space, identifier, body.version))
+
+
+def due_overview(session, user, space, today=None):
+    require_member(session, user, space)
+    today = today or datetime.now(ZoneInfo('America/Argentina/Buenos_Aires')).date()
+    week_end = today + timedelta(days=6-today.weekday())
+    month_start = today.replace(day=1)
+    month_end = today.replace(day=monthrange(today.year,today.month)[1])
+    rows = session.execute(text("""
+        WITH amounts AS (
+            SELECT q.id, q.numero, q.vencimiento, q.estimado, c.nombre, c.moneda,
+                q.importe, COALESCE(pay.pagado,0) AS pagado
+            FROM public.cuotas q
+            JOIN public.compromisos c ON c.id=q.compromiso_id AND c.espacio_id=q.espacio_id
+            LEFT JOIN LATERAL (
+                SELECT SUM(g.importe) AS pagado FROM public.pagos_cuota p
+                JOIN public.gastos g ON g.id=p.id AND g.espacio_id=p.espacio_id
+                WHERE p.cuota_id=q.id AND p.espacio_id=q.espacio_id
+            ) pay ON true
+            WHERE q.espacio_id=:space AND NOT q.no_aplica
+              AND q.vencimiento<=GREATEST(:week_end,:month_end)
+        ), pending AS (
+            SELECT *, importe-pagado AS pendiente,
+                CASE WHEN vencimiento<:today THEN 'vencidas'
+                     WHEN vencimiento=:today THEN 'hoy' ELSE 'semana' END AS grupo
+            FROM amounts WHERE importe>pagado AND vencimiento<=:week_end
+        ), ranked AS (
+            SELECT *, ROW_NUMBER() OVER (PARTITION BY grupo ORDER BY vencimiento,id) AS rank
+            FROM pending
+        )
+        SELECT 'total' AS type, grupo, moneda, COUNT(*) AS cantidad,
+            SUM(pendiente) AS pendiente, NULL::numeric AS pagado, NULL::date AS vencimiento,
+            NULL::uuid AS id, NULL::text AS nombre, NULL::int AS numero, NULL::boolean AS estimado
+        FROM pending GROUP BY grupo,moneda
+        UNION ALL
+        SELECT 'item', grupo, moneda, NULL, pendiente, NULL, vencimiento,id,nombre,numero,estimado
+        FROM ranked WHERE rank<=20
+        UNION ALL
+        SELECT 'mes', NULL, moneda, COUNT(*), SUM(importe-pagado), SUM(pagado), NULL,NULL,NULL,NULL,NULL
+        FROM amounts WHERE vencimiento BETWEEN :month_start AND :month_end GROUP BY moneda
+        ORDER BY type,grupo,moneda,vencimiento,id
+    """), {'space':space,'today':today,'week_end':week_end,
+           'month_start':month_start,'month_end':month_end}).mappings()
+    groups = {key:{'cantidad':0,'totales':[],'items':[]} for key in ('hoy','semana','vencidas')}
+    month = []
+    for row in rows:
+        amount = format(row['pendiente'], '.2f')
+        if row['type']=='mes':
+            month.append({'moneda':row['moneda'],'pagado':format(row['pagado'],'.2f'),'pendiente':amount})
+        elif row['type']=='total':
+            group = groups[row['grupo']]
+            group['cantidad'] += row['cantidad']
+            group['totales'].append({'moneda':row['moneda'],'pendiente':amount})
+        else:
+            groups[row['grupo']]['items'].append({
+                'id':str(row['id']),'nombre':row['nombre'],'numero':row['numero'],
+                'moneda':row['moneda'],'pendiente':amount,'estimado':row['estimado'],
+                'vencimiento':row['vencimiento'].isoformat(),
+            })
+    for group in groups.values():
+        group['items'].sort(key=lambda item:(item['vencimiento'],item['id']))
+    return {'fecha':today.isoformat(),'fin_semana':week_end.isoformat(),
+            'grupos':groups,'resumen_mes':month}
+
+
+@router.get('/spaces/{space}/due-overview')
+def get_due_overview(space: UUID, request: Request, response: Response):
+    return execute(request,response,space,lambda session,user:due_overview(session,user,space))

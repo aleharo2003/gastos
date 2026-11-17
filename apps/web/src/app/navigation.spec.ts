@@ -9,7 +9,7 @@ describe('Navegación del espacio', () => {
   async function setup() {
     const accounts = [{id:'one',espacio_id:'s',nombre:'Efectivo'}, {id:'two',espacio_id:'s',nombre:'Banco'}];
     TestBed.configureTestingModule({imports:[Accounts],providers:[{provide:AuthSession,useValue:{
-      accountRequest: async (_method:string,path:string) => path.includes('/installment-drafts?') ? ({borradores:0,items:[],next_offset:null}) : path.includes('/installments?month=') ? ({mes:new URL('https://local'+path).searchParams.get('month'),totales:[],items:[],next_offset:null}) : ({items:(path.includes('/expenses') || path.includes('/incomes') || path.includes('/transfers') || path.includes('/savings-goals') || path.includes('/commitments')) ? [] : accounts,next_offset:null}),
+      accountRequest: async (_method:string,path:string) => path.endsWith('/due-overview') ? ({fecha:'2026-11-17',fin_semana:'2026-11-22',grupos:{hoy:{cantidad:0,totales:[],items:[]},semana:{cantidad:0,totales:[],items:[]},vencidas:{cantidad:0,totales:[],items:[]}},resumen_mes:[]}) : path.includes('/installment-drafts?') ? ({borradores:0,items:[],next_offset:null}) : path.includes('/installments?month=') ? ({mes:new URL('https://local'+path).searchParams.get('month'),totales:[],items:[],next_offset:null}) : ({items:(path.includes('/expenses') || path.includes('/incomes') || path.includes('/transfers') || path.includes('/savings-goals') || path.includes('/commitments')) ? [] : accounts,next_offset:null}),
     }}]});
     const fixture=TestBed.createComponent(Accounts);
     fixture.componentRef.setInput('space','s'); fixture.detectChanges();
@@ -17,6 +17,15 @@ describe('Navegación del espacio', () => {
     await fixture.whenStable(); fixture.detectChanges();
     return {fixture, component:fixture.componentInstance};
   }
+  it('abre Hoy y muestra el resumen mensual cuando no hay pendientes', async () => {
+    const {fixture,component}=await setup();
+    expect(component.tab()).toBe('today');
+    const panel=fixture.nativeElement.querySelector('app-due-overview');
+    expect(panel.textContent).toContain('No tenés cuotas vencidas ni pendientes');
+    expect(panel.textContent).toContain('Resumen de cuotas del mes');
+    panel.querySelector('section > button').click();
+    expect(component.tab()).toBe('debts');
+  });
   it('conserva instancia, borrador y filtros al visitar Cuentas', async () => {
     const {fixture,component}=await setup();
     const expenses=component.expenses!;

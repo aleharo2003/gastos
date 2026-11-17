@@ -1,0 +1,14 @@
+header { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; justify-content: space-between; }
+h3, h4 { margin: 0; }
+p, small { color: var(--g-muted); line-height: 1.45; }
+.groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 245px), 1fr)); gap: 12px; align-items: start; }
+.card { border: 1px solid var(--g-border); border-radius: 12px; background: var(--g-surface); padding: 16px; min-width: 0; }
+.card.overdue h4, .error { color: var(--g-error); }
+.month { margin: 12px 0; }
+.totals { display: flex; flex-wrap: wrap; gap: 6px 12px; color: inherit; }
+ul { list-style: none; padding: 0; margin-bottom: 0; }
+li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; padding: 10px 0; border-top: 1px solid var(--g-border); overflow-wrap: anywhere; }
+small { display: block; }
+button { min-height: 44px; padding: 8px 12px; border: 1px solid var(--g-accent); border-radius: 9px; background: var(--g-surface); color: var(--g-accent); font: inherit; cursor: pointer; }
+button:disabled { cursor: default; opacity: .6; }
+button:focus-visible { outline: 3px solid var(--g-focus); outline-offset: 3px; }

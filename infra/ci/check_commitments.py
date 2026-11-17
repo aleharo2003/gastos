@@ -1,14 +1,14 @@
 """Deudas fijas y pagos reales contra PostgreSQL desechable."""
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date
-from uuid import uuid4
+from datetime import date,timedelta
+from uuid import UUID,uuid4
 from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from app.accounts import AccountInput,create_account
 from app.incomes import IncomeInput,create_income,account_balance
 from app.expenses import ExpenseInput,ExpenseEdit,create_expense,edit_expense
-from app.commitments import CommitmentInput,PaymentInput,create_commitment,list_commitments,list_installments,pay_installment,list_payments,monthly_installments
+from app.commitments import CommitmentInput,PaymentInput,create_commitment,list_commitments,list_installments,pay_installment,list_payments,monthly_installments,due_overview,skip_installment
 from app.db.connection import create_runtime_engine,create_migration_engine
 from app.db.unit_of_work import runtime_transaction
 
@@ -75,6 +75,13 @@ def check_commitments(runtime_url,migration_url):
         assert call(lambda s,u,w:monthly_installments(s,u,w,'2023-12'))=={'mes':'2023-12','items':[],'totales':[],'next_offset':None}
         assert call(lambda s,u,w:monthly_installments(s,u,w,'2024-01'),reader)==call(lambda s,u,w:monthly_installments(s,u,w,'2024-01'))
         denied(lambda:call(lambda s,u,w:monthly_installments(s,u,w,'2024-01'),other),403)
+        today=call(lambda s,u,w:due_overview(s,u,w,date(2024,1,31)))
+        assert today['grupos']['hoy']['items'][0]['id']==q1
+        assert today['grupos']['hoy']['totales']==[{'moneda':'ARS','pendiente':'70.00'}]
+        assert today['grupos']['vencidas']['cantidad']==0
+        assert today['resumen_mes']==[{'moneda':'ARS','pagado':'30.00','pendiente':'70.00'}]
+        tomorrow=call(lambda s,u,w:due_overview(s,u,w,date(2024,2,1)))
+        assert tomorrow['grupos']['vencidas']['items'][0]['id']==q1
         denied(lambda:pay(q1,payment(id=original.id,importe='31')),409)
         denied(lambda:pay(q2,original),409)
         denied(lambda:pay(q1,payment(importe='70.01')),409)
@@ -155,6 +162,21 @@ def check_commitments(runtime_url,migration_url):
         empty_page=call(lambda s,u,w:monthly_installments(s,u,w,'2040-12',200))
         assert not empty_page['items'] and empty_page['totales']==paged['totales']
         assert all(r['espacio_id']==str(owner) for r in paged['items'])
+        overview_day=date(2040,12,31)
+        week_end=overview_day+timedelta(days=6-overview_day.weekday())
+        for name,due in [('Domingo',week_end),('Próxima semana',week_end+timedelta(days=1))]:
+            create(body(nombre=name,importe='25.00',total_cuotas=1,primer_vencimiento=due.isoformat()))
+        omit=create(body(nombre='No corresponde',importe='99.00',total_cuotas=1,primer_vencimiento=overview_day.isoformat()))
+        omit_id=UUID(cuotas(omit['id'])['items'][0]['id'])
+        call(lambda s,u,w:skip_installment(s,u,w,omit_id,1))
+        read=lambda s,u,w:due_overview(s,u,w,overview_day)
+        result=call(read)
+        assert call(read,reader)==result
+        denied(lambda:call(read,other),403)
+        assert result['fin_semana']==week_end.isoformat()
+        assert result['grupos']['hoy']['cantidad']==101 and len(result['grupos']['hoy']['items'])==20
+        assert result['grupos']['hoy']['totales']==[{'moneda':'ARS','pendiente':'5.10'},{'moneda':'USD','pendiente':'5.00'}]
+        assert [q['nombre'] for q in result['grupos']['semana']['items']]==['Domingo']
         assert create(payload)['cuotas_pagadas']==3
         with migrator.begin() as c:c.execute(text('DELETE FROM public.miembros_espacio WHERE usuario_id=:u AND espacio_id=:s'),{'u':editor,'s':owner})
         denied(lambda:create(body(),editor),403)
