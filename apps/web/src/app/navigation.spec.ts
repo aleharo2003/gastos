@@ -8,7 +8,7 @@ describe('Navegación del espacio', () => {
   async function setup() {
     const accounts = [{id:'one',espacio_id:'s',nombre:'Efectivo'}, {id:'two',espacio_id:'s',nombre:'Banco'}];
     TestBed.configureTestingModule({imports:[Accounts],providers:[{provide:AuthSession,useValue:{
-      accountRequest: async (_method:string,path:string) => ({items:(path.includes('/expenses') || path.includes('/incomes') || path.includes('/transfers')) ? [] : accounts,next_offset:null}),
+      accountRequest: async (_method:string,path:string) => ({items:(path.includes('/expenses') || path.includes('/incomes') || path.includes('/transfers') || path.includes('/savings-goals')) ? [] : accounts,next_offset:null}),
     }}]});
     const fixture=TestBed.createComponent(Accounts);
     fixture.componentRef.setInput('space','s'); fixture.detectChanges();
@@ -49,6 +49,15 @@ describe('Navegación del espacio', () => {
     component.tab.set('accounts');fixture.detectChanges();component.tab.set('savings');fixture.detectChanges();
     expect(fixture.debugElement.query(By.directive(Transfers)).componentInstance).toBe(transfers);
     expect(transfers.amount).toBe('100');expect(transfers.description).toBe('Ahorro pendiente');
+  });
+  it('prepara el aporte sin sobrescribir una transferencia pendiente', async () => {
+    const {fixture,component}=await setup();
+    const transfer=component.transfers!;
+    const goal={cuenta_id:'two',cuenta_nombre:'Banco',nombre:'Vacaciones',moneda:'USD',retirar:false};
+    component.fundGoal(goal);expect(transfer.destination).toBe('two');expect(transfer.currency).toBe('USD');
+    transfer.amount='10';component.fundGoal({...goal,retirar:true});
+    expect(transfer.destination).toBe('two');expect(transfer.amount).toBe('10');expect(transfer.error()).toContain('pendiente');
+    fixture.destroy();
   });
   it('abre el formulario cuando se elige editar un gasto', async () => {
     const {fixture,component}=await setup();

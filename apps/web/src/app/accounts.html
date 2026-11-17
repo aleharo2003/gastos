@@ -29,6 +29,8 @@
   </form>
 </section>
 
+<app-savings-goals [hidden]="tab() !== 'savings'" [space]="space" [accounts]="items()" [moreAccounts]="next() !== null" [accountsLoading]="loading()" [revision]="planRevision()" (loadAccounts)="load(true)" (prepareTransfer)="fundGoal($event)" />
+
 <app-transfers [hidden]="tab() !== 'savings'" [space]="space" [accounts]="items()" [moreAccounts]="next() !== null" [accountsLoading]="loading()" (loadAccounts)="load(true)" (changed)="planRevision.update(incrementPlan)" (viewAccount)="choose($event)" />
 
 <div [hidden]="tab() !== 'expenses'">

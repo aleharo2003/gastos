@@ -44,6 +44,14 @@ export class Transfers implements OnChanges {
       this.historyAccount='';this.appliedAccount='';this.savedDestination='';this.notice.set('');void this.load();
     }
   }
+  prepareGoal(goal:{cuenta_id:string;nombre:string;moneda:string;retirar:boolean}){
+    if(this.saving()||this.description||this.amount){this.error.set('Terminá o limpiá la transferencia pendiente antes de preparar otra.');return;}
+    this.origin=goal.retirar?goal.cuenta_id:'';
+    this.destination=goal.retirar?'':goal.cuenta_id;
+    this.currency=goal.moneda;this.description=[...((goal.retirar?'Retiro: ':'Aporte: ')+goal.nombre)].slice(0,160).join('');
+    this.pending=undefined;this.error.set('');this.notice.set('');
+    setTimeout(()=>{if(this.alive){document.getElementById('transfer-origin')?.scrollIntoView?.({block:'center'});document.getElementById('transfer-origin')?.focus();}});
+  }
   accountName(id:string){return this.accounts.find(row=>row.id===id)?.nombre??id;}
   destinations(){return this.accounts.filter(row=>row.id!==this.origin);}
   originChanged(){if(this.origin===this.destination)this.destination='';}

@@ -1,0 +1,66 @@
+<section aria-labelledby="goals-title">
+  <h3 id="goals-title">Metas de ahorro</h3>
+  <p>Elegí un objetivo y una cuenta dedicada, por ejemplo «Vacaciones». El progreso usa todo el saldo registrado de esa cuenta y moneda: los aportes suman y los retiros o gastos lo reducen.</p>
+  <p>Una sola meta activa por cuenta y moneda evita contar el mismo dinero dos veces. Crear, editar o archivar una meta no mueve dinero.</p>
+  @if(moreAccounts){<button type="button" class="secondary" (click)="loadAccounts.emit()" [disabled]="accountsLoading||saving()">Cargar más cuentas</button>}
+  @if(error()){<p class="error" role="alert">{{ error() }}</p>}
+  @if(notice()){<p class="notice" role="status">{{ notice() }}</p>}
+  @if(!hidden()){
+  <details [open]="!!editing">
+    <summary>{{ editing?'Editar meta':'Crear meta de ahorro' }}</summary>
+    <form #goalForm="ngForm" (ngSubmit)="save()">
+      <label for="goal-name">Nombre de la meta</label>
+      <input id="goal-name" name="goalName" [(ngModel)]="name" required maxlength="160" placeholder="Por ejemplo, vacaciones" [disabled]="saving()">
+      <label for="goal-account">Cuenta dedicada</label>
+      @if(editing){<p>{{ editing.cuenta_nombre }} · {{ editing.moneda }}. La cuenta y moneda se conservan.</p>}
+      @else{
+        <select id="goal-account" name="goalAccount" [(ngModel)]="account" required [disabled]="saving()">
+          <option value="">Elegí una cuenta</option>
+          @for(item of accounts;track item.id){<option [value]="item.id">{{ item.nombre }}</option>}
+        </select>
+        <small>Podés crear una cuenta nueva desde Cuentas.</small>
+        <label for="goal-currency">Moneda</label>
+        <select id="goal-currency" name="goalCurrency" [(ngModel)]="currency" [disabled]="saving()"><option>ARS</option><option>USD</option><option>EUR</option></select>
+      }
+      <label for="goal-target">Cuánto querés juntar {{ editing?'('+editing.moneda+')':'' }}</label>
+      <input id="goal-target" name="goalTarget" [(ngModel)]="target" inputmode="decimal" required placeholder="100000,00" [disabled]="saving()">
+      <small>Sin separador de miles; coma o punto para los decimales.</small>
+      <label for="goal-deadline">Fecha objetivo (opcional)</label>
+      <input id="goal-deadline" name="goalDeadline" type="date" [(ngModel)]="deadline" [disabled]="saving()">
+      @if(editing){<label class="check"><input name="goalArchived" type="checkbox" [(ngModel)]="archived" [disabled]="saving()">Archivar esta meta</label><small>Archivar la quita de la lista activa y libera la cuenta para otra meta. El dinero sigue en la cuenta.</small>}
+      <button type="submit" [disabled]="goalForm.invalid||saving()||loading()">{{ saving()?'Guardando…':editing?'Guardar cambios':'Crear meta' }}</button>
+      <button type="button" class="secondary" (click)="reset()" [disabled]="saving()">Cancelar / limpiar formulario</button>
+    </form>
+  </details>
+  } @else{<p>Mostrá los importes desde Gastos para crear o editar metas.</p>}
+  <label class="check"><input type="checkbox" [(ngModel)]="includeArchived" [disabled]="loading()||saving()">Incluir metas archivadas</label>
+  <button type="button" class="secondary" (click)="applyArchived()" [disabled]="loading()||saving()">Actualizar metas y progreso</button>
+  @if(loading()){<p role="status">Actualizando metas…</p>}
+  @if(!items().length&&!loading()&&!error()){<p>Todavía no hay metas para mostrar. Creá la primera para empezar.</p>}
+  <ul class="goals">
+    @for(goal of items();track goal.id){
+      <li class="goal">
+        <h4>{{ goal.nombre }}</h4><p>{{ goal.cuenta_nombre }} · {{ goal.moneda }}{{ goal.archivada?' · Archivada':'' }}</p>
+        @if(goal.fecha_objetivo){<p>Fecha objetivo: {{ goal.fecha_objetivo!.split('-').reverse().join('/') }}</p>}
+        @if(hidden()){<p>Importes y progreso ocultos · ••••</p>}
+        @else{
+          <p>Objetivo: <b>{{ goal.moneda }} {{ showAmount(goal.objetivo) }}</b></p>
+          <p>Acumulado: <b>{{ goal.moneda }} {{ showAmount(goal.acumulado) }}</b></p>
+          <p>Falta: <b>{{ goal.moneda }} {{ showAmount(goal.faltante) }}</b></p>
+          <progress max="100" [value]="percent(goal)" [attr.aria-label]="'Progreso de '+goal.nombre"></progress>
+          <p>{{ goal.porcentaje.replace('.',',') }} % · {{ goal.alcanzada?'Meta alcanzada':goal.vencida?'Fecha objetivo superada':'En progreso' }}</p>
+          @if(goal.saldo.startsWith('-')){<p class="error">La cuenta tiene saldo negativo: {{ goal.moneda }} {{ showAmount(goal.saldo) }}. El progreso se muestra en cero.</p>}
+        }
+        @if(goal.archivada){<small>El progreso de esta meta archivada sigue reflejando el saldo actual de su cuenta.</small>}
+        <div class="actions">
+          @if(!goal.archivada){
+            <button type="button" (click)="prepare(goal)" [disabled]="saving()||loading()">Preparar aporte</button>
+            <button type="button" class="secondary" (click)="prepare(goal,true)" [disabled]="saving()||loading()">Preparar retiro</button>
+          }
+          <button type="button" class="secondary" (click)="edit(goal)" [disabled]="saving()||loading()||hidden()">{{ goal.archivada?'Editar / reactivar':'Editar / archivar' }}</button>
+        </div>
+      </li>
+    }
+  </ul>
+  @if(next()!==null){<button type="button" class="secondary" (click)="load(true)" [disabled]="saving()||loading()">Ver más metas</button>}
+</section>
