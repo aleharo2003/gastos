@@ -47,3 +47,13 @@ La base visual Piggo conserva los recursos originales y tokens claros/oscuros.
 Los controles compartidos y el rediseño de Registrar/Movimientos siguen pendientes
 del plan de diseño. La tipografía es candidata, sin afirmar aprobación visual.
 Mantener categorías de texto, sin iconos, y mascota sin boca.
+
+## Incremento: gastos mensuales fijos indefinidos
+
+Rama feature/fixed-monthly-commitments, basada en la rama del PR #33 tras integrar
+el #34. Agrega total_cuotas null, pausa/reactivacion versionada, calendario unico por
+periodo y generador independiente restringido. Requiere migracion 0017.
+Ver gastos-mensuales-fijos.md para limites y pasos de activacion.
+El rol app_jobs y el secreto JOBS_DATABASE_URL remoto requieren configuracion
+administrativa: el PR por si solo no activa la programacion en el entorno test.
+Montos variables, confirmacion de estimados, no aplica y avisos siguen pendientes.

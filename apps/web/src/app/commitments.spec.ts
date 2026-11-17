@@ -91,4 +91,17 @@ describe('Deudas fijas',()=>{
     expect(c.selected()!.id).toBe('other');expect(c.installments()).toEqual([]);expect(c.quota()).toBeNull();
   });
 
+  it('crea un gasto indefinido sin inventar un total futuro',async()=>{
+    const {c,request}=await setup();c.name='Monotributo';c.account='bank';c.amount='100';c.indefinite=true;
+    expect(c.total()).toBeNull();request.mockRejectedValue(new Error());await c.save();
+    expect(request.mock.calls.find(row=>row[0]==='POST')![2].total_cuotas).toBeNull();
+  });
+  it('pausa sin mover dinero y protege el pago en borrador',async()=>{
+    const {c,request,debt}=await setup();const recurring={...debt,total_cuotas:null,pausado:false,version:1};
+    c.items.set([recurring]);request.mockImplementation(async(method,_path,body)=>method==='PATCH'?{...recurring,...body,version:2}:{mes:c.month,items:[],totales:[],next_offset:null});
+    await c.pause(recurring);
+    expect(c.items()[0].pausado).toBe(true);expect(request.mock.calls.some(row=>row[0]==='POST')).toBe(false);
+    c.payDirty=true;const before=request.mock.calls.length;await c.pause(c.items()[0]);expect(request.mock.calls.length).toBe(before);
+  });
+
 });
