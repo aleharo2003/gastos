@@ -39,6 +39,7 @@
     @if (next() !== null) { <button type="button" class="secondary" (click)="load(true)" [disabled]="loading() || saving()">Cargar más cuentas</button> }
   }
 @for (account of selected(); track account.id) {
+  <app-incomes [space]="space" [account]="account" [accounts]="items()" [revision]="planRevision()" (changed)="planRevision.update(incrementPlan)" />
   <app-expenses [space]="space" [account]="account" [accounts]="items()" (summaryChanged)="planRevision.update(incrementPlan)" />
 }
 

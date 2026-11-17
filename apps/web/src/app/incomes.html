@@ -1,0 +1,59 @@
+<section aria-labelledby="balance-title">
+  <h3 id="balance-title">Saldo · {{ account.nombre }}</h3>
+  <p>Ingresos registrados menos gastos registrados de todo el historial, separados por moneda. Incluye movimientos con fecha futura.</p>
+  @if(balanceError()){<p class="error" role="alert">{{ balanceError() }}</p>}
+  @if(balance(); as value){
+    <div class="balances">
+      @for(row of value.totales;track row.moneda){
+        <div class="balance">
+          <h4>{{ row.moneda }}</h4>
+          <p>Ingresos: {{ hidden() ? '••••' : showAmount(row.ingresos) }}</p>
+          <p>Gastos: {{ hidden() ? '••••' : showAmount(row.gastos) }}</p>
+          <strong [class.negative]="row.saldo.startsWith('-')">{{ hidden() ? '••••' : showAmount(row.saldo) }}</strong>
+        </div>
+      }
+    </div>
+  } @else if(!balanceError()){<p role="status">Actualizando saldo…</p>}
+  <button type="button" class="secondary" (click)="loadBalance()">Actualizar saldo</button>
+  <details>
+    <summary>Ingresos · Registrar y consultar</summary>
+    <p>Registrá sueldo, trabajos extra o regalos. Para empezar, podés cargar el dinero que ya tenés como «Saldo inicial». Si ya cargaste gastos, incluí lo necesario para que el saldo resultante coincida con tu cuenta.</p>
+    @if(error()){<p class="error" role="alert">{{ error() }}</p>}
+    @if(notice()){<p class="notice" role="status">{{ notice() }}</p>}
+    <form #incomeForm="ngForm" (ngSubmit)="save()">
+      @if(!account.id){
+        <label for="income-account">Cuenta que recibe el ingreso</label>
+        <select id="income-account" name="incomeAccount" [(ngModel)]="createAccount" required [disabled]="saving()">
+          <option value="">Elegí una cuenta</option>
+          @for(item of accounts;track item.id){<option [value]="item.id">{{ item.nombre }}</option>}
+        </select>
+        <small>Si falta una cuenta, cargá más desde el selector superior o agregala en Cuentas.</small>
+      }
+      <label for="income-date">Fecha</label>
+      <input id="income-date" name="incomeDate" type="date" [(ngModel)]="date" required [disabled]="saving()">
+      <label for="income-description">Descripción</label>
+      <input id="income-description" name="incomeDescription" [(ngModel)]="description" maxlength="160" required placeholder="Por ejemplo, sueldo o saldo inicial" [disabled]="saving()">
+      <label for="income-currency">Moneda</label>
+      <select id="income-currency" name="incomeCurrency" [(ngModel)]="currency" [disabled]="saving()"><option>ARS</option><option>USD</option><option>EUR</option></select>
+      <label for="income-amount">Importe</label>
+      <input id="income-amount" name="incomeAmount" inputmode="decimal" [(ngModel)]="amount" required placeholder="100000,00" aria-describedby="income-amount-help" [disabled]="saving()">
+      <small id="income-amount-help">Sin separador de miles; coma o punto para los decimales.</small>
+      <button type="submit" [disabled]="incomeForm.invalid || saving() || loading()">{{ saving() ? 'Guardando…' : 'Registrar ingreso' }}</button>
+      <button type="button" class="secondary" (click)="cancel()" [disabled]="saving()">Limpiar formulario</button>
+    </form>
+    <h4>Ingresos registrados</h4>
+    @if(loading()){<p role="status">Cargando ingresos…</p>}
+    @if(!loading()&&!items().length&&!error()){<p>Todavía no hay ingresos registrados.</p>}
+    <ul>
+      @for(item of items();track item.id){
+        <li><strong>{{ item.descripcion }}</strong>
+          @if(!account.id){<span>Cuenta: {{ accountName(item.cuenta_id) }}</span>}
+          <span>{{ item.fecha.split('-').reverse().join('/') }}</span>
+          <b>{{ item.moneda }} {{ hidden() ? '••••' : showAmount(item.importe) }}</b>
+        </li>
+      }
+    </ul>
+    <button type="button" class="secondary" (click)="load()" [disabled]="loading()||saving()">Actualizar ingresos</button>
+    @if(next()!==null){<button type="button" class="secondary" (click)="load(true)" [disabled]="loading()||saving()">Ver más ingresos</button>}
+  </details>
+</section>

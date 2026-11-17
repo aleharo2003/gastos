@@ -1,3 +1,4 @@
+import { Incomes } from './incomes';
 import { Planning } from './planning';
 import { Expenses } from './expenses';
 import { Component, DestroyRef, inject, Input, OnInit, signal, ViewChild } from '@angular/core';
@@ -9,7 +10,7 @@ type Account = { id: string; espacio_id: string; nombre: string };
 type Page = { items: Account[]; next_offset: number | null };
 
 @Component({
-  selector: 'app-accounts', imports: [FormsModule, Expenses, Planning],
+  selector: 'app-accounts', imports: [FormsModule, Expenses, Planning, Incomes],
   templateUrl: './accounts.html', styleUrl: './accounts.css',
 })
 export class Accounts implements OnInit {
@@ -23,12 +24,13 @@ export class Accounts implements OnInit {
   readonly next = signal<number | null>(null);
   readonly tab = signal<'expenses' | 'accounts' | 'plan'>('expenses');
   @ViewChild(Expenses) expenses?: Expenses;
+  @ViewChild(Incomes) incomes?: Incomes;
   choose(id: string): void {
     const account = id === '' ? {id:'',espacio_id:this.space,nombre:'Todas las cuentas'} : this.items().find(row => row.id === id);
     if (!account) return;
     if (this.selected()[0]?.id !== id) {
-      if (this.expenses?.hasPendingWork()) {
-        this.error.set('Terminá o cancelá el formulario y los comprobantes antes de cambiar de cuenta.');
+      if (this.expenses?.hasPendingWork() || this.incomes?.hasPendingWork()) {
+        this.error.set('Terminá o limpiá el formulario de ingresos, gastos y comprobantes antes de cambiar de cuenta.');
         return;
       }
       this.selected.set([account]);
