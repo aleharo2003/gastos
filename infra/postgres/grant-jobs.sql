@@ -11,6 +11,6 @@ BEGIN
         AND NOT EXISTS (SELECT FROM pg_auth_members WHERE member=r.oid)) THEN
         RAISE EXCEPTION 'Preparar primero el rol restringido app_jobs.';
     END IF;
+    GRANT EXECUTE ON FUNCTION public.generar_cuotas_mes() TO app_jobs;
 END
 $guard$;
-GRANT EXECUTE ON FUNCTION public.generar_cuotas_mes() TO app_jobs;
