@@ -1,31 +1,23 @@
 # Estado de Piggo
 
-## Base e integracion
-
 Main incorpora ingresos, transferencias y ahorros (PR #30 a #32).
-El PR #34 de resumen mensual ya se fusiono en la rama del PR #33 de deudas,
-que todavia esta abierto hacia main al iniciar este incremento.
-No confundir esa fusion entre ramas con un despliegue.
+La rama del PR #33 ya integra #34 (resumen mensual) y #35 (gastos fijos indefinidos).
+Al iniciar este incremento, #33 sigue abierto hacia main.
 
-## Incremento en revision: gastos mensuales fijos
+## Incremento en revision: montos variables
 
-Rama feature/fixed-monthly-commitments, basada en feature/fixed-installment-debts.
-Agrega total_cuotas null, pausa/reactivacion versionada, calendario unico por periodo
-y generador independiente restringido. Requiere migracion 0017.
-Ver gastos-mensuales-fijos.md para reglas, cobertura parcial de CTAS y activacion.
+Rama feature/variable-monthly-commitments, basada en feature/fixed-installment-debts.
+Agrega gastos variables, cuotas estimadas, aviso global y confirmacion en lote.
+Confirmar no crea gastos; pagar requiere un importe confirmado.
+Requiere migracion 0018, posterior a 0017. Ver gastos-variables-estimados.md.
 
-La provision administrativa de app_jobs se separa del GRANT de la funcion, que
-realiza su propietario app_migrator. El secreto JOBS_DATABASE_URL del entorno test
-y la activacion/verificacion del workflow remoto siguen pendientes.
-El PR por si solo no activa la programacion.
+El ejecutor independiente usa el mismo rol app_jobs y la misma funcion actualizada.
+La activacion remota del rol, permisos y JOBS_DATABASE_URL de test permanece
+pendiente de verificacion operativa. No se considera activa solo por integrar el PR.
 
 ## Siguientes incrementos
 
-Montos variables y confirmacion de estimados (CTAS-39/47), no aplica puntual,
-ajustes e intereses, recordatorios y demas tareas del proceso diario.
-Las stories no se consideran terminadas solo por este incremento.
-
-Consultar el CI de cada PR para resultados ejecutados. La revision visual y la
-comprobacion del SHA desplegado se verifican por separado.
+No aplica puntual, ajustes/intereses, recordatorios y demas tareas del proceso diario.
+Consultar CI y revision visual por separado; validar el SHA publicado tras fusionar.
 
 Backlog: https://aleharo.atlassian.net/jira/software/c/projects/CTAS/boards/34/backlog

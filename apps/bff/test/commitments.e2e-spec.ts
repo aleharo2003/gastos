@@ -8,8 +8,8 @@ describe('Deudas y pagos HTTP',()=>{
   let app:INestApplication;let remote:ReturnType<typeof vi.fn>;
   const space=randomUUID(),id=randomUUID(),account=randomUUID(),quota=randomUUID(),base=`/api/spaces/${space}`;
   const payload={id,cuenta_id:account,nombre:'Casa',moneda:'USD',importe:'250.00',categoria:'vivienda',primer_vencimiento:'2026-11-30',total_cuotas:10};
-  const row={...payload,pausado:false,version:1,espacio_id:space,cuotas_pagadas:0,total:'2500.00',pagado:'0.00',pendiente:'2500.00',proximo_vencimiento:'2026-11-30'};
-  const installment={id:quota,espacio_id:space,compromiso_id:id,numero:1,vencimiento:'2026-11-30',importe:'250.00',pagado:'30.00',pendiente:'220.00',estado:'parcial',vencida:false};
+  const row={...payload,variable:false,pausado:false,version:1,espacio_id:space,cuotas_pagadas:0,total:'2500.00',pagado:'0.00',pendiente:'2500.00',proximo_vencimiento:'2026-11-30'};
+  const installment={estimado:false,version:1,id:quota,espacio_id:space,compromiso_id:id,numero:1,vencimiento:'2026-11-30',importe:'250.00',pagado:'30.00',pendiente:'220.00',estado:'parcial',vencida:false};
   const pay={id:randomUUID(),cuenta_id:account,fecha:'2026-11-17',importe:'30.00'};
   const payment={...pay,espacio_id:space,cuota_id:quota,moneda:'USD'};
   beforeEach(async()=>{
@@ -58,7 +58,7 @@ describe('Deudas y pagos HTTP',()=>{
     await request(app.getHttpServer()).get(base+'/commitments?offset=-1').set('Authorization','Bearer token').expect(400);
   });
   it('consulta el mes y valida totales, moneda, aislamiento y paginacion',async()=>{
-    const total={moneda:'USD',cuotas:1,cuotas_pagadas:0,total:'250.00',pagado:'30.00',pendiente:'220.00',vencido:'0.00'};
+    const total={borradores:0,estimado:'0.00',moneda:'USD',cuotas:1,cuotas_pagadas:0,total:'250.00',pagado:'30.00',pendiente:'220.00',vencido:'0.00'};
     const item={...installment,nombre:'Casa',cuenta_id:account,moneda:'USD'};
     const page={mes:'2026-11',items:[item],totales:[total],next_offset:null};
     const url=base+'/installments?month=2026-11&offset=0';
@@ -98,6 +98,32 @@ describe('Deudas y pagos HTTP',()=>{
     for(const invalid of [{pausado:'true',version:1},{pausado:true,version:true},{pausado:true,version:0},{pausado:true,version:1,importe:'100'}]){
       await request(app.getHttpServer()).patch(base+'/commitments/'+id).set('Authorization','Bearer token').send(invalid).expect(400);
     }
+  });
+
+  it('identifica borradores y confirma un lote sin aceptar campos ni ids ajenos',async()=>{
+    const draft={...installment,estimado:true,estado:'borrador',pagado:'0.00',pendiente:'250.00',nombre:'Luz',moneda:'USD',cuenta_id:account};
+    const page={borradores:101,items:[draft],next_offset:100};
+    remote.mockImplementation(async()=>new Response(JSON.stringify(page)));
+    await request(app.getHttpServer()).get(base+'/installment-drafts?offset=0').set('Authorization','Bearer token').expect(200).expect(page);
+    remote.mockImplementation(async()=>new Response(JSON.stringify({...page,items:[{...draft,espacio_id:randomUUID()}]})));
+    await request(app.getHttpServer()).get(base+'/installment-drafts').set('Authorization','Bearer token').expect(502);
+    const payload={items:[{id:quota,importe:'300.00',version:1}]};
+    remote.mockImplementation(async()=>new Response(JSON.stringify({confirmadas:[quota]})));
+    await request(app.getHttpServer()).post(base+'/installment-confirmations').send(payload).expect(401);
+    await request(app.getHttpServer()).post(base+'/installment-confirmations').set('Authorization','Bearer token').send(payload).expect(200).expect({confirmadas:[quota]});
+    expect(JSON.parse(remote.mock.calls.at(-1)![1].body)).toEqual(payload);
+    for(const bad of [{items:[]},{items:[...payload.items,...payload.items]},{items:[{...payload.items[0],importe:300}]},{...payload,usuario_id:randomUUID()}]){
+      await request(app.getHttpServer()).post(base+'/installment-confirmations').set('Authorization','Bearer token').send(bad).expect(400);
+    }
+    remote.mockImplementation(async()=>new Response(JSON.stringify({confirmadas:[randomUUID()]})));
+    await request(app.getHttpServer()).post(base+'/installment-confirmations').set('Authorization','Bearer token').send(payload).expect(502);
+  });
+  it('reenvia el tipo variable y rechaza variables con cuotas finitas',async()=>{
+    const input={...payload,total_cuotas:null,variable:true};
+    const result={...row,...input,total:'250.00',pendiente:'250.00'};
+    remote.mockImplementation(async()=>new Response(JSON.stringify(result)));
+    await request(app.getHttpServer()).post(base+'/commitments').set('Authorization','Bearer token').send(input).expect(200).expect(result);
+    await request(app.getHttpServer()).post(base+'/commitments').set('Authorization','Bearer token').send({...input,total_cuotas:10}).expect(400);
   });
 
 });

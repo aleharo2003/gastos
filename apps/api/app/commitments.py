@@ -28,6 +28,7 @@ class CommitmentInput(BaseModel):
     nombre:str
     moneda:Literal['ARS','USD','EUR']
     importe:Decimal
+    variable:bool=Field(default=False,strict=True)
     categoria:Category|None=None
     primer_vencimiento:date
     total_cuotas:StrictInt|None=Field(ge=1,le=600)
@@ -50,6 +51,7 @@ class CommitmentInput(BaseModel):
 
     @model_validator(mode='after')
     def date_range(self):
+        if self.variable and self.total_cuotas is not None:raise ValueError('Un gasto variable debe ser mensual sin fin conocido')
         if self.total_cuotas is not None and self.primer_vencimiento.year*12+self.primer_vencimiento.month-1+self.total_cuotas-1>=10000*12:
             raise ValueError('El calendario supera el rango de fechas')
         return self
@@ -82,7 +84,7 @@ def public_commitment(row):
         'nombre':row['nombre'],'moneda':row['moneda'],'importe':format(row['importe'],'.2f'),
         'categoria':row['categoria'],'primer_vencimiento':row['primer_vencimiento'].isoformat(),
         'total_cuotas':row['total_cuotas'],'cuotas_pagadas':row['cuotas_pagadas'],
-        'pausado':row['pausado'],'version':row['version'],
+        'pausado':row['pausado'],'version':row['version'],'variable':row['variable'],
         'total':format(total,'.2f'),'pagado':format(paid,'.2f'),'pendiente':format(total-paid,'.2f'),
         'proximo_vencimiento':row['proximo_vencimiento'].isoformat() if row['proximo_vencimiento'] else None}
 
@@ -106,13 +108,13 @@ def list_commitments(session,user,space,offset=0,identifier=None):
 def create_commitment(session,user,space,body):
     require_account(session,user,space,body.cuenta_id,write=True)
     params={'id':body.id,'s':space,'a':body.cuenta_id,'u':user,'n':body.nombre,'m':body.moneda,
-            'i':body.importe,'c':body.categoria,'f':body.primer_vencimiento,'t':body.total_cuotas}
+            'i':body.importe,'c':body.categoria,'f':body.primer_vencimiento,'t':body.total_cuotas,'variable':body.variable}
     inserted=session.execute(text("""INSERT INTO public.compromisos
-        (id,espacio_id,cuenta_id,usuario_id,nombre,moneda,importe,categoria,primer_vencimiento,total_cuotas)
-        VALUES (:id,:s,:a,:u,:n,:m,:i,:c,:f,:t) ON CONFLICT (id) DO NOTHING RETURNING id"""),params).scalar_one_or_none()
+        (id,espacio_id,cuenta_id,usuario_id,nombre,moneda,importe,categoria,primer_vencimiento,total_cuotas,variable)
+        VALUES (:id,:s,:a,:u,:n,:m,:i,:c,:f,:t,:variable) ON CONFLICT (id) DO NOTHING RETURNING id"""),params).scalar_one_or_none()
     row=session.execute(text('SELECT * FROM public.compromisos WHERE espacio_id=:s AND id=:id'),params).mappings().one_or_none()
     if (row is None or str(row['usuario_id'])!=str(user) or
-        any(row[k]!=getattr(body,k) for k in ('cuenta_id','nombre','moneda','importe','categoria','primer_vencimiento','total_cuotas'))):
+        any(row[k]!=getattr(body,k) for k in ('cuenta_id','nombre','moneda','importe','categoria','primer_vencimiento','total_cuotas','variable'))):
         raise HTTPException(409,'Identificador usado para otro compromiso',headers=NO_STORE)
     if inserted is not None and body.total_cuotas is None:
         today=datetime.now(ZoneInfo('America/Argentina/Buenos_Aires')).date()
@@ -140,7 +142,8 @@ def public_installment(row,day=None):
     return {key:str(row[key]) for key in ('id','espacio_id','compromiso_id')}|{
         'numero':row['numero'],'vencimiento':row['vencimiento'].isoformat(),
         'importe':format(row['importe'],'.2f'),'pagado':format(paid,'.2f'),'pendiente':format(remaining,'.2f'),
-        'estado':'pagada' if remaining==0 else 'parcial' if paid>0 else 'pendiente',
+        'estimado':row.get('estimado',False),'version':row.get('version',1),
+        'estado':'borrador' if row.get('estimado',False) else 'pagada' if remaining==0 else 'parcial' if paid>0 else 'pendiente',
         'vencida':remaining>0 and row['vencimiento']<day}
 
 
@@ -175,6 +178,8 @@ def pay_installment(session,user,space,identifier,body):
     # Un solo bloqueo transaccional por cuota serializa pagos sin conceder UPDATE a cuotas.
     session.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))"),
                     {'key':f'cuota:{space}:{identifier}'})
+    row=require_installment(session,user,space,identifier,write=True)
+    if row['estimado']:raise HTTPException(409,'Confirmar el monto estimado antes de pagar',headers=NO_STORE)
     params={'id':body.id,'s':space,'q':identifier,'a':body.cuenta_id,'u':user,'f':body.fecha,'i':body.importe}
     existing=session.execute(text("""SELECT p.cuota_id,g.* FROM public.pagos_cuota p
         JOIN public.gastos g ON g.espacio_id=p.espacio_id AND g.id=p.id WHERE p.espacio_id=:s AND p.id=:id"""),params).mappings().one_or_none()
@@ -253,6 +258,8 @@ def monthly_installments(session,user,space,month,offset=0,day=None):
     totales AS (
         SELECT moneda,COUNT(*)::int AS cuotas,
             COUNT(*) FILTER (WHERE pagado=importe)::int AS cuotas_pagadas,
+            COUNT(*) FILTER (WHERE estimado)::int AS borradores,
+            SUM(CASE WHEN estimado THEN importe ELSE 0 END)::text AS estimado,
             SUM(importe)::text AS total,SUM(pagado)::text AS pagado,
             SUM(importe-pagado)::text AS pendiente,
             SUM(CASE WHEN vencimiento<:day THEN importe-pagado ELSE 0 END)::text AS vencido
@@ -267,7 +274,7 @@ def monthly_installments(session,user,space,month,offset=0,day=None):
     totals=rows[0]['totales']
     # SUM de cuotas numeric(14,2) conserva escala; normalizar tambien el cero de CASE.
     for total in totals:
-        for key in ('total','pagado','pendiente','vencido'):total[key]=format(Decimal(total[key]),'.2f')
+        for key in ('total','pagado','pendiente','vencido','estimado'):total[key]=format(Decimal(total[key]),'.2f')
     return {'mes':month,'totales':totals,'items':[
         public_installment(row,day)|{'nombre':row['nombre'],'moneda':row['moneda'],'cuenta_id':str(row['cuenta_id'])}
         for row in items[:100]],'next_offset':offset+100 if len(items)>100 else None}
@@ -292,10 +299,16 @@ def seed_current_installment(session,space,row,day):
     first=row['primer_vencimiento']
     offset=(day.year-first.year)*12+day.month-first.month
     if offset<0 or row['pausado']:return
-    session.execute(text("""INSERT INTO public.cuotas(id,espacio_id,compromiso_id,numero,vencimiento,importe)
-        VALUES (:id,:s,:c,:n,:v,:i) ON CONFLICT (espacio_id,compromiso_id,periodo) DO NOTHING"""),
+    amount=row['importe']
+    if row['variable']:
+        previous=session.execute(text('''SELECT importe FROM public.cuotas WHERE espacio_id=:s AND compromiso_id=:c
+            AND periodo<:p ORDER BY periodo DESC LIMIT 1'''),
+            {'s':space,'c':row['id'],'p':day.replace(day=1)}).scalar_one_or_none()
+        if previous is not None:amount=previous
+    session.execute(text("""INSERT INTO public.cuotas(id,espacio_id,compromiso_id,numero,vencimiento,importe,estimado)
+        VALUES (:id,:s,:c,:n,:v,:i,:e) ON CONFLICT (espacio_id,compromiso_id,periodo) DO NOTHING"""),
         {'id':uuid5(UUID(str(row['id'])),str(offset+1)),'s':space,'c':row['id'],'n':offset+1,
-         'v':monthly_due(first,offset),'i':row['importe']})
+         'v':monthly_due(first,offset),'i':amount,'e':row['variable']})
 
 
 class CommitmentPause(BaseModel):
@@ -325,3 +338,73 @@ def pause_commitment(session,user,space,identifier,body):
 @router.patch('/spaces/{space}/commitments/{identifier}')
 def patch_commitment(space:UUID,identifier:UUID,body:CommitmentPause,request:Request,response:Response):
     return execute(request,response,space,lambda s,u:pause_commitment(s,u,space,identifier,body))
+
+
+class ConfirmationInput(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    id:UUID
+    importe:Decimal
+    version:StrictInt=Field(ge=1,le=2147483646)
+
+    @field_validator('id')
+    @classmethod
+    def identifier(cls,value):return IncomeInput.identifier(value)
+
+    @field_validator('importe',mode='before')
+    @classmethod
+    def amount(cls,value):return IncomeInput.amount(value)
+
+
+class ConfirmationsInput(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    items:list[ConfirmationInput]=Field(min_length=1,max_length=100)
+
+    @model_validator(mode='after')
+    def unique(self):
+        if len({item.id for item in self.items})!=len(self.items):raise ValueError('Cuotas repetidas')
+        return self
+
+
+def list_drafts(session,user,space,offset=0):
+    require_member(session,user,space)
+    rows=session.execute(text("""WITH borradores AS (
+        SELECT q.*,c.nombre,c.moneda,c.cuenta_id,0::numeric AS pagado FROM public.cuotas q
+        JOIN public.compromisos c ON c.espacio_id=q.espacio_id AND c.id=q.compromiso_id
+        WHERE q.espacio_id=:s AND q.estimado)
+        SELECT pagina.*,resumen.borradores FROM (SELECT COUNT(*)::int AS borradores FROM borradores) resumen
+        LEFT JOIN (SELECT * FROM borradores ORDER BY vencimiento,id LIMIT 101 OFFSET :offset) pagina ON true
+        ORDER BY pagina.vencimiento,pagina.id"""),{'s':space,'offset':offset}).mappings().all()
+    items=[row for row in rows if row['id'] is not None]
+    return {'borradores':rows[0]['borradores'],'items':[
+        public_installment(row)|{'nombre':row['nombre'],'moneda':row['moneda'],'cuenta_id':str(row['cuenta_id'])}
+        for row in items[:100]],'next_offset':offset+100 if len(items)>100 else None}
+
+
+def confirm_installments(session,user,space,body):
+    require_member(session,user,space,write=True)
+    ordered=sorted(body.items,key=lambda item:str(item.id))
+    # Mismo bloqueo de pagos, siempre en orden UUID para evitar interbloqueos entre lotes.
+    for item in ordered:
+        session.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))"),
+                        {'key':f'cuota:{space}:{item.id}'})
+    for item in ordered:
+        row=require_installment(session,user,space,item.id,write=True)
+        if not row['estimado']:
+            if row['version']==item.version+1 and row['importe']==item.importe:continue
+            raise HTTPException(409,'La cuota ya fue confirmada o cambio en otra sesion',headers=NO_STORE)
+        if row['version']!=item.version:raise HTTPException(409,'El estimado cambio en otra sesion',headers=NO_STORE)
+        updated=session.execute(text("""UPDATE public.cuotas SET importe=:i,estimado=false,version=version+1
+            WHERE espacio_id=:s AND id=:id AND estimado AND version=:v RETURNING id"""),
+            {'i':item.importe,'s':space,'id':item.id,'v':item.version}).scalar_one_or_none()
+        if updated is None:raise HTTPException(409,'La cuota cambio; revisar el lote',headers=NO_STORE)
+    return {'confirmadas':[str(item.id) for item in body.items]}
+
+
+@router.get('/spaces/{space}/installment-drafts')
+def get_drafts(space:UUID,request:Request,response:Response,offset:int=Query(default=0,ge=0,le=100000)):
+    return execute(request,response,space,lambda s,u:list_drafts(s,u,space,offset))
+
+
+@router.post('/spaces/{space}/installment-confirmations')
+def post_confirmations(space:UUID,body:ConfirmationsInput,request:Request,response:Response):
+    return execute(request,response,space,lambda s,u:confirm_installments(s,u,space,body))

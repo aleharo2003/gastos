@@ -5,6 +5,7 @@
   <button type="button" (click)="tab.set('savings')" [attr.aria-current]="tab() === 'savings' ? 'page' : null">Ahorros</button>
   <button type="button" (click)="tab.set('debts')" [attr.aria-current]="tab() === 'debts' ? 'page' : null">Deudas</button>
 </nav>
+@if(draftCount()>0){<p role="status">Tenés {{ draftCount() }} montos estimados por confirmar. <button type="button" class="secondary" (click)="tab.set('debts')">Revisar estimados</button></p>}
 <app-planning [space]="space" [compact]="tab() !== 'plan'" [hidden]="tab() === 'accounts' || tab() === 'savings' || tab() === 'debts'" [revision]="planRevision()" (configure)="tab.set('plan')" />
 <section [hidden]="tab() !== 'accounts' && items().length > 0" aria-labelledby="accounts-title">
   <h3 id="accounts-title">Tus cuentas</h3>
@@ -30,7 +31,7 @@
   </form>
 </section>
 
-<app-commitments [hidden]="tab() !== 'debts'" [space]="space" [accounts]="items()" [moreAccounts]="next() !== null" [accountsLoading]="loading()" (loadAccounts)="load(true)" (changed)="planRevision.update(incrementPlan)" />
+<app-commitments (draftsChanged)="draftCount.set($event)" [hidden]="tab() !== 'debts'" [space]="space" [accounts]="items()" [moreAccounts]="next() !== null" [accountsLoading]="loading()" (loadAccounts)="load(true)" (changed)="planRevision.update(incrementPlan)" />
 
 <app-savings-goals [hidden]="tab() !== 'savings'" [space]="space" [accounts]="items()" [moreAccounts]="next() !== null" [accountsLoading]="loading()" [revision]="planRevision()" (loadAccounts)="load(true)" (prepareTransfer)="fundGoal($event)" />
 

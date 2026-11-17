@@ -50,6 +50,7 @@ export class Accounts implements OnInit {
     this.choose(select.value);
     select.value = this.selected()[0]?.id ?? '';
   }
+  readonly draftCount=signal(0);
   readonly planRevision=signal(0);
   readonly incrementPlan=(value:number)=>value+1;
   name = '';
