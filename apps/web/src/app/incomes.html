@@ -1,6 +1,6 @@
 <section aria-labelledby="balance-title">
   <h3 id="balance-title">Saldo · {{ account.nombre }}</h3>
-  <p>Ingresos registrados menos gastos registrados de todo el historial, separados por moneda. Incluye movimientos con fecha futura.</p>
+  <p>Ingresos menos gastos, más transferencias recibidas y menos transferencias enviadas. Todo el historial, separado por moneda. Incluye movimientos con fecha futura.</p>
   @if(balanceError()){<p class="error" role="alert">{{ balanceError() }}</p>}
   @if(balance(); as value){
     <div class="balances">
@@ -9,6 +9,8 @@
           <h4>{{ row.moneda }}</h4>
           <p>Ingresos: {{ hidden() ? '••••' : showAmount(row.ingresos) }}</p>
           <p>Gastos: {{ hidden() ? '••••' : showAmount(row.gastos) }}</p>
+          @if(row.transferencias_entrada !== undefined){<p>Transferencias recibidas: {{ hidden() ? '••••' : showAmount(row.transferencias_entrada!) }}</p>}
+          @if(row.transferencias_salida !== undefined){<p>Transferencias enviadas: {{ hidden() ? '••••' : showAmount(row.transferencias_salida!) }}</p>}
           <strong [class.negative]="row.saldo.startsWith('-')">{{ hidden() ? '••••' : showAmount(row.saldo) }}</strong>
         </div>
       }

@@ -23,19 +23,23 @@ function income(value:unknown, space:string, account?:string):Income {
     descripcion:row.descripcion,moneda:row.moneda,importe:row.importe};
 }
 function balance(value:unknown) {
-  const data=value as {totales:{moneda:string;ingresos:string;gastos:string;saldo:string}[]};
+  const data=value as {totales:{moneda:string;ingresos:string;gastos:string;saldo:string;transferencias_entrada?:string;transferencias_salida?:string}[]};
   if(!data || !Array.isArray(data.totales) || data.totales.length!==3)throw new Error();
   const seen=new Set<string>();
   const totales=data.totales.map(row=>{
     if(!row || !['ARS','USD','EUR'].includes(row.moneda) || seen.has(row.moneda))throw new Error();
     seen.add(row.moneda);
+    const incoming=row.transferencias_entrada===undefined?'0.00':row.transferencias_entrada,outgoing=row.transferencias_salida===undefined?'0.00':row.transferencias_salida;
+    for(const value of [incoming,outgoing]){
+      if(typeof value!=='string'||value.length>80||!/^(?:0|[1-9][0-9]*)\.[0-9]{2}$/.test(value))throw new Error();
+    }
     for(const key of ['ingresos','gastos','saldo'] as const) {
       if(typeof row[key]!=='string' || row[key].length>80 ||
           !(key==='saldo' ? /^-?(?:0|[1-9][0-9]*)\.[0-9]{2}$/ : /^(?:0|[1-9][0-9]*)\.[0-9]{2}$/).test(row[key]))throw new Error();
     }
     const cents=(v:string)=>BigInt(v.replace('.',''));
-    if(cents(row.ingresos)-cents(row.gastos)!==cents(row.saldo))throw new Error();
-    return {moneda:row.moneda,ingresos:row.ingresos,gastos:row.gastos,saldo:row.saldo};
+    if(cents(row.ingresos)-cents(row.gastos)+cents(incoming)-cents(outgoing)!==cents(row.saldo))throw new Error();
+    return {moneda:row.moneda,ingresos:row.ingresos,gastos:row.gastos,saldo:row.saldo,...(row.transferencias_entrada!==undefined?{transferencias_entrada:incoming}:{}),...(row.transferencias_salida!==undefined?{transferencias_salida:outgoing}:{})};
   });
   return {totales};
 }

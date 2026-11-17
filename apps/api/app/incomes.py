@@ -87,19 +87,33 @@ def account_balance(session, user, space, account=None):
     if account is None: require_member(session, user, space)
     else: require_account(session, user, space, account)
     clause = ' AND cuenta_id=:a' if account is not None else ''
-    # Una sola sentencia: ingresos y gastos usan la misma instantanea, sin paginacion.
+    # Una instantanea incluye ambos lados de todas las transferencias.
+    incoming = ' AND destino_id=:a' if account is not None else ''
+    outgoing = ' AND origen_id=:a' if account is not None else ''
     rows = session.execute(text("""
         SELECT moneda, SUM(entrada) AS ingresos, SUM(salida) AS gastos,
-               SUM(entrada)-SUM(salida) AS saldo FROM (
-          SELECT moneda, importe AS entrada, 0::numeric AS salida FROM public.ingresos
-          WHERE espacio_id=:s""" + clause + """
+            SUM(transferencia_entrada) AS transferencias_entrada,
+            SUM(transferencia_salida) AS transferencias_salida,
+            SUM(entrada)-SUM(salida)+SUM(transferencia_entrada)-SUM(transferencia_salida) AS saldo
+        FROM (
+          SELECT moneda, importe AS entrada, 0::numeric AS salida,
+              0::numeric AS transferencia_entrada, 0::numeric AS transferencia_salida
+          FROM public.ingresos WHERE espacio_id=:s""" + clause + """
           UNION ALL
-          SELECT moneda, 0::numeric AS entrada, importe AS salida FROM public.gastos
-          WHERE espacio_id=:s""" + clause + """
+          SELECT moneda, 0::numeric, importe, 0::numeric, 0::numeric
+          FROM public.gastos WHERE espacio_id=:s""" + clause + """
+          UNION ALL
+          SELECT moneda, 0::numeric, 0::numeric, importe, 0::numeric
+          FROM public.transferencias WHERE espacio_id=:s""" + incoming + """
+          UNION ALL
+          SELECT moneda, 0::numeric, 0::numeric, 0::numeric, importe
+          FROM public.transferencias WHERE espacio_id=:s""" + outgoing + """
         ) movimientos GROUP BY moneda ORDER BY moneda"""), {'s':space,'a':account}).mappings().all()
     by_currency = {row['moneda']:row for row in rows}
     return {'totales':[{'moneda':currency, **{key:format(by_currency.get(currency, {}).get(key, Decimal(0)), '.2f')
-                     for key in ('ingresos','gastos','saldo')}} for currency in ('ARS','USD','EUR')]}
+                     for key in ('ingresos','gastos','transferencias_entrada','transferencias_salida','saldo')}}
+                     for currency in ('ARS','USD','EUR')]}
+
 
 
 @router.post('/spaces/{space}/accounts/{account}/incomes')
