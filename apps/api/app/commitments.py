@@ -79,11 +79,11 @@ class PaymentInput(BaseModel):
 
 def public_commitment(row):
     paid=row['pagado']
-    total=row['importe']*row['total_cuotas'] if row['total_cuotas'] is not None else row['total_generado']
+    total=row['total_generado']
     return {key:str(row[key]) for key in ('id','espacio_id','cuenta_id')}|{
         'nombre':row['nombre'],'moneda':row['moneda'],'importe':format(row['importe'],'.2f'),
         'categoria':row['categoria'],'primer_vencimiento':row['primer_vencimiento'].isoformat(),
-        'total_cuotas':row['total_cuotas'],'cuotas_pagadas':row['cuotas_pagadas'],
+        'total_cuotas':row['total_cuotas'],'cuotas_pagadas':row['cuotas_pagadas'],'cuotas_no_aplican':row.get('cuotas_no_aplican',0),
         'pausado':row['pausado'],'version':row['version'],'variable':row['variable'],
         'total':format(total,'.2f'),'pagado':format(paid,'.2f'),'pendiente':format(total-paid,'.2f'),
         'proximo_vencimiento':row['proximo_vencimiento'].isoformat() if row['proximo_vencimiento'] else None}
@@ -96,9 +96,10 @@ def list_commitments(session,user,space,offset=0,identifier=None):
         SELECT p.cuota_id,SUM(g.importe) AS pagado FROM public.pagos_cuota p
         JOIN public.gastos g ON g.espacio_id=p.espacio_id AND g.id=p.id
         WHERE p.espacio_id=:s GROUP BY p.cuota_id)
-        SELECT c.*,COALESCE(SUM(q.importe),0) AS total_generado,COUNT(*) FILTER (WHERE COALESCE(p.pagado,0)>=q.importe) AS cuotas_pagadas,
+        SELECT c.*,COALESCE(SUM(q.importe) FILTER (WHERE NOT q.no_aplica),0) AS total_generado,
+            COUNT(*) FILTER (WHERE q.no_aplica) AS cuotas_no_aplican,COUNT(*) FILTER (WHERE COALESCE(p.pagado,0)>=q.importe) AS cuotas_pagadas,
             COALESCE(SUM(p.pagado),0) AS pagado,
-            MIN(q.vencimiento) FILTER (WHERE COALESCE(p.pagado,0)<q.importe) AS proximo_vencimiento
+            MIN(q.vencimiento) FILTER (WHERE NOT q.no_aplica AND COALESCE(p.pagado,0)<q.importe) AS proximo_vencimiento
         FROM public.compromisos c LEFT JOIN public.cuotas q ON q.espacio_id=c.espacio_id AND q.compromiso_id=c.id
         LEFT JOIN pagos p ON p.cuota_id=q.id WHERE c.espacio_id=:s"""+clause+"""
         GROUP BY c.id ORDER BY c.id LIMIT 101 OFFSET :offset"""),{'s':space,'id':identifier,'offset':offset}).mappings().all()
@@ -138,12 +139,13 @@ def require_commitment(session,user,space,identifier):
 
 def public_installment(row,day=None):
     day=day or datetime.now(ZoneInfo('America/Argentina/Buenos_Aires')).date()
-    paid=row['pagado'];remaining=row['importe']-paid
+    paid=row['pagado'];skipped=row.get('no_aplica',False)
+    remaining=Decimal(0) if skipped else row['importe']-paid
     return {key:str(row[key]) for key in ('id','espacio_id','compromiso_id')}|{
         'numero':row['numero'],'vencimiento':row['vencimiento'].isoformat(),
         'importe':format(row['importe'],'.2f'),'pagado':format(paid,'.2f'),'pendiente':format(remaining,'.2f'),
         'estimado':row.get('estimado',False),'version':row.get('version',1),
-        'estado':'borrador' if row.get('estimado',False) else 'pagada' if remaining==0 else 'parcial' if paid>0 else 'pendiente',
+        'estado':'no_aplica' if skipped else 'borrador' if row.get('estimado',False) else 'pagada' if remaining==0 else 'parcial' if paid>0 else 'pendiente',
         'vencida':remaining>0 and row['vencimiento']<day}
 
 
@@ -179,6 +181,7 @@ def pay_installment(session,user,space,identifier,body):
     session.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))"),
                     {'key':f'cuota:{space}:{identifier}'})
     row=require_installment(session,user,space,identifier,write=True)
+    if row['no_aplica']:raise HTTPException(409,'La cuota no aplica',headers=NO_STORE)
     if row['estimado']:raise HTTPException(409,'Confirmar el monto estimado antes de pagar',headers=NO_STORE)
     params={'id':body.id,'s':space,'q':identifier,'a':body.cuenta_id,'u':user,'f':body.fecha,'i':body.importe}
     existing=session.execute(text("""SELECT p.cuota_id,g.* FROM public.pagos_cuota p
@@ -257,12 +260,13 @@ def monthly_installments(session,user,space,month,offset=0,day=None):
         WHERE q.espacio_id=:s AND q.vencimiento BETWEEN :first AND :last),
     totales AS (
         SELECT moneda,COUNT(*)::int AS cuotas,
+            COUNT(*) FILTER (WHERE no_aplica)::int AS no_aplican,
             COUNT(*) FILTER (WHERE pagado=importe)::int AS cuotas_pagadas,
             COUNT(*) FILTER (WHERE estimado)::int AS borradores,
             SUM(CASE WHEN estimado THEN importe ELSE 0 END)::text AS estimado,
-            SUM(importe)::text AS total,SUM(pagado)::text AS pagado,
-            SUM(importe-pagado)::text AS pendiente,
-            SUM(CASE WHEN vencimiento<:day THEN importe-pagado ELSE 0 END)::text AS vencido
+            SUM(CASE WHEN no_aplica THEN 0 ELSE importe END)::text AS total,SUM(pagado)::text AS pagado,
+            SUM(CASE WHEN no_aplica THEN 0 ELSE importe-pagado END)::text AS pendiente,
+            SUM(CASE WHEN NOT no_aplica AND vencimiento<:day THEN importe-pagado ELSE 0 END)::text AS vencido
         FROM del_mes GROUP BY moneda),
     resumen AS (
         SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY t.moneda),'[]'::jsonb) AS totales FROM totales t)
@@ -302,7 +306,7 @@ def seed_current_installment(session,space,row,day):
     amount=row['importe']
     if row['variable']:
         previous=session.execute(text('''SELECT importe FROM public.cuotas WHERE espacio_id=:s AND compromiso_id=:c
-            AND periodo<:p ORDER BY periodo DESC LIMIT 1'''),
+            AND periodo<:p AND NOT no_aplica ORDER BY periodo DESC LIMIT 1'''),
             {'s':space,'c':row['id'],'p':day.replace(day=1)}).scalar_one_or_none()
         if previous is not None:amount=previous
     session.execute(text("""INSERT INTO public.cuotas(id,espacio_id,compromiso_id,numero,vencimiento,importe,estimado)
@@ -389,6 +393,7 @@ def confirm_installments(session,user,space,body):
                         {'key':f'cuota:{space}:{item.id}'})
     for item in ordered:
         row=require_installment(session,user,space,item.id,write=True)
+        if row['no_aplica']:raise HTTPException(409,'La cuota no aplica',headers=NO_STORE)
         if not row['estimado']:
             if row['version']==item.version+1 and row['importe']==item.importe:continue
             raise HTTPException(409,'La cuota ya fue confirmada o cambio en otra sesion',headers=NO_STORE)
@@ -408,3 +413,33 @@ def get_drafts(space:UUID,request:Request,response:Response,offset:int=Query(def
 @router.post('/spaces/{space}/installment-confirmations')
 def post_confirmations(space:UUID,body:ConfirmationsInput,request:Request,response:Response):
     return execute(request,response,space,lambda s,u:confirm_installments(s,u,space,body))
+
+
+class SkipInstallmentInput(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    version: StrictInt = Field(ge=1, le=2147483646)
+
+
+def skip_installment(session, user, space, identifier, version):
+    require_member(session, user, space, write=True)
+    session.execute(text('SELECT pg_advisory_xact_lock(hashtextextended(:key,0))'),
+                    {'key': f'cuota:{space}:{identifier}'})
+    row = require_installment(session, user, space, identifier, write=True)
+    if row['no_aplica'] and row['version'] == version + 1:
+        return {'id': str(identifier), 'estado': 'no_aplica', 'version': row['version']}
+    if row['no_aplica'] or row['version'] != version:
+        raise HTTPException(409, 'La cuota cambió en otra sesión', headers=NO_STORE)
+    saved = session.execute(text("""UPDATE public.cuotas
+        SET no_aplica=true, estimado=false, version=version+1
+        WHERE espacio_id=:s AND id=:id AND version=:v RETURNING version"""),
+        {'s': space, 'id': identifier, 'v': version}).scalar_one_or_none()
+    if saved is None:
+        raise HTTPException(409, 'No se puede marcar una cuota con pagos como no aplicable', headers=NO_STORE)
+    return {'id': str(identifier), 'estado': 'no_aplica', 'version': saved}
+
+
+@router.post('/spaces/{space}/installments/{identifier}/skip')
+def post_installment_skip(space: UUID, identifier: UUID, body: SkipInstallmentInput,
+                          request: Request, response: Response):
+    return execute(request, response, space,
+                   lambda session, user: skip_installment(session, user, space, identifier, body.version))

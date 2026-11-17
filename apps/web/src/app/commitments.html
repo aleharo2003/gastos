@@ -39,16 +39,17 @@
     @if(appliedMonth()){
       <p>Mostrando vencimientos de {{ appliedMonth().split('-').reverse().join('/') }}.</p>
       <ul class="monthly-totals">@for(t of monthTotals();track t.moneda){<li>
-        <strong>{{ t.moneda }} · {{ t.cuotas_pagadas }} de {{ t.cuotas }} cuotas completas</strong>
+        <strong>{{ t.moneda }} · {{ t.cuotas_pagadas }} de {{ t.cuotas-(t.no_aplican??0) }} cuotas aplicables pagadas</strong>
         <p>Comprometido: {{ hidden()?'••••':showAmount(t.total) }} · Pagado: {{ hidden()?'••••':showAmount(t.pagado) }}</p>
         <p>Pendiente: {{ hidden()?'••••':showAmount(t.pendiente) }} · <span class="overdue-text">Vencido: {{ hidden()?'••••':showAmount(t.vencido) }}</span></p>
+        @if(t.no_aplican){<p>Cuotas que no aplican: {{ t.no_aplican }}</p>}
         @if(t.borradores){<p>{{ t.borradores }} cuotas estimadas incluidas en los totales: {{ hidden()?'••••':showAmount(t.estimado!) }} {{ t.moneda }}.</p>}
       </li>}</ul>
       <p>No se suman monedas distintas. Lo vencido forma parte de lo pendiente.</p>
       @if(!monthTotals().length){<p>No hay cuotas con vencimiento en este mes.</p>}
       <ul>@for(q of monthItems();track q.id){<li [class.overdue]="q.vencida">
         <strong>{{ q.nombre }} · Cuota {{ q.numero }}</strong>
-        <p>{{ q.vencimiento.split('-').reverse().join('/') }} · {{ q.estimado?'Monto estimado (sin confirmar)':q.estado==='pagada'?'Pagada':q.estado==='parcial'?'Pago parcial':'Pendiente' }}{{ q.vencida?' · Vencida':'' }}</p>
+        <p>{{ q.vencimiento.split('-').reverse().join('/') }} · {{ q.estado==='no_aplica'?'No aplica':q.estimado?'Monto estimado (sin confirmar)':q.estado==='pagada'?'Pagada':q.estado==='parcial'?'Pago parcial':'Pendiente' }}{{ q.vencida?' · Vencida':'' }}</p>
         <p>{{ q.moneda }} {{ hidden()?'••••':showAmount(q.importe) }} · Falta: {{ hidden()?'••••':showAmount(q.pendiente) }}</p>
         <button type="button" class="secondary" (click)="openMonthly(q)" [disabled]="paying()||saving()||detailLoading()">Ver cuota y pagos</button>
       </li>}</ul>
@@ -79,8 +80,9 @@
   @if(loading()){<p role="status">Cargando deudas…</p>}
   @if(!items().length&&!loading()){<p>Todavía no hay deudas registradas.</p>}
   <ul>@for(item of items();track item.id){<li><strong>{{ item.nombre }}</strong>@if(item.variable){<p>Importe variable · Revisá los estimados antes de pagar.</p>}
-    @if(item.total_cuotas!==null){<p>{{ item.cuotas_pagadas }} de {{ item.total_cuotas }} cuotas pagadas · {{ item.total_cuotas-item.cuotas_pagadas }} por completar</p>}
+    @if(item.total_cuotas!==null){<p>{{ item.cuotas_pagadas }} de {{ item.total_cuotas }} cuotas pagadas · {{ item.total_cuotas-item.cuotas_pagadas-(item.cuotas_no_aplican??0) }} por completar</p>}
     @else{<p>{{ item.cuotas_pagadas }} cuotas pagadas · Sin fecha final · {{ item.pausado?'Pausado':'Activo' }}</p>}
+    @if(item.cuotas_no_aplican){<p>Cuotas que no aplican: {{ item.cuotas_no_aplican }}</p>}
     <p>{{ item.total_cuotas===null?'Total generado hasta ahora':'Total' }}: {{ item.moneda }} {{ hidden()?'••••':showAmount(item.total) }} · Pagado: {{ hidden()?'••••':showAmount(item.pagado) }} · Pendiente: {{ hidden()?'••••':showAmount(item.pendiente) }}</p>
     <p>{{ item.proximo_vencimiento?'Próximo pendiente: '+item.proximo_vencimiento!.split('-').reverse().join('/'):(item.total_cuotas===null?'Sin cuotas pendientes generadas':'Deuda saldada') }}</p>
     @if(item.total_cuotas===null){<button type="button" class="secondary" (click)="pause(item)" [disabled]="paying()||saving()||loading()||detailLoading()">{{ item.pausado?'Reactivar gasto mensual':'Pausar gasto mensual' }}</button>}
@@ -94,9 +96,9 @@
     @if(!detailLoading()&&!installments().length){<p>Todavía no hay cuotas generadas para este plan.</p>}
     <ul>@for(item of installments();track item.id){<li [class.overdue]="item.vencida">
       <strong>Cuota {{ item.numero }} @if(debt.total_cuotas!==null){<span>de {{ debt.total_cuotas }}</span>}</strong>
-      <p>{{ item.vencimiento.split('-').reverse().join('/') }} · {{ item.estimado?'Monto estimado (sin confirmar)':item.estado==='pagada'?'Pagada':item.estado==='parcial'?'Pago parcial':'Pendiente' }}{{ item.vencida?' · Vencida':'' }}</p>
+      <p>{{ item.vencimiento.split('-').reverse().join('/') }} · {{ item.estado==='no_aplica'?'No aplica':item.estimado?'Monto estimado (sin confirmar)':item.estado==='pagada'?'Pagada':item.estado==='parcial'?'Pago parcial':'Pendiente' }}{{ item.vencida?' · Vencida':'' }}</p>
       <p>{{ debt.moneda }} {{ hidden()?'••••':showAmount(item.importe) }} · Falta: {{ hidden()?'••••':showAmount(item.pendiente) }}</p>
-      <button type="button" class="secondary" (click)="selectQuota(item)" [disabled]="paying()||saving()||detailLoading()">Ver pagos{{ item.estado!=='pagada'?' / pagar':'' }}</button>
+      <button type="button" class="secondary" (click)="selectQuota(item)" [disabled]="paying()||saving()||detailLoading()">Ver pagos{{ item.estado!=='pagada'&&item.estado!=='no_aplica'&&!item.estimado?' / pagar':'' }}</button>
     </li>}</ul>
     <div class="actions">
       @if(installmentOffset>0){<button type="button" class="secondary" (click)="loadInstallments(installmentOffset-100)" [disabled]="detailLoading()||paying()">Cuotas anteriores</button>}
@@ -106,7 +108,11 @@
     @if(quota();as installment){
       <h4>Pagos de la cuota {{ installment.numero }}</h4>
       @if(installment.estimado){<p>Esta cuota tiene un monto estimado. Revisalo en «Montos por confirmar» antes de pagar.</p>}
-      @if(!installment.estimado&&installment.estado!=='pagada'&&!hidden()){
+      @if(installment.pagado==='0.00'&&installment.estado!=='no_aplica'){
+        <button type="button" class="secondary" (click)="skipInstallment(installment)"
+          [disabled]="saving()||paying()||draftDirty">Marcar como «No aplica»</button>
+      }
+      @if(!installment.estimado&&installment.estado!=='pagada'&&installment.estado!=='no_aplica'&&!hidden()){
         <p>Pendiente: {{ debt.moneda }} {{ showAmount(installment.pendiente) }}. Podés pagar una parte o completar la cuota.</p>
         <form #paymentForm="ngForm" (ngSubmit)="pay()">
           <label for="payment-account">Cuenta desde la que pagaste</label><select id="payment-account" name="paymentAccount" [(ngModel)]="payAccount" (ngModelChange)="payDirty=true" required [disabled]="paying()"><option value="">Elegí una cuenta</option>@for(a of accounts;track a.id){<option [value]="a.id">{{ a.nombre }}</option>}</select>

@@ -8,7 +8,7 @@ describe('Deudas y pagos HTTP',()=>{
   let app:INestApplication;let remote:ReturnType<typeof vi.fn>;
   const space=randomUUID(),id=randomUUID(),account=randomUUID(),quota=randomUUID(),base=`/api/spaces/${space}`;
   const payload={id,cuenta_id:account,nombre:'Casa',moneda:'USD',importe:'250.00',categoria:'vivienda',primer_vencimiento:'2026-11-30',total_cuotas:10};
-  const row={...payload,variable:false,pausado:false,version:1,espacio_id:space,cuotas_pagadas:0,total:'2500.00',pagado:'0.00',pendiente:'2500.00',proximo_vencimiento:'2026-11-30'};
+  const row={...payload,variable:false,pausado:false,version:1,espacio_id:space,cuotas_pagadas:0,cuotas_no_aplican:0,total:'2500.00',pagado:'0.00',pendiente:'2500.00',proximo_vencimiento:'2026-11-30'};
   const installment={estimado:false,version:1,id:quota,espacio_id:space,compromiso_id:id,numero:1,vencimiento:'2026-11-30',importe:'250.00',pagado:'30.00',pendiente:'220.00',estado:'parcial',vencida:false};
   const pay={id:randomUUID(),cuenta_id:account,fecha:'2026-11-17',importe:'30.00'};
   const payment={...pay,espacio_id:space,cuota_id:quota,moneda:'USD'};
@@ -58,7 +58,7 @@ describe('Deudas y pagos HTTP',()=>{
     await request(app.getHttpServer()).get(base+'/commitments?offset=-1').set('Authorization','Bearer token').expect(400);
   });
   it('consulta el mes y valida totales, moneda, aislamiento y paginacion',async()=>{
-    const total={borradores:0,estimado:'0.00',moneda:'USD',cuotas:1,cuotas_pagadas:0,total:'250.00',pagado:'30.00',pendiente:'220.00',vencido:'0.00'};
+    const total={no_aplican:0,borradores:0,estimado:'0.00',moneda:'USD',cuotas:1,cuotas_pagadas:0,total:'250.00',pagado:'30.00',pendiente:'220.00',vencido:'0.00'};
     const item={...installment,nombre:'Casa',cuenta_id:account,moneda:'USD'};
     const page={mes:'2026-11',items:[item],totales:[total],next_offset:null};
     const url=base+'/installments?month=2026-11&offset=0';
@@ -132,4 +132,13 @@ describe('Deudas y pagos HTTP',()=>{
     await request(app.getHttpServer()).get(base+'/commitments').set('Authorization','Bearer token').expect(200).expect({items:[paid],next_offset:null});
   });
 
+  it('marca una cuota como no aplicable y valida el acuse de la API',async()=>{
+    const result={id:quota,estado:'no_aplica',version:2};
+    const url=base+'/installments/'+quota+'/skip';
+    remote.mockImplementation(async()=>new Response(JSON.stringify(result)));
+    await request(app.getHttpServer()).post(url).set('Authorization','Bearer token').send({version:1}).expect(200).expect(result);
+    await request(app.getHttpServer()).post(url).set('Authorization','Bearer token').send({version:1,importe:'0'}).expect(400);
+    remote.mockImplementation(async()=>new Response(JSON.stringify({...result,version:3})));
+    await request(app.getHttpServer()).post(url).set('Authorization','Bearer token').send({version:1}).expect(502);
+  });
 });

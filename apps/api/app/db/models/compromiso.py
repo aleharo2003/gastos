@@ -49,6 +49,7 @@ class Cuota(Base):
     id:Mapped[UUID]=mapped_column(Uuid,primary_key=True)
     espacio_id:Mapped[UUID]=mapped_column(Uuid,nullable=False)
     compromiso_id:Mapped[UUID]=mapped_column(Uuid,nullable=False)
+    no_aplica:Mapped[bool]=mapped_column(Boolean,nullable=False,server_default='false')
     estimado:Mapped[bool]=mapped_column(Boolean,nullable=False,server_default='false')
     version:Mapped[int]=mapped_column(Integer,nullable=False,server_default='1')
     numero:Mapped[int]=mapped_column(Integer,nullable=False)

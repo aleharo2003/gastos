@@ -13,7 +13,7 @@ const cents=(v:string)=>{const [whole,fraction='']=v.split('.');return BigInt(wh
 type Create={variable?:boolean;id:string;cuenta_id:string;nombre:string;moneda:string;importe:string;categoria?:string|null;primer_vencimiento:string;total_cuotas:number|null};
 type Confirm={items:{id:string;importe:string;version:number}[]};
 type Pay={id:string;cuenta_id:string;fecha:string;importe:string};
-type Commitment=Create & {variable:boolean;pausado:boolean;version:number;espacio_id:string;cuotas_pagadas:number;total:string;pagado:string;pendiente:string;proximo_vencimiento:string|null};
+type Commitment=Create & {variable:boolean;pausado:boolean;version:number;espacio_id:string;cuotas_pagadas:number;cuotas_no_aplican:number;total:string;pagado:string;pendiente:string;proximo_vencimiento:string|null};
 type Installment={estimado:boolean;version:number;id:string;espacio_id:string;compromiso_id:string;numero:number;vencimiento:string;importe:string;pagado:string;pendiente:string;estado:string;vencida:boolean};
 type Payment=Pay & {espacio_id:string;cuota_id:string;moneda:string};
 function validCreate(v:unknown):v is Create{
@@ -28,19 +28,19 @@ function validPay(v:unknown):v is Pay{
 }
 function commitment(v:unknown,space:string):Commitment{
   const r=v as Commitment;
-  if(!validCreate(r)||r.espacio_id!==space||!Number.isInteger(r.cuotas_pagadas)||r.cuotas_pagadas<0||(r.total_cuotas!==null&&r.cuotas_pagadas>r.total_cuotas)||typeof r.variable!=='boolean'||typeof r.pausado!=='boolean'||!Number.isSafeInteger(r.version)||r.version<1||
-    !sum(r.total)||!sum(r.pagado)||!sum(r.pendiente)||(r.total_cuotas!==null&&cents(r.total)!==cents(r.importe)*BigInt(r.total_cuotas))||
+  if(!validCreate(r)||r.espacio_id!==space||!Number.isInteger(r.cuotas_pagadas)||r.cuotas_pagadas<0||(r.total_cuotas!==null&&r.cuotas_pagadas+r.cuotas_no_aplican>r.total_cuotas)||!Number.isSafeInteger(r.cuotas_no_aplican)||r.cuotas_no_aplican<0||typeof r.variable!=='boolean'||typeof r.pausado!=='boolean'||!Number.isSafeInteger(r.version)||r.version<1||
+    !sum(r.total)||!sum(r.pagado)||!sum(r.pendiente)||(r.total_cuotas!==null&&cents(r.total)!==cents(r.importe)*BigInt(r.total_cuotas-r.cuotas_no_aplican))||
     cents(r.pagado)+cents(r.pendiente)!==cents(r.total)||!(r.proximo_vencimiento===null||date(r.proximo_vencimiento))||
     (cents(r.pendiente)===0n)!==(r.proximo_vencimiento===null)||(!r.variable&&BigInt(r.cuotas_pagadas)*cents(r.importe)>cents(r.pagado)))throw new Error();
   return {variable:r.variable,id:r.id,espacio_id:space,cuenta_id:r.cuenta_id,nombre:r.nombre,moneda:r.moneda,importe:r.importe,categoria:r.categoria??null,
-    primer_vencimiento:r.primer_vencimiento,total_cuotas:r.total_cuotas,pausado:r.pausado,version:r.version,cuotas_pagadas:r.cuotas_pagadas,total:r.total,pagado:r.pagado,pendiente:r.pendiente,proximo_vencimiento:r.proximo_vencimiento};
+    primer_vencimiento:r.primer_vencimiento,total_cuotas:r.total_cuotas,pausado:r.pausado,version:r.version,cuotas_no_aplican:r.cuotas_no_aplican,cuotas_pagadas:r.cuotas_pagadas,total:r.total,pagado:r.pagado,pendiente:r.pendiente,proximo_vencimiento:r.proximo_vencimiento};
 }
 function installment(v:unknown,space:string,id:string):Installment{
   const r=v as Installment;
   if(!r||!validId(r.id)||r.espacio_id!==space||r.compromiso_id!==id||!Number.isInteger(r.numero)||r.numero<1||r.numero>119988||
-    !date(r.vencimiento)||!amount(r.importe)||!sum(r.pagado)||!sum(r.pendiente)||cents(r.pagado)+cents(r.pendiente)!==cents(r.importe)||
+    !date(r.vencimiento)||!amount(r.importe)||!sum(r.pagado)||!sum(r.pendiente)||(r.estado==='no_aplica'?(r.pagado!=='0.00'||r.pendiente!=='0.00'||r.estimado||r.vencida):cents(r.pagado)+cents(r.pendiente)!==cents(r.importe))||
     typeof r.estimado!=='boolean'||!Number.isInteger(r.version)||r.version<1||
-    (r.estimado&&r.pagado!=='0.00')||r.estado!==(r.estimado?'borrador':cents(r.pendiente)===0n?'pagada':cents(r.pagado)>0n?'parcial':'pendiente')||typeof r.vencida!=='boolean'||(r.estado==='pagada'&&r.vencida))throw new Error();
+    (r.estimado&&r.pagado!=='0.00')||(r.estado!=='no_aplica'&&r.estado!==(r.estimado?'borrador':cents(r.pendiente)===0n?'pagada':cents(r.pagado)>0n?'parcial':'pendiente'))||typeof r.vencida!=='boolean'||(r.estado==='pagada'&&r.vencida))throw new Error();
   return {estimado:r.estimado,version:r.version,id:r.id,espacio_id:space,compromiso_id:id,numero:r.numero,vencimiento:r.vencimiento,importe:r.importe,pagado:r.pagado,pendiente:r.pendiente,estado:r.estado,vencida:r.vencida};
 }
 function payment(v:unknown,space:string,id:string):Payment{
@@ -48,7 +48,7 @@ function payment(v:unknown,space:string,id:string):Payment{
   return {id:r.id,espacio_id:space,cuota_id:id,cuenta_id:r.cuenta_id,fecha:r.fecha,moneda:r.moneda,importe:r.importe};
 }
 type MonthlyItem=Installment & {nombre:string;moneda:string;cuenta_id:string};
-type MonthlyTotal={borradores:number;estimado:string;moneda:string;cuotas:number;cuotas_pagadas:number;total:string;pagado:string;pendiente:string;vencido:string};
+type MonthlyTotal={no_aplican:number;borradores:number;estimado:string;moneda:string;cuotas:number;cuotas_pagadas:number;total:string;pagado:string;pendiente:string;vencido:string};
 function validMonth(value:unknown):value is string{
   return typeof value==='string'&&/^[0-9]{4}-(0[1-9]|1[0-2])$/.test(value)&&!value.startsWith('0000');
 }
@@ -60,10 +60,10 @@ function monthlyPage(value:unknown,space:string,month:string,offset:number){
   const totales=page.totales.map(t=>{
     if(!t||!currencies.includes(t.moneda)||seen.has(t.moneda)||!Number.isSafeInteger(t.cuotas)||t.cuotas<1||
       !Number.isSafeInteger(t.cuotas_pagadas)||t.cuotas_pagadas<0||t.cuotas_pagadas>t.cuotas||
-      !Number.isInteger(t.borradores)||t.borradores<0||t.borradores>t.cuotas||!sum(t.estimado)||
+      !Number.isSafeInteger(t.no_aplican)||t.no_aplican<0||t.no_aplican+t.cuotas_pagadas+t.borradores>t.cuotas||!Number.isInteger(t.borradores)||t.borradores<0||t.borradores>t.cuotas||!sum(t.estimado)||
       cents(t.estimado)>cents(t.pendiente)||!sum(t.total)||!sum(t.pagado)||!sum(t.pendiente)||!sum(t.vencido)||
       cents(t.total)!==cents(t.pagado)+cents(t.pendiente)||cents(t.vencido)>cents(t.pendiente))throw new Error();
-    seen.add(t.moneda);return {borradores:t.borradores,estimado:t.estimado,moneda:t.moneda,cuotas:t.cuotas,cuotas_pagadas:t.cuotas_pagadas,total:t.total,pagado:t.pagado,pendiente:t.pendiente,vencido:t.vencido};
+    seen.add(t.moneda);return {no_aplican:t.no_aplican,borradores:t.borradores,estimado:t.estimado,moneda:t.moneda,cuotas:t.cuotas,cuotas_pagadas:t.cuotas_pagadas,total:t.total,pagado:t.pagado,pendiente:t.pendiente,vencido:t.vencido};
   });
   const ids=new Set<string>();
   const items=page.items.map(t=>{
@@ -77,6 +77,20 @@ function monthlyPage(value:unknown,space:string,month:string,offset:number){
 @Controller('api/spaces/:space')
 export class CommitmentsController{
   constructor(private readonly auth:AuthService){}
+  @Post('installments/:id/skip')
+  @HttpCode(200)
+  async skip(@Param('space') space:string,@Param('id') id:string,@Body() body:unknown,
+             @Req() req:Request,@Res({passthrough:true}) res:Response){
+    res.setHeader('Cache-Control','no-store');
+    const token=await this.token(req,res);
+    const value=body as {version:number};
+    if(!validId(id)||!value||Object.keys(value).length!==1||
+       !Number.isInteger(value.version)||value.version<1||value.version>2147483646){
+      throw new BadRequestException('Version invalida');
+    }
+    return this.forward(token,space,'skip',id.toLowerCase(),0,{version:value.version});
+  }
+
   @Get('installment-drafts')
   async drafts(@Param('space') space:string,@Query() query:Record<string,unknown>,@Req() req:Request,@Res({passthrough:true}) res:Response){
     res.setHeader('Cache-Control','no-store');const token=await this.token(req,res);
@@ -164,18 +178,23 @@ export class CommitmentsController{
 
 
 
-  private async forward(token:string,rawSpace:string,kind:'commitments'|'installments'|'payments'|'monthly'|'detail'|'pause'|'drafts'|'confirm',id:string|undefined,offset=0,body?:Create|Pay|Confirm|{pausado:boolean;version:number},month?:string){
+  private async forward(token:string,rawSpace:string,kind:'commitments'|'installments'|'payments'|'monthly'|'detail'|'pause'|'drafts'|'confirm'|'skip',id:string|undefined,offset=0,body?:Create|Pay|Confirm|{version:number}|{pausado:boolean;version:number},month?:string){
     if(!UUID.test(rawSpace))throw new BadRequestException('Espacio invalido');const space=rawSpace.toLowerCase();
     try{
       const base=new URL(process.env.API_BASE_URL??'http://127.0.0.1:8000'),local=['localhost','127.0.0.1','[::1]','api'].includes(base.hostname);
       if(base.username||base.password||base.search||base.hash||base.pathname!=='/'||(base.protocol!=='https:'&&!(base.protocol==='http:'&&local)))throw new Error();
       const rawTimeout=process.env.API_TIMEOUT_MS??'5000',timeout=Number(rawTimeout);
       if(!/^\d+$/.test(rawTimeout)||!Number.isSafeInteger(timeout)||timeout<1||timeout>2147483647)throw new Error();
-      const suffix=kind==='drafts'?'installment-drafts':kind==='confirm'?'installment-confirmations':(kind==='detail'||kind==='pause')?`commitments/${id}`:kind==='monthly'?'installments':kind==='commitments'?'commitments':kind==='installments'?`commitments/${id}/installments`:`installments/${id}/payments`;
+      const suffix=kind==='skip'?`installments/${id}/skip`:kind==='drafts'?'installment-drafts':kind==='confirm'?'installment-confirmations':(kind==='detail'||kind==='pause')?`commitments/${id}`:kind==='monthly'?'installments':kind==='commitments'?'commitments':kind==='installments'?`commitments/${id}/installments`:`installments/${id}/payments`;
       const result=await fetch(new URL(`/spaces/${space}/${suffix}?offset=${offset}${kind==='monthly'?'&month='+month:''}`,base),{method:kind==='pause'?'PATCH':body?'POST':'GET',redirect:'error',signal:AbortSignal.timeout(timeout),
         headers:{Accept:'application/json',Authorization:`Bearer ${token}`,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
       if([400,401,403,404,409,422,503].includes(result.status))throw new HttpException('No se pudo completar la operacion',result.status);
       if(!result.ok)throw new Error();const data=await boundedJson(result,262144);
+      if(kind==='skip'){
+        const row=data as {id:string;estado:string;version:number};
+        if(!row||row.id!==id||row.estado!=='no_aplica'||row.version!==(body as {version:number}).version+1)throw new Error();
+        return {id:row.id,estado:row.estado,version:row.version};
+      }
       if(kind==='confirm'){
         const ids=(data as {confirmadas:string[]})?.confirmadas,input=body as Confirm;
         if(!Array.isArray(ids)||ids.length!==input.items.length||ids.some((id,index)=>id!==input.items[index].id))throw new Error();

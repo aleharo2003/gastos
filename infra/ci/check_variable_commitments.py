@@ -2,6 +2,7 @@
 from calendar import monthrange
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
+from decimal import Decimal
 from uuid import UUID,uuid4
 from zoneinfo import ZoneInfo
 from sqlalchemy import create_engine,text
@@ -9,7 +10,7 @@ from sqlalchemy.exc import DBAPIError
 from fastapi import HTTPException
 from app.accounts import AccountInput,create_account
 from app.commitments import (CommitmentInput,PaymentInput,ConfirmationsInput,create_commitment,
-    list_installments,list_drafts,confirm_installments,pay_installment,monthly_installments,seed_current_installment)
+    list_installments,list_drafts,confirm_installments,pay_installment,monthly_installments,seed_current_installment,skip_installment)
 from app.db.connection import create_runtime_engine,create_migration_engine
 from app.db.unit_of_work import runtime_transaction
 
@@ -103,6 +104,25 @@ def check_variable_commitments(runtime_url,migration_url,jobs_url):
         assert quotas(plans[2]['id'])[0]['estado']=='pagada'
         # Las cuotas confirmadas son inmutables tambien para runtime SQL.
         assert call(lambda s,u,w:s.execute(text('UPDATE public.cuotas SET estimado=true WHERE id=:id'),{'id':current['id']}).rowcount)==0
+        skipped=UUID(quotas(plans[3]['id'])[0]['id'])
+        def skip(identifier=skipped, version=1, who=owner):
+            return call(lambda s,u,w:skip_installment(s,u,w,identifier,version),who)
+        denied(lambda:skip(who=reader),403)
+        denied(lambda:skip(UUID(a),2),409)
+        denied(lambda:skip(UUID(foreign_quota)),404)
+        before_skip=call(lambda s,u,w:monthly_installments(s,u,w,month))['totales'][0]
+        result=skip()
+        assert result=={'id':str(skipped),'estado':'no_aplica','version':2} and skip()==result
+        row=quotas(plans[3]['id'])[0]
+        assert row['importe']=='100.00' and row['pendiente']=='0.00' and not row['vencida']
+        assert not row['estimado'] and row['estado']=='no_aplica'
+        assert drafts()['borradores']==98
+        denied(lambda:confirm(batch([(skipped,'100',1)])),409)
+        denied(lambda:call(lambda s,u,w:pay_installment(s,u,w,skipped,pay)),409)
+        after_skip=call(lambda s,u,w:monthly_installments(s,u,w,month))['totales'][0]
+        assert after_skip['no_aplican']==1 and after_skip['pagado']==before_skip['pagado']
+        assert Decimal(before_skip['pendiente'])-Decimal(after_skip['pendiente'])==100
+        print('OK: cuota no aplicable conservada, reintento, totales, borradores y proteccion de pagos.',flush=True)
         print('OK: variables, >100 borradores, montos previos, confirmacion atomica concurrente, rollback, lector, aislamiento, pago posterior e inmutabilidad.',flush=True)
     finally:
         with migrator.begin() as conn:

@@ -125,3 +125,14 @@ class VariableCommitmentTests(unittest.TestCase):
         self.assertEqual(client.get(path+'/installment-drafts').status_code,401)
         body={'items':[{'id':str(uuid4()),'importe':'100','version':1}]}
         self.assertEqual(client.post(path+'/installment-confirmations',json=body).status_code,401)
+
+
+class NonApplicableInstallmentTests(unittest.TestCase):
+    def test_keeps_original_amount_without_pending_or_overdue_balance(self):
+        row = CommitmentTests().row()
+        row.update(no_aplica=True, estimado=False, version=2)
+        result = public_installment(row, date(2026, 11, 18))
+        self.assertEqual(result['estado'], 'no_aplica')
+        self.assertEqual(result['importe'], format(row['importe'], '.2f'))
+        self.assertEqual(result['pendiente'], '0.00')
+        self.assertFalse(result['vencida'])
