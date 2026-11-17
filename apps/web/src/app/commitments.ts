@@ -5,12 +5,12 @@ import { AuthSession } from './auth-session';
 import { Receipts } from './receipts';
 import { normalizeAmount,showAmount } from './expenses';
 import { cents,money } from './money-reference';
-export type Commitment={variable?:boolean;pausado?:boolean;version?:number;id:string;espacio_id:string;cuenta_id:string;nombre:string;moneda:string;importe:string;categoria:string|null;
+export type Commitment={cuotas_no_aplican?:number;variable?:boolean;pausado?:boolean;version?:number;id:string;espacio_id:string;cuenta_id:string;nombre:string;moneda:string;importe:string;categoria:string|null;
   primer_vencimiento:string;total_cuotas:number|null;cuotas_pagadas:number;total:string;pagado:string;pendiente:string;proximo_vencimiento:string|null};
 export type Installment={estimado?:boolean;version?:number;id:string;espacio_id:string;compromiso_id:string;numero:number;vencimiento:string;importe:string;pagado:string;pendiente:string;estado:string;vencida:boolean};
 export type Payment={id:string;espacio_id:string;cuota_id:string;cuenta_id:string;fecha:string;moneda:string;importe:string};
 export type MonthlyItem=Installment & {nombre:string;moneda:string;cuenta_id:string};
-export type MonthlyTotal={borradores?:number;estimado?:string;moneda:string;cuotas:number;cuotas_pagadas:number;total:string;pagado:string;pendiente:string;vencido:string};
+export type MonthlyTotal={no_aplican?:number;borradores?:number;estimado?:string;moneda:string;cuotas:number;cuotas_pagadas:number;total:string;pagado:string;pendiente:string;vencido:string};
 export type MonthlyPage={mes:string;items:MonthlyItem[];totales:MonthlyTotal[];next_offset:number|null};
 type Create={variable:boolean;id:string;cuenta_id:string;nombre:string;moneda:string;importe:string;categoria:string|null;primer_vencimiento:string;total_cuotas:number|null};
 type Pay={id:string;cuenta_id:string;fecha:string;importe:string};
@@ -210,8 +210,36 @@ export class Commitments implements OnChanges{
     finally{if(this.alive&&context===this.context)this.saving.set(false);}
     if(saved&&this.alive&&context===this.context){await this.loadMonth();if(this.selected()?.id===item.id)await this.loadInstallments();}
   }
+  async skipInstallment(item:Installment){
+    if(this.saving()||this.paying()||this.detailLoading()||!this.canLeave()||
+       this.draftDirty||item.pagado!=='0.00'||item.estado==='no_aplica')return;
+    if(!window.confirm('¿Marcar esta cuota como «No aplica»? Se conservará en el historial y quedará cerrada para pagos.'))return;
+    const context=this.context;
+    this.saving.set(true);
+    this.error.set('');
+    let saved=false;
+    try{
+      await this.auth.accountRequest('POST',this.path+'/installments/'+encodeURIComponent(item.id)+'/skip',
+        {version:item.version??1});
+      if(!this.alive||context!==this.context)return;
+      this.cancelPayment();
+      this.notice.set('Cuota marcada como «No aplica».');
+      saved=true;
+    }catch(error){
+      if(this.alive&&context===this.context){
+        this.error.set(error instanceof HttpErrorResponse&&error.status===409
+          ?'La cuota tiene pagos o cambió en otra sesión. Actualizá el listado.'
+          :'No pudimos confirmar el cambio. Podés reintentar con la misma cuota.');
+      }
+    }finally{
+      if(this.alive&&context===this.context)this.saving.set(false);
+    }
+    if(saved&&this.alive&&context===this.context){
+      await Promise.all([this.load(),this.loadMonth(),this.loadDrafts(0),this.loadInstallments()]);
+    }
+  }
   async pay(){
-    const quota=this.quota();if(quota?.estimado){this.error.set('Confirmá el monto estimado antes de registrar pagos.');return;}if(!quota||this.paying()||this.detailLoading()||this.saving()||this.receiptBusy())return;
+    const quota=this.quota();if(quota?.estado==='no_aplica')return;if(quota?.estimado){this.error.set('Confirmá el monto estimado antes de registrar pagos.');return;}if(!quota||this.paying()||this.detailLoading()||this.saving()||this.receiptBusy())return;
     const importe=normalizeAmount(this.payAmount);
     if(!importe||!this.payDate||!this.accounts.some(a=>a.id===this.payAccount)||cents(importe)>cents(quota.pendiente)){this.error.set('Elegí una cuenta y un importe positivo que no supere el saldo de la cuota.');return;}
     const value={cuenta_id:this.payAccount,fecha:this.payDate,importe};
