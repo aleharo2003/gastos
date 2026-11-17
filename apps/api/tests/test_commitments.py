@@ -91,10 +91,37 @@ class RecurringCommitmentTests(unittest.TestCase):
 
     def test_indefinite_totals_are_only_generated_installments(self):
         from app.commitments import public_commitment
-        row=dict(id=uuid4(),espacio_id=uuid4(),cuenta_id=uuid4(),nombre='Servicio',moneda='ARS',
+        row=dict(variable=False,id=uuid4(),espacio_id=uuid4(),cuenta_id=uuid4(),nombre='Servicio',moneda='ARS',
             importe=Decimal('100'),categoria=None,primer_vencimiento=date(2026,11,30),total_cuotas=None,
             cuotas_pagadas=1,pagado=Decimal('130'),total_generado=Decimal('200'),
             proximo_vencimiento=date(2026,12,30),pausado=False,version=2)
         result=public_commitment(row)
         self.assertEqual((result['total'],result['pagado'],result['pendiente']),('200.00','130.00','70.00'))
         self.assertIsNone(result['total_cuotas'])
+
+
+class VariableCommitmentTests(unittest.TestCase):
+    def test_variable_is_strict_and_only_indefinite(self):
+        values=CommitmentTests().payload(total_cuotas=None,variable=True)
+        self.assertTrue(CommitmentInput(**values).variable)
+        for changes in ({'variable':'true'},{'total_cuotas':10}):
+            with self.assertRaises(ValidationError):CommitmentInput(**(values|changes))
+
+    def test_batch_validation(self):
+        from app.commitments import ConfirmationsInput
+        item=dict(id=str(uuid4()),importe='100.10',version=1)
+        self.assertEqual(ConfirmationsInput(items=[item]).items[0].importe,Decimal('100.10'))
+        for items in ([],[item,item],[item]*101,[item|{'importe':100}],[item|{'version':True}],[item|{'moneda':'USD'}]):
+            with self.assertRaises(ValidationError):ConfirmationsInput(items=items)
+
+    def test_draft_is_distinct_from_pending(self):
+        row=CommitmentTests().row()
+        row.update(estimado=True,version=1)
+        result=public_installment(row,date(2026,11,17))
+        self.assertEqual((result['estado'],result['estimado'],result['version']),('borrador',True,1))
+
+    def test_draft_routes_require_identity(self):
+        app=FastAPI();app.include_router(router);client=TestClient(app);path=f'/spaces/{uuid4()}'
+        self.assertEqual(client.get(path+'/installment-drafts').status_code,401)
+        body={'items':[{'id':str(uuid4()),'importe':'100','version':1}]}
+        self.assertEqual(client.post(path+'/installment-confirmations',json=body).status_code,401)

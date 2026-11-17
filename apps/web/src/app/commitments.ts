@@ -5,14 +5,14 @@ import { AuthSession } from './auth-session';
 import { Receipts } from './receipts';
 import { normalizeAmount,showAmount } from './expenses';
 import { cents,money } from './money-reference';
-export type Commitment={pausado?:boolean;version?:number;id:string;espacio_id:string;cuenta_id:string;nombre:string;moneda:string;importe:string;categoria:string|null;
+export type Commitment={variable?:boolean;pausado?:boolean;version?:number;id:string;espacio_id:string;cuenta_id:string;nombre:string;moneda:string;importe:string;categoria:string|null;
   primer_vencimiento:string;total_cuotas:number|null;cuotas_pagadas:number;total:string;pagado:string;pendiente:string;proximo_vencimiento:string|null};
-export type Installment={id:string;espacio_id:string;compromiso_id:string;numero:number;vencimiento:string;importe:string;pagado:string;pendiente:string;estado:string;vencida:boolean};
+export type Installment={estimado?:boolean;version?:number;id:string;espacio_id:string;compromiso_id:string;numero:number;vencimiento:string;importe:string;pagado:string;pendiente:string;estado:string;vencida:boolean};
 export type Payment={id:string;espacio_id:string;cuota_id:string;cuenta_id:string;fecha:string;moneda:string;importe:string};
 export type MonthlyItem=Installment & {nombre:string;moneda:string;cuenta_id:string};
-export type MonthlyTotal={moneda:string;cuotas:number;cuotas_pagadas:number;total:string;pagado:string;pendiente:string;vencido:string};
+export type MonthlyTotal={borradores?:number;estimado?:string;moneda:string;cuotas:number;cuotas_pagadas:number;total:string;pagado:string;pendiente:string;vencido:string};
 export type MonthlyPage={mes:string;items:MonthlyItem[];totales:MonthlyTotal[];next_offset:number|null};
-type Create={id:string;cuenta_id:string;nombre:string;moneda:string;importe:string;categoria:string|null;primer_vencimiento:string;total_cuotas:number|null};
+type Create={variable:boolean;id:string;cuenta_id:string;nombre:string;moneda:string;importe:string;categoria:string|null;primer_vencimiento:string;total_cuotas:number|null};
 type Pay={id:string;cuenta_id:string;fecha:string;importe:string};
 const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Argentina/Buenos_Aires',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 @Component({selector:'app-commitments',imports:[FormsModule,Receipts],templateUrl:'./commitments.html',styleUrl:'./commitments.css'})
@@ -22,6 +22,7 @@ export class Commitments implements OnChanges{
   @Input() moreAccounts=false;
   @Input() accountsLoading=false;
   @Output() loadAccounts=new EventEmitter<void>();
+  @Output() draftsChanged=new EventEmitter<number>();
   @Output() changed=new EventEmitter<void>();
   @ViewChild(Receipts) receiptPanel?:Receipts;
   readonly items=signal<Commitment[]>([]);
@@ -45,11 +46,16 @@ export class Commitments implements OnChanges{
   readonly loading=signal(false);readonly detailLoading=signal(false);readonly historyLoading=signal(false);
   readonly saving=signal(false);readonly paying=signal(false);readonly error=signal('');readonly notice=signal('');
   readonly hidden=signal(false);
-  name='';account='';currency='ARS';amount='';category='';first=today();count=10;indefinite=false;
+  name='';account='';currency='ARS';amount='';category='';first=today();count=10;indefinite=false;variable=false;
   payAccount='';payDate=today();payAmount='';payDirty=false;installmentOffset=0;
   readonly showAmount=showAmount;
   readonly categories=[['alimentos','Alimentos'],['transporte','Transporte'],['vivienda','Vivienda'],['servicios','Servicios'],['salud','Salud'],['educacion','Educación'],['ocio','Ocio'],['impuestos','Impuestos'],['auto','Auto'],['bancario','Bancario'],['ropa','Ropa'],['otros','Otros']];
   private readonly auth=inject(AuthSession);private alive=true;private context=0;private detailVersion=0;private historyVersion=0;
+  readonly drafts=signal<MonthlyItem[]>([]);
+  readonly draftCount=signal(0);readonly draftLoading=signal(false);readonly draftError=signal('');
+  readonly draftNext=signal<number|null>(null);draftOffset=0;draftDirty=false;
+  draftValues:Record<string,{amount:string;selected:boolean;version:number}>={};
+  private draftVersion=0;
   private pending?:Create;private payPending?:{quota:string;body:Pay};
   private readonly privacyListener=(event:Event)=>this.hidden.set((event as CustomEvent).detail===true);
   constructor(){
@@ -58,20 +64,59 @@ export class Commitments implements OnChanges{
     inject(DestroyRef).onDestroy(()=>{this.alive=false;this.context++;this.detailVersion++;this.historyVersion++;window.removeEventListener('gastos-privacy',this.privacyListener);});
   }
   ngOnChanges(changes:SimpleChanges){if(changes['space']){
+    this.draftVersion++;this.drafts.set([]);this.draftCount.set(0);this.draftsChanged.emit(0);this.draftNext.set(null);this.draftOffset=0;this.draftValues={};this.draftDirty=false;this.draftLoading.set(false);this.draftError.set('');
     this.context++;this.detailVersion++;this.historyVersion++;this.monthVersion++;this.monthLoading.set(false);this.monthItems.set([]);this.monthTotals.set([]);this.monthNext.set(null);this.appliedMonth.set('');this.monthError.set('');this.month=today().slice(0,7);this.loading.set(false);this.saving.set(false);this.paying.set(false);
     this.detailLoading.set(false);this.historyLoading.set(false);this.items.set([]);this.selected.set(null);this.quota.set(null);
     this.installments.set([]);this.payments.set([]);this.next.set(null);this.nextInstallment.set(null);this.nextPayment.set(null);
-    this.receiptPayment.set(null);this.lastPayment.set(null);this.clear();this.payAmount='';this.payPending=undefined;this.payDirty=false;void this.load();void this.loadMonth();
+    this.receiptPayment.set(null);this.lastPayment.set(null);this.clear();this.payAmount='';this.payPending=undefined;this.payDirty=false;void this.load();void this.loadMonth();void this.loadDrafts();
   }}
   private get path(){return `/api/spaces/${encodeURIComponent(this.space)}`;}
   total(){if(this.indefinite)return null;const amount=normalizeAmount(this.amount);return amount&&Number.isInteger(this.count)&&this.count>=1&&this.count<=600?money(cents(amount)*BigInt(this.count)):null;}
   accountName(id:string){return this.accounts.find(row=>row.id===id)?.nombre??id;}
-  clear(){if(this.saving())return;this.pending=undefined;this.name='';this.amount='';this.category='';this.account='';this.currency='ARS';this.first=today();this.count=10;this.indefinite=false;}
+  clear(){if(this.saving())return;this.pending=undefined;this.name='';this.amount='';this.category='';this.account='';this.currency='ARS';this.first=today();this.count=10;this.indefinite=false;this.variable=false;}
   private receiptBusy(){return !!(this.receiptPanel?.busy()||this.receiptPanel?.selected());}
   private canLeave(){if(this.paying()||this.receiptBusy()||this.payDirty){this.error.set('Terminá o cancelá el pago y los comprobantes pendientes antes de cambiar.');return false;}return true;}
   cancelPayment(){if(this.paying()||this.receiptBusy())return;this.payPending=undefined;this.payDirty=false;this.payAmount='';this.quota.set(null);this.payments.set([]);this.historyVersion++;this.historyLoading.set(false);this.receiptPayment.set(null);this.nextPayment.set(null);}
   receiptPath(p:Payment){return this.path+'/accounts/'+encodeURIComponent(p.cuenta_id)+'/expenses/'+encodeURIComponent(p.id)+'/receipts';}
   receipts(p:Payment){if(this.paying()||this.receiptBusy()){this.error.set('Terminá el comprobante pendiente antes de abrir otro.');return;}this.receiptPayment.set(p);}
+  async loadDrafts(offset=this.draftOffset){
+    if(this.saving()||this.paying())return;
+    if(this.draftDirty){this.draftError.set('Confirmá o descartá los cambios antes de actualizar o cambiar de página.');return;}
+    const context=this.context,version=++this.draftVersion;
+    this.draftLoading.set(true);this.draftError.set('');
+    try{
+      const page=await this.auth.accountRequest<{borradores:number;items:MonthlyItem[];next_offset:number|null}>('GET',this.path+'/installment-drafts?offset='+offset);
+      if(!this.alive||context!==this.context||version!==this.draftVersion)return;
+      if(!Number.isInteger(page.borradores)||!Array.isArray(page.items))throw new Error();
+      this.drafts.set(page.items);this.draftCount.set(page.borradores);this.draftsChanged.emit(page.borradores);
+      this.draftOffset=offset;this.draftNext.set(page.next_offset);
+      this.draftValues=Object.fromEntries(page.items.map(row=>[row.id,{amount:row.importe,selected:true,version:row.version??1}]));
+    }catch{if(this.alive&&context===this.context&&version===this.draftVersion)this.draftError.set('No pudimos cargar los montos estimados.');}
+    finally{if(this.alive&&context===this.context&&version===this.draftVersion)this.draftLoading.set(false);}
+  }
+  async discardDrafts(){if(this.saving()||this.paying())return;this.draftDirty=false;await this.loadDrafts();}
+  async confirmDrafts(){
+    if(this.saving()||this.paying()||this.draftLoading()||!this.canLeave())return;
+    const selected=this.drafts().filter(row=>this.draftValues[row.id]?.selected);
+    if(!selected.length){this.draftError.set('Seleccioná al menos una cuota.');return;}
+    const items=[];
+    for(const row of selected){
+      const value=this.draftValues[row.id],importe=normalizeAmount(value.amount);
+      if(!importe){this.draftError.set('Revisá los importes: deben ser positivos, con hasta dos decimales.');return;}
+      items.push({id:row.id,importe,version:value.version});
+    }
+    const context=this.context;this.saving.set(true);this.draftDirty=true;this.draftError.set('');let saved=false;
+    try{
+      await this.auth.accountRequest('POST',this.path+'/installment-confirmations',{items});
+      if(!this.alive||context!==this.context)return;
+      this.draftDirty=false;this.cancelPayment();this.notice.set('Montos confirmados. Ya podés registrar sus pagos; no se descontó dinero.');saved=true;
+    }catch(error){
+      if(this.alive&&context===this.context)this.draftError.set(error instanceof HttpErrorResponse&&error.status===409
+        ?'El lote cambió en otra sesión. Tus importes se conservan. Descartá y actualizá para revisar el estado antes de confirmar.'
+        :'No pudimos confirmar el lote. Podés reintentar con los mismos datos; no se duplicará la confirmación.');
+    }finally{if(this.alive&&context===this.context)this.saving.set(false);}
+    if(saved&&this.alive&&context===this.context){await this.load();await this.loadMonth();await this.loadDrafts(0);await this.loadInstallments();}
+  }
   async loadMonth(more=false){
     if(this.saving()||this.paying())return;
     const month=more?this.appliedMonth():this.month;
@@ -142,13 +187,13 @@ export class Commitments implements OnChanges{
     if(this.saving()||this.loading()||this.paying())return;
     const importe=normalizeAmount(this.amount),nombre=this.name.trim();
     if(!importe||!nombre||[...nombre].length>160||!this.accounts.some(a=>a.id===this.account)||(!this.indefinite&&(!Number.isInteger(this.count)||this.count<1||this.count>600))||!this.first){this.error.set('Revisá nombre, cuenta, importe positivo, primer vencimiento y cantidad de 1 a 600 cuotas.');return;}
-    const value={cuenta_id:this.account,nombre,moneda:this.currency,importe,categoria:this.category||null,primer_vencimiento:this.first,total_cuotas:this.indefinite?null:this.count};
+    const value={variable:this.indefinite&&this.variable,cuenta_id:this.account,nombre,moneda:this.currency,importe,categoria:this.category||null,primer_vencimiento:this.first,total_cuotas:this.indefinite?null:this.count};
     if(!this.pending||Object.entries(value).some(([key,v])=>this.pending![key as keyof Create]!==v))this.pending={id:crypto.randomUUID(),...value};
     const context=this.context;this.saving.set(true);this.error.set('');this.notice.set('');let saved:Commitment|null=null;
     try{saved=await this.auth.accountRequest<Commitment>('POST',this.path+'/commitments',this.pending);}
     catch(error){if(this.alive&&context===this.context)this.error.set(error instanceof HttpErrorResponse&&error.status===403?'No tenés permiso para crear deudas.':'No pudimos confirmar el guardado. Reintentá con los mismos datos; no se duplicará el plan.');}
     finally{if(this.alive&&context===this.context)this.saving.set(false);}
-    if(saved&&this.alive&&context===this.context){this.clear();this.notice.set(saved.total_cuotas===null?'Gasto mensual guardado. No se descontó dinero.':'Deuda guardada con su calendario. No se descontó dinero.');await this.load();await this.loadMonth();await this.choose(saved);}
+    if(saved&&this.alive&&context===this.context){this.clear();this.notice.set(saved.total_cuotas===null?'Gasto mensual guardado. No se descontó dinero.':'Deuda guardada con su calendario. No se descontó dinero.');await this.load();await this.loadMonth();await this.loadDrafts();await this.choose(saved);}
   }
   async pause(item:Commitment){
     if(!this.canLeave()||this.saving()||this.loading()||this.detailLoading()||item.total_cuotas!==null)return;
@@ -166,7 +211,7 @@ export class Commitments implements OnChanges{
     if(saved&&this.alive&&context===this.context){await this.loadMonth();if(this.selected()?.id===item.id)await this.loadInstallments();}
   }
   async pay(){
-    const quota=this.quota();if(!quota||this.paying()||this.detailLoading()||this.saving()||this.receiptBusy())return;
+    const quota=this.quota();if(quota?.estimado){this.error.set('Confirmá el monto estimado antes de registrar pagos.');return;}if(!quota||this.paying()||this.detailLoading()||this.saving()||this.receiptBusy())return;
     const importe=normalizeAmount(this.payAmount);
     if(!importe||!this.payDate||!this.accounts.some(a=>a.id===this.payAccount)||cents(importe)>cents(quota.pendiente)){this.error.set('Elegí una cuenta y un importe positivo que no supere el saldo de la cuota.');return;}
     const value={cuenta_id:this.payAccount,fecha:this.payDate,importe};

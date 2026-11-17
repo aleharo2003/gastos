@@ -26,6 +26,7 @@ from check_accounts_api import check_accounts_api
 from check_planning import check_planning
 from check_commitments import check_commitments
 from check_recurrences import check_recurrences
+from check_variable_commitments import check_variable_commitments
 from jobs_role import provision_jobs
 from check_savings_goals import check_savings_goals
 from check_transfers import check_transfers
@@ -295,6 +296,7 @@ def check_database(fixture):
             connection.exec_driver_sql((ROOT/'infra/postgres/grant-jobs.sql').read_text(encoding='utf8'))
         jobs_url=urls[RUNTIME].set(username='app_jobs',password=jobs_password)
         check_recurrences(urls[RUNTIME],urls[MIGRATOR],jobs_url)
+        check_variable_commitments(urls[RUNTIME],urls[MIGRATOR],jobs_url)
         check_planning(urls[RUNTIME], urls[MIGRATOR])
         check_receipts(urls[RUNTIME], urls[MIGRATOR])
         try:

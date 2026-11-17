@@ -8,7 +8,7 @@ describe('Deudas fijas',()=>{
     const debt:Commitment={id:'debt',espacio_id:'s',cuenta_id:'bank',nombre:'Casa',moneda:'ARS',importe:'100.00',categoria:null,primer_vencimiento:'2026-11-30',total_cuotas:2,cuotas_pagadas:0,total:'200.00',pagado:'0.00',pendiente:'200.00',proximo_vencimiento:'2026-11-30'};
     const quota:Installment={id:'quota',espacio_id:'s',compromiso_id:'debt',numero:1,vencimiento:'2026-11-30',importe:'100.00',pagado:'0.00',pendiente:'100.00',estado:'pendiente',vencida:false};
     const request=vi.fn().mockImplementation(async(method,path,body)=>method==='POST'?path.includes('/payments')?{...body,espacio_id:'s',cuota_id:'quota',moneda:'ARS'}:debt:
-      path.includes('/installments?month=')?{mes:new URL('https://local'+path).searchParams.get('month'),items:[],totales:[],next_offset:null}:
+      path.includes('/installment-drafts?')?{borradores:0,items:[],next_offset:null}:path.includes('/installments?month=')?{mes:new URL('https://local'+path).searchParams.get('month'),items:[],totales:[],next_offset:null}:
       path.endsWith('/commitments/debt')?debt:path.includes('/installments?')?{items:[quota],next_offset:null}:path.includes('/payments?')?{items:[],next_offset:null}:{items:[debt],next_offset:null});
     TestBed.configureTestingModule({imports:[Commitments],providers:[{provide:AuthSession,useValue:{accountRequest:request}}]});
     const f=TestBed.createComponent(Commitments);f.componentRef.setInput('space','s');f.componentRef.setInput('accounts',[{id:'bank',nombre:'Banco'}]);
@@ -102,6 +102,37 @@ describe('Deudas fijas',()=>{
     await c.pause(recurring);
     expect(c.items()[0].pausado).toBe(true);expect(request.mock.calls.some(row=>row[0]==='POST')).toBe(false);
     c.payDirty=true;const before=request.mock.calls.length;await c.pause(c.items()[0]);expect(request.mock.calls.length).toBe(before);
+  });
+
+  it('crea variables como estimados y bloquea el pago hasta confirmar',async()=>{
+    const {c,request,debt,quota}=await setup();c.name='Luz';c.account='bank';c.amount='100';c.indefinite=true;c.variable=true;
+    request.mockRejectedValue(new Error());await c.save();
+    expect(request.mock.calls.find(row=>row[0]==='POST')![2].variable).toBe(true);
+    c.quota.set({...quota,estimado:true});const before=request.mock.calls.length;await c.pay();
+    expect(request.mock.calls.length).toBe(before);expect(c.error()).toContain('Confirmá');
+  });
+  it('conserva el lote y sus versiones al reintentar tras respuesta perdida',async()=>{
+    const {c,request,quota}=await setup();const draft={...quota,estimado:true,version:1,nombre:'Luz',moneda:'ARS',cuenta_id:'bank'};
+    c.drafts.set([draft]);c.draftValues={[draft.id]:{amount:'123,45',selected:true,version:1}};
+    request.mockRejectedValue(new Error());await c.confirmDrafts();await c.confirmDrafts();
+    const writes=request.mock.calls.filter(row=>row[0]==='POST');expect(writes).toHaveLength(2);expect(writes[0][2]).toEqual(writes[1][2]);
+    expect(writes[0][2].items[0]).toEqual({id:quota.id,importe:'123.45',version:1});
+    expect(c.draftDirty).toBe(true);expect(c.draftValues[quota.id].amount).toBe('123,45');
+  });
+  it('avisa el total de borradores y protege ediciones al actualizar o paginar',async()=>{
+    const {c,request,quota}=await setup();const count=vi.fn();c.draftsChanged.subscribe(count);
+    request.mockResolvedValue({borradores:101,items:[{...quota,estimado:true,version:1,nombre:'Luz',moneda:'ARS',cuenta_id:'bank'}],next_offset:100});
+    await c.loadDrafts();expect(count).toHaveBeenCalledWith(101);c.draftDirty=true;c.draftValues[quota.id].amount='200';
+    const before=request.mock.calls.length;await c.loadDrafts(100);expect(request.mock.calls.length).toBe(before);
+    expect(c.draftValues[quota.id].amount).toBe('200');
+  });
+  it('confirma sin registrar pagos y refresca el aviso',async()=>{
+    const {c,request,quota}=await setup();c.drafts.set([{...quota,nombre:'Luz',moneda:'ARS',cuenta_id:'bank',estimado:true}]);
+    c.draftValues={[quota.id]:{amount:'100.00',selected:true,version:1}};
+    request.mockImplementation(async(method,path)=>method==='POST'?{confirmadas:[quota.id]}:path.includes('/installment-drafts?')?{borradores:0,items:[],next_offset:null}:path.includes('/installments?month=')?{mes:c.month,items:[],totales:[],next_offset:null}:{items:[],next_offset:null});
+    await c.confirmDrafts();
+    const writes=request.mock.calls.filter(row=>row[0]==='POST');expect(writes).toHaveLength(1);
+    expect(writes[0][1]).toContain('/installment-confirmations');expect(c.draftCount()).toBe(0);expect(c.draftDirty).toBe(false);
   });
 
 });

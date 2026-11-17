@@ -16,6 +16,7 @@ class Compromiso(Base):
         CheckConstraint('char_length(btrim(nombre)) BETWEEN 1 AND 160',name='ck_compromisos_nombre'),
         CheckConstraint('total_cuotas BETWEEN 1 AND 600',name='ck_compromisos_total_cuotas'),
         CheckConstraint('version >= 1',name='ck_compromisos_version'),
+        CheckConstraint('NOT variable OR total_cuotas IS NULL',name='ck_compromisos_variable'),
         CheckConstraint("categoria IS NULL OR categoria IN ('alimentos','transporte','vivienda','servicios','salud','educacion','ocio','impuestos','auto','bancario','ropa','otros')",name='ck_compromisos_categoria'),
     )
     id:Mapped[UUID]=mapped_column(Uuid,primary_key=True)
@@ -28,6 +29,7 @@ class Compromiso(Base):
     categoria:Mapped[str|None]=mapped_column(Text,nullable=True)
     primer_vencimiento:Mapped[date]=mapped_column(Date,nullable=False)
     total_cuotas:Mapped[int|None]=mapped_column(Integer,nullable=True)
+    variable:Mapped[bool]=mapped_column(Boolean,nullable=False,server_default='false')
     pausado:Mapped[bool]=mapped_column(Boolean,nullable=False,server_default='false')
     version:Mapped[int]=mapped_column(Integer,nullable=False,server_default='1')
 
@@ -40,12 +42,15 @@ class Cuota(Base):
         UniqueConstraint('espacio_id','compromiso_id','periodo',name='uq_cuotas_compromiso_periodo'),
         ForeignKeyConstraint(['espacio_id','compromiso_id'],['public.compromisos.espacio_id','public.compromisos.id'],name='fk_cuotas_espacio_id_compromiso_id_compromisos'),
         CheckConstraint('numero BETWEEN 1 AND 119988',name='ck_cuotas_numero'),
+        CheckConstraint('version >= 1',name='ck_cuotas_version'),
         CheckConstraint('importe > 0 AND importe < 1000000000000',name='ck_cuotas_importe'),
         Index('ix_cuotas_espacio_vencimiento','espacio_id','vencimiento'),
     )
     id:Mapped[UUID]=mapped_column(Uuid,primary_key=True)
     espacio_id:Mapped[UUID]=mapped_column(Uuid,nullable=False)
     compromiso_id:Mapped[UUID]=mapped_column(Uuid,nullable=False)
+    estimado:Mapped[bool]=mapped_column(Boolean,nullable=False,server_default='false')
+    version:Mapped[int]=mapped_column(Integer,nullable=False,server_default='1')
     numero:Mapped[int]=mapped_column(Integer,nullable=False)
     vencimiento:Mapped[date]=mapped_column(Date,nullable=False)
     periodo:Mapped[date]=mapped_column(Date,Computed("vencimiento - (EXTRACT(day FROM vencimiento)::integer - 1)",persisted=True),nullable=False)

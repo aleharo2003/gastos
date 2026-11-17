@@ -67,7 +67,7 @@ def check_commitments(runtime_url,migration_url):
         partial=cuotas(debt['id'])['items'][0]
         assert (partial['pagado'],partial['pendiente'],partial['estado'])==('30.00','70.00','parcial')
         monthly=call(lambda s,u,w:monthly_installments(s,u,w,'2024-01',day=date(2024,1,31)))
-        assert monthly['totales']==[{'moneda':'ARS','cuotas':1,'cuotas_pagadas':0,'total':'100.00','pagado':'30.00','pendiente':'70.00','vencido':'0.00'}]
+        assert monthly['totales']==[{'moneda':'ARS','cuotas':1,'cuotas_pagadas':0,'borradores':0,'estimado':'0.00','total':'100.00','pagado':'30.00','pendiente':'70.00','vencido':'0.00'}]
         assert monthly['items'][0]['id']==q1 and not monthly['items'][0]['vencida']
         overdue=call(lambda s,u,w:monthly_installments(s,u,w,'2024-01',day=date(2024,2,1)))
         assert overdue['totales'][0]['vencido']=='70.00' and overdue['items'][0]['vencida']
