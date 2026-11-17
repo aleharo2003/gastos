@@ -1,3 +1,4 @@
+import { SavingsGoals, type GoalTransfer } from './savings-goals';
 import { Transfers } from './transfers';
 import { Incomes } from './incomes';
 import { Planning } from './planning';
@@ -11,7 +12,7 @@ type Account = { id: string; espacio_id: string; nombre: string };
 type Page = { items: Account[]; next_offset: number | null };
 
 @Component({
-  selector: 'app-accounts', imports: [FormsModule, Expenses, Planning, Incomes, Transfers],
+  selector: 'app-accounts', imports: [FormsModule, Expenses, Planning, Incomes, Transfers, SavingsGoals],
   templateUrl: './accounts.html', styleUrl: './accounts.css',
 })
 export class Accounts implements OnInit {
@@ -26,6 +27,11 @@ export class Accounts implements OnInit {
   readonly tab = signal<'expenses' | 'accounts' | 'plan' | 'savings'>('expenses');
   @ViewChild(Expenses) expenses?: Expenses;
   @ViewChild(Incomes) incomes?: Incomes;
+  @ViewChild(Transfers) transfers?: Transfers;
+  fundGoal(goal:GoalTransfer){
+    if(!this.items().some(row=>row.id===goal.cuenta_id))this.items.update(rows=>[...rows,{id:goal.cuenta_id,espacio_id:this.space,nombre:goal.cuenta_nombre}]);
+    this.transfers?.prepareGoal(goal);
+  }
   choose(id: string): void {
     const account = id === '' ? {id:'',espacio_id:this.space,nombre:'Todas las cuentas'} : this.items().find(row => row.id === id);
     if (!account) return;
