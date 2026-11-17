@@ -145,14 +145,14 @@ def check_commitments(runtime_url,migration_url):
         batch=[]
         for index in range(101):
             batch.append(create(body(nombre='Mensual '+str(index),moneda='USD' if index%2 else 'ARS',
-                importe='0.10',total_cuotas=1,primer_vencimiento='2025-12-31')))
-        paged=call(lambda s,u,w:monthly_installments(s,u,w,'2025-12'))
-        next_page=call(lambda s,u,w:monthly_installments(s,u,w,'2025-12',paged['next_offset']))
+                importe='0.10',total_cuotas=1,primer_vencimiento='2040-12-31')))
+        paged=call(lambda s,u,w:monthly_installments(s,u,w,'2040-12'))
+        next_page=call(lambda s,u,w:monthly_installments(s,u,w,'2040-12',paged['next_offset']))
         assert len(paged['items'])==100 and len(next_page['items'])==1
         assert len({r['id'] for r in paged['items']+next_page['items']})==101
         assert paged['totales']==next_page['totales']
         assert [(t['moneda'],t['cuotas'],t['total']) for t in paged['totales']]==[('ARS',51,'5.10'),('USD',50,'5.00')]
-        empty_page=call(lambda s,u,w:monthly_installments(s,u,w,'2025-12',200))
+        empty_page=call(lambda s,u,w:monthly_installments(s,u,w,'2040-12',200))
         assert not empty_page['items'] and empty_page['totales']==paged['totales']
         assert all(r['espacio_id']==str(owner) for r in paged['items'])
         assert create(payload)['cuotas_pagadas']==3
