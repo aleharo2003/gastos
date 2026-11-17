@@ -22,7 +22,7 @@ class CommitmentTests(unittest.TestCase):
     def test_money_count_and_date_validation(self):
         self.assertEqual(CommitmentInput(**self.payload()).importe,Decimal('250.00'))
         for changes in [dict(importe=250),dict(importe='0'),dict(importe='1.001'),dict(total_cuotas=True),
-                        dict(total_cuotas=0),dict(total_cuotas=601),dict(total_cuotas=None),
+                        dict(total_cuotas=0),dict(total_cuotas=601),dict(total_cuotas=1.5),
                         dict(primer_vencimiento='2026-02-30'),dict(primer_vencimiento='9999-12-31',total_cuotas=2),
                         dict(usuario_id=str(uuid4())),dict(categoria='inventada')]:
             with self.subTest(changes=changes),self.assertRaises(ValidationError):CommitmentInput(**self.payload(**changes))
@@ -77,3 +77,24 @@ class MonthlyCommitmentTests(unittest.TestCase):
         self.assertEqual(client.get(path+'/installments?month=2026-11').status_code,401)
         self.assertEqual(client.get(path+f'/commitments/{uuid4()}').status_code,401)
         self.assertEqual(client.get(path+'/installments?month=2026-13').status_code,422)
+
+
+class RecurringCommitmentTests(unittest.TestCase):
+    def test_indefinite_count_and_pause_validation(self):
+        from app.commitments import CommitmentPause
+        values=CommitmentTests().payload(total_cuotas=None)
+        self.assertIsNone(CommitmentInput(**values).total_cuotas)
+        self.assertTrue(CommitmentPause(pausado=True,version=1).pausado)
+        for bad in ({'pausado':'true','version':1},{'pausado':False,'version':True},
+                    {'pausado':False,'version':0},{'pausado':True,'version':1,'importe':'1'}):
+            with self.subTest(bad=bad),self.assertRaises(ValidationError):CommitmentPause(**bad)
+
+    def test_indefinite_totals_are_only_generated_installments(self):
+        from app.commitments import public_commitment
+        row=dict(id=uuid4(),espacio_id=uuid4(),cuenta_id=uuid4(),nombre='Servicio',moneda='ARS',
+            importe=Decimal('100'),categoria=None,primer_vencimiento=date(2026,11,30),total_cuotas=None,
+            cuotas_pagadas=1,pagado=Decimal('130'),total_generado=Decimal('200'),
+            proximo_vencimiento=date(2026,12,30),pausado=False,version=2)
+        result=public_commitment(row)
+        self.assertEqual((result['total'],result['pagado'],result['pendiente']),('200.00','130.00','70.00'))
+        self.assertIsNone(result['total_cuotas'])

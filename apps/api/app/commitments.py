@@ -30,7 +30,7 @@ class CommitmentInput(BaseModel):
     importe:Decimal
     categoria:Category|None=None
     primer_vencimiento:date
-    total_cuotas:StrictInt=Field(ge=1,le=600)
+    total_cuotas:StrictInt|None=Field(ge=1,le=600)
 
     @field_validator('id','cuenta_id')
     @classmethod
@@ -50,7 +50,7 @@ class CommitmentInput(BaseModel):
 
     @model_validator(mode='after')
     def date_range(self):
-        if self.primer_vencimiento.year*12+self.primer_vencimiento.month-1+self.total_cuotas-1>=10000*12:
+        if self.total_cuotas is not None and self.primer_vencimiento.year*12+self.primer_vencimiento.month-1+self.total_cuotas-1>=10000*12:
             raise ValueError('El calendario supera el rango de fechas')
         return self
 
@@ -77,11 +77,12 @@ class PaymentInput(BaseModel):
 
 def public_commitment(row):
     paid=row['pagado']
-    total=row['importe']*row['total_cuotas']
+    total=row['importe']*row['total_cuotas'] if row['total_cuotas'] is not None else row['total_generado']
     return {key:str(row[key]) for key in ('id','espacio_id','cuenta_id')}|{
         'nombre':row['nombre'],'moneda':row['moneda'],'importe':format(row['importe'],'.2f'),
         'categoria':row['categoria'],'primer_vencimiento':row['primer_vencimiento'].isoformat(),
         'total_cuotas':row['total_cuotas'],'cuotas_pagadas':row['cuotas_pagadas'],
+        'pausado':row['pausado'],'version':row['version'],
         'total':format(total,'.2f'),'pagado':format(paid,'.2f'),'pendiente':format(total-paid,'.2f'),
         'proximo_vencimiento':row['proximo_vencimiento'].isoformat() if row['proximo_vencimiento'] else None}
 
@@ -93,10 +94,10 @@ def list_commitments(session,user,space,offset=0,identifier=None):
         SELECT p.cuota_id,SUM(g.importe) AS pagado FROM public.pagos_cuota p
         JOIN public.gastos g ON g.espacio_id=p.espacio_id AND g.id=p.id
         WHERE p.espacio_id=:s GROUP BY p.cuota_id)
-        SELECT c.*,COUNT(*) FILTER (WHERE COALESCE(p.pagado,0)>=q.importe) AS cuotas_pagadas,
+        SELECT c.*,COALESCE(SUM(q.importe),0) AS total_generado,COUNT(*) FILTER (WHERE COALESCE(p.pagado,0)>=q.importe) AS cuotas_pagadas,
             COALESCE(SUM(p.pagado),0) AS pagado,
             MIN(q.vencimiento) FILTER (WHERE COALESCE(p.pagado,0)<q.importe) AS proximo_vencimiento
-        FROM public.compromisos c JOIN public.cuotas q ON q.espacio_id=c.espacio_id AND q.compromiso_id=c.id
+        FROM public.compromisos c LEFT JOIN public.cuotas q ON q.espacio_id=c.espacio_id AND q.compromiso_id=c.id
         LEFT JOIN pagos p ON p.cuota_id=q.id WHERE c.espacio_id=:s"""+clause+"""
         GROUP BY c.id ORDER BY c.id LIMIT 101 OFFSET :offset"""),{'s':space,'id':identifier,'offset':offset}).mappings().all()
     return {'items':[public_commitment(r) for r in rows[:100]],'next_offset':offset+100 if len(rows)>100 else None}
@@ -113,7 +114,12 @@ def create_commitment(session,user,space,body):
     if (row is None or str(row['usuario_id'])!=str(user) or
         any(row[k]!=getattr(body,k) for k in ('cuenta_id','nombre','moneda','importe','categoria','primer_vencimiento','total_cuotas'))):
         raise HTTPException(409,'Identificador usado para otro compromiso',headers=NO_STORE)
-    if inserted is not None:
+    if inserted is not None and body.total_cuotas is None:
+        today=datetime.now(ZoneInfo('America/Argentina/Buenos_Aires')).date()
+        if body.primer_vencimiento.replace(day=1)<today.replace(day=1):
+            raise HTTPException(422,'El gasto mensual debe comenzar este mes o en uno futuro',headers=NO_STORE)
+        seed_current_installment(session,space,row,today)
+    elif inserted is not None:
         session.execute(text("""INSERT INTO public.cuotas(id,espacio_id,compromiso_id,numero,vencimiento,importe)
             VALUES (:id,:s,:c,:n,:v,:i)"""),[
             {'id':uuid5(body.id,str(n)),'s':space,'c':body.id,'n':n,'v':monthly_due(body.primer_vencimiento,n-1),'i':body.importe}
@@ -280,3 +286,42 @@ def get_commitment(space:UUID,identifier:UUID,request:Request,response:Response)
         require_commitment(session,user,space,identifier)
         return list_commitments(session,user,space,identifier=identifier)['items'][0]
     return execute(request,response,space,read)
+
+
+def seed_current_installment(session,space,row,day):
+    first=row['primer_vencimiento']
+    offset=(day.year-first.year)*12+day.month-first.month
+    if offset<0 or row['pausado']:return
+    session.execute(text("""INSERT INTO public.cuotas(id,espacio_id,compromiso_id,numero,vencimiento,importe)
+        VALUES (:id,:s,:c,:n,:v,:i) ON CONFLICT (espacio_id,compromiso_id,periodo) DO NOTHING"""),
+        {'id':uuid5(UUID(str(row['id'])),str(offset+1)),'s':space,'c':row['id'],'n':offset+1,
+         'v':monthly_due(first,offset),'i':row['importe']})
+
+
+class CommitmentPause(BaseModel):
+    model_config=ConfigDict(extra='forbid',strict=True)
+    pausado:bool
+    version:int=Field(ge=1,le=2147483646)
+
+
+def pause_commitment(session,user,space,identifier,body):
+    require_member(session,user,space,write=True)
+    row=session.execute(text('SELECT * FROM public.compromisos WHERE espacio_id=:s AND id=:id FOR UPDATE'),
+                        {'s':space,'id':identifier}).mappings().one_or_none()
+    if row is None:raise HTTPException(404,'Compromiso no disponible',headers=NO_STORE)
+    if row['total_cuotas'] is not None:raise HTTPException(409,'La pausa corresponde a gastos mensuales indefinidos',headers=NO_STORE)
+    if body.version!=row['version']:
+        if not(body.version==row['version']-1 and body.pausado==row['pausado']):
+            raise HTTPException(409,'El compromiso cambio en otra sesion; actualiza la lista',headers=NO_STORE)
+    elif body.pausado!=row['pausado']:
+        session.execute(text('UPDATE public.compromisos SET pausado=:p,version=version+1 WHERE espacio_id=:s AND id=:id'),
+                        {'p':body.pausado,'s':space,'id':identifier})
+    if not body.pausado:
+        seed_current_installment(session,space,dict(row)|{'pausado':False},
+                                 datetime.now(ZoneInfo('America/Argentina/Buenos_Aires')).date())
+    return list_commitments(session,user,space,identifier=identifier)['items'][0]
+
+
+@router.patch('/spaces/{space}/commitments/{identifier}')
+def patch_commitment(space:UUID,identifier:UUID,body:CommitmentPause,request:Request,response:Response):
+    return execute(request,response,space,lambda s,u:pause_commitment(s,u,space,identifier,body))

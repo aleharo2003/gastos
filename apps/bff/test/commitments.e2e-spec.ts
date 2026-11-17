@@ -8,7 +8,7 @@ describe('Deudas y pagos HTTP',()=>{
   let app:INestApplication;let remote:ReturnType<typeof vi.fn>;
   const space=randomUUID(),id=randomUUID(),account=randomUUID(),quota=randomUUID(),base=`/api/spaces/${space}`;
   const payload={id,cuenta_id:account,nombre:'Casa',moneda:'USD',importe:'250.00',categoria:'vivienda',primer_vencimiento:'2026-11-30',total_cuotas:10};
-  const row={...payload,espacio_id:space,cuotas_pagadas:0,total:'2500.00',pagado:'0.00',pendiente:'2500.00',proximo_vencimiento:'2026-11-30'};
+  const row={...payload,pausado:false,version:1,espacio_id:space,cuotas_pagadas:0,total:'2500.00',pagado:'0.00',pendiente:'2500.00',proximo_vencimiento:'2026-11-30'};
   const installment={id:quota,espacio_id:space,compromiso_id:id,numero:1,vencimiento:'2026-11-30',importe:'250.00',pagado:'30.00',pendiente:'220.00',estado:'parcial',vencida:false};
   const pay={id:randomUUID(),cuenta_id:account,fecha:'2026-11-17',importe:'30.00'};
   const payment={...pay,espacio_id:space,cuota_id:quota,moneda:'USD'};
@@ -81,6 +81,23 @@ describe('Deudas y pagos HTTP',()=>{
     await request(app.getHttpServer()).get(base+'/commitments/'+id).set('Authorization','Bearer token').expect(200).expect(row);
     remote.mockImplementation(async()=>new Response(JSON.stringify({...row,id:randomUUID()})));
     await request(app.getHttpServer()).get(base+'/commitments/'+id).set('Authorization','Bearer token').expect(502);
+  });
+
+  it('acepta gastos fijos indefinidos y valida el estado de pausa',async()=>{
+    const input={...payload,total_cuotas:null};
+    const active={...row,total_cuotas:null,total:'250.00',pendiente:'250.00'};
+    remote.mockImplementation(async()=>new Response(JSON.stringify(active)));
+    await request(app.getHttpServer()).post(base+'/commitments').set('Authorization','Bearer token').send(input).expect(200).expect(active);
+    const paused={...active,pausado:true,version:2};
+    remote.mockImplementation(async()=>new Response(JSON.stringify(paused)));
+    await request(app.getHttpServer()).patch(base+'/commitments/'+id).set('Authorization','Bearer token').send({pausado:true,version:1}).expect(200).expect(paused);
+    expect(remote.mock.calls.at(-1)![1].method).toBe('PATCH');
+    expect(JSON.parse(remote.mock.calls.at(-1)![1].body)).toEqual({pausado:true,version:1});
+    remote.mockImplementation(async()=>new Response(JSON.stringify({...paused,pausado:false})));
+    await request(app.getHttpServer()).patch(base+'/commitments/'+id).set('Authorization','Bearer token').send({pausado:true,version:1}).expect(502);
+    for(const invalid of [{pausado:'true',version:1},{pausado:true,version:true},{pausado:true,version:0},{pausado:true,version:1,importe:'100'}]){
+      await request(app.getHttpServer()).patch(base+'/commitments/'+id).set('Authorization','Bearer token').send(invalid).expect(400);
+    }
   });
 
 });

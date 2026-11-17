@@ -5,14 +5,14 @@ import { AuthSession } from './auth-session';
 import { Receipts } from './receipts';
 import { normalizeAmount,showAmount } from './expenses';
 import { cents,money } from './money-reference';
-export type Commitment={id:string;espacio_id:string;cuenta_id:string;nombre:string;moneda:string;importe:string;categoria:string|null;
-  primer_vencimiento:string;total_cuotas:number;cuotas_pagadas:number;total:string;pagado:string;pendiente:string;proximo_vencimiento:string|null};
+export type Commitment={pausado?:boolean;version?:number;id:string;espacio_id:string;cuenta_id:string;nombre:string;moneda:string;importe:string;categoria:string|null;
+  primer_vencimiento:string;total_cuotas:number|null;cuotas_pagadas:number;total:string;pagado:string;pendiente:string;proximo_vencimiento:string|null};
 export type Installment={id:string;espacio_id:string;compromiso_id:string;numero:number;vencimiento:string;importe:string;pagado:string;pendiente:string;estado:string;vencida:boolean};
 export type Payment={id:string;espacio_id:string;cuota_id:string;cuenta_id:string;fecha:string;moneda:string;importe:string};
 export type MonthlyItem=Installment & {nombre:string;moneda:string;cuenta_id:string};
 export type MonthlyTotal={moneda:string;cuotas:number;cuotas_pagadas:number;total:string;pagado:string;pendiente:string;vencido:string};
 export type MonthlyPage={mes:string;items:MonthlyItem[];totales:MonthlyTotal[];next_offset:number|null};
-type Create={id:string;cuenta_id:string;nombre:string;moneda:string;importe:string;categoria:string|null;primer_vencimiento:string;total_cuotas:number};
+type Create={id:string;cuenta_id:string;nombre:string;moneda:string;importe:string;categoria:string|null;primer_vencimiento:string;total_cuotas:number|null};
 type Pay={id:string;cuenta_id:string;fecha:string;importe:string};
 const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Argentina/Buenos_Aires',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 @Component({selector:'app-commitments',imports:[FormsModule,Receipts],templateUrl:'./commitments.html',styleUrl:'./commitments.css'})
@@ -45,7 +45,7 @@ export class Commitments implements OnChanges{
   readonly loading=signal(false);readonly detailLoading=signal(false);readonly historyLoading=signal(false);
   readonly saving=signal(false);readonly paying=signal(false);readonly error=signal('');readonly notice=signal('');
   readonly hidden=signal(false);
-  name='';account='';currency='ARS';amount='';category='';first=today();count=10;
+  name='';account='';currency='ARS';amount='';category='';first=today();count=10;indefinite=false;
   payAccount='';payDate=today();payAmount='';payDirty=false;installmentOffset=0;
   readonly showAmount=showAmount;
   readonly categories=[['alimentos','Alimentos'],['transporte','Transporte'],['vivienda','Vivienda'],['servicios','Servicios'],['salud','Salud'],['educacion','Educación'],['ocio','Ocio'],['impuestos','Impuestos'],['auto','Auto'],['bancario','Bancario'],['ropa','Ropa'],['otros','Otros']];
@@ -64,9 +64,9 @@ export class Commitments implements OnChanges{
     this.receiptPayment.set(null);this.lastPayment.set(null);this.clear();this.payAmount='';this.payPending=undefined;this.payDirty=false;void this.load();void this.loadMonth();
   }}
   private get path(){return `/api/spaces/${encodeURIComponent(this.space)}`;}
-  total(){const amount=normalizeAmount(this.amount);return amount&&Number.isInteger(this.count)&&this.count>=1&&this.count<=600?money(cents(amount)*BigInt(this.count)):null;}
+  total(){if(this.indefinite)return null;const amount=normalizeAmount(this.amount);return amount&&Number.isInteger(this.count)&&this.count>=1&&this.count<=600?money(cents(amount)*BigInt(this.count)):null;}
   accountName(id:string){return this.accounts.find(row=>row.id===id)?.nombre??id;}
-  clear(){if(this.saving())return;this.pending=undefined;this.name='';this.amount='';this.category='';this.account='';this.currency='ARS';this.first=today();this.count=10;}
+  clear(){if(this.saving())return;this.pending=undefined;this.name='';this.amount='';this.category='';this.account='';this.currency='ARS';this.first=today();this.count=10;this.indefinite=false;}
   private receiptBusy(){return !!(this.receiptPanel?.busy()||this.receiptPanel?.selected());}
   private canLeave(){if(this.paying()||this.receiptBusy()||this.payDirty){this.error.set('Terminá o cancelá el pago y los comprobantes pendientes antes de cambiar.');return false;}return true;}
   cancelPayment(){if(this.paying()||this.receiptBusy())return;this.payPending=undefined;this.payDirty=false;this.payAmount='';this.quota.set(null);this.payments.set([]);this.historyVersion++;this.historyLoading.set(false);this.receiptPayment.set(null);this.nextPayment.set(null);}
@@ -141,14 +141,29 @@ export class Commitments implements OnChanges{
   async save(){
     if(this.saving()||this.loading()||this.paying())return;
     const importe=normalizeAmount(this.amount),nombre=this.name.trim();
-    if(!importe||!nombre||[...nombre].length>160||!this.accounts.some(a=>a.id===this.account)||!Number.isInteger(this.count)||this.count<1||this.count>600||!this.first){this.error.set('Revisá nombre, cuenta, importe positivo, primer vencimiento y cantidad de 1 a 600 cuotas.');return;}
-    const value={cuenta_id:this.account,nombre,moneda:this.currency,importe,categoria:this.category||null,primer_vencimiento:this.first,total_cuotas:this.count};
+    if(!importe||!nombre||[...nombre].length>160||!this.accounts.some(a=>a.id===this.account)||(!this.indefinite&&(!Number.isInteger(this.count)||this.count<1||this.count>600))||!this.first){this.error.set('Revisá nombre, cuenta, importe positivo, primer vencimiento y cantidad de 1 a 600 cuotas.');return;}
+    const value={cuenta_id:this.account,nombre,moneda:this.currency,importe,categoria:this.category||null,primer_vencimiento:this.first,total_cuotas:this.indefinite?null:this.count};
     if(!this.pending||Object.entries(value).some(([key,v])=>this.pending![key as keyof Create]!==v))this.pending={id:crypto.randomUUID(),...value};
     const context=this.context;this.saving.set(true);this.error.set('');this.notice.set('');let saved:Commitment|null=null;
     try{saved=await this.auth.accountRequest<Commitment>('POST',this.path+'/commitments',this.pending);}
     catch(error){if(this.alive&&context===this.context)this.error.set(error instanceof HttpErrorResponse&&error.status===403?'No tenés permiso para crear deudas.':'No pudimos confirmar el guardado. Reintentá con los mismos datos; no se duplicará el plan.');}
     finally{if(this.alive&&context===this.context)this.saving.set(false);}
-    if(saved&&this.alive&&context===this.context){this.clear();this.notice.set('Deuda guardada con su calendario. No se descontó dinero.');await this.load();await this.loadMonth();await this.choose(saved);}
+    if(saved&&this.alive&&context===this.context){this.clear();this.notice.set(saved.total_cuotas===null?'Gasto mensual guardado. No se descontó dinero.':'Deuda guardada con su calendario. No se descontó dinero.');await this.load();await this.loadMonth();await this.choose(saved);}
+  }
+  async pause(item:Commitment){
+    if(!this.canLeave()||this.saving()||this.loading()||this.detailLoading()||item.total_cuotas!==null)return;
+    const context=this.context;this.saving.set(true);this.error.set('');let saved=false;
+    try{
+      const row=await this.auth.accountRequest<Commitment>('PATCH',this.path+'/commitments/'+encodeURIComponent(item.id),
+        {pausado:!item.pausado,version:item.version??1});
+      if(!this.alive||context!==this.context)return;
+      this.items.update(rows=>rows.map(current=>current.id===row.id?row:current));
+      if(this.selected()?.id===row.id)this.selected.set(row);
+      this.notice.set(row.pausado?'Gasto pausado. Sus cuotas existentes se conservan y se pueden pagar.':'Gasto reactivado. Se prepara la cuota del mes actual si corresponde.');
+      saved=true;
+    }catch(error){if(this.alive&&context===this.context)this.error.set(error instanceof HttpErrorResponse&&error.status===409?'El gasto cambió en otra sesión. Actualizá la lista antes de reintentar.':'No pudimos confirmar el cambio. Actualizá la lista para verificar su estado.');}
+    finally{if(this.alive&&context===this.context)this.saving.set(false);}
+    if(saved&&this.alive&&context===this.context){await this.loadMonth();if(this.selected()?.id===item.id)await this.loadInstallments();}
   }
   async pay(){
     const quota=this.quota();if(!quota||this.paying()||this.detailLoading()||this.saving()||this.receiptBusy())return;
