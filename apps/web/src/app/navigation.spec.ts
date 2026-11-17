@@ -9,7 +9,7 @@ describe('Navegación del espacio', () => {
   async function setup() {
     const accounts = [{id:'one',espacio_id:'s',nombre:'Efectivo'}, {id:'two',espacio_id:'s',nombre:'Banco'}];
     TestBed.configureTestingModule({imports:[Accounts],providers:[{provide:AuthSession,useValue:{
-      accountRequest: async (_method:string,path:string) => ({items:(path.includes('/expenses') || path.includes('/incomes') || path.includes('/transfers') || path.includes('/savings-goals') || path.includes('/commitments')) ? [] : accounts,next_offset:null}),
+      accountRequest: async (_method:string,path:string) => path.includes('/installments?month=') ? ({mes:new URL('https://local'+path).searchParams.get('month'),totales:[],items:[],next_offset:null}) : ({items:(path.includes('/expenses') || path.includes('/incomes') || path.includes('/transfers') || path.includes('/savings-goals') || path.includes('/commitments')) ? [] : accounts,next_offset:null}),
     }}]});
     const fixture=TestBed.createComponent(Accounts);
     fixture.componentRef.setInput('space','s'); fixture.detectChanges();

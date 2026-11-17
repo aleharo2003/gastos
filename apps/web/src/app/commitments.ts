@@ -9,6 +9,9 @@ export type Commitment={id:string;espacio_id:string;cuenta_id:string;nombre:stri
   primer_vencimiento:string;total_cuotas:number;cuotas_pagadas:number;total:string;pagado:string;pendiente:string;proximo_vencimiento:string|null};
 export type Installment={id:string;espacio_id:string;compromiso_id:string;numero:number;vencimiento:string;importe:string;pagado:string;pendiente:string;estado:string;vencida:boolean};
 export type Payment={id:string;espacio_id:string;cuota_id:string;cuenta_id:string;fecha:string;moneda:string;importe:string};
+export type MonthlyItem=Installment & {nombre:string;moneda:string;cuenta_id:string};
+export type MonthlyTotal={moneda:string;cuotas:number;cuotas_pagadas:number;total:string;pagado:string;pendiente:string;vencido:string};
+export type MonthlyPage={mes:string;items:MonthlyItem[];totales:MonthlyTotal[];next_offset:number|null};
 type Create={id:string;cuenta_id:string;nombre:string;moneda:string;importe:string;categoria:string|null;primer_vencimiento:string;total_cuotas:number};
 type Pay={id:string;cuenta_id:string;fecha:string;importe:string};
 const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Argentina/Buenos_Aires',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
@@ -31,6 +34,14 @@ export class Commitments implements OnChanges{
   readonly quota=signal<Installment|null>(null);
   readonly receiptPayment=signal<Payment|null>(null);
   readonly lastPayment=signal<Payment|null>(null);
+  month=today().slice(0,7);
+  readonly appliedMonth=signal('');
+  readonly monthItems=signal<MonthlyItem[]>([]);
+  readonly monthTotals=signal<MonthlyTotal[]>([]);
+  readonly monthNext=signal<number|null>(null);
+  readonly monthLoading=signal(false);
+  readonly monthError=signal('');
+  private monthVersion=0;
   readonly loading=signal(false);readonly detailLoading=signal(false);readonly historyLoading=signal(false);
   readonly saving=signal(false);readonly paying=signal(false);readonly error=signal('');readonly notice=signal('');
   readonly hidden=signal(false);
@@ -47,10 +58,10 @@ export class Commitments implements OnChanges{
     inject(DestroyRef).onDestroy(()=>{this.alive=false;this.context++;this.detailVersion++;this.historyVersion++;window.removeEventListener('gastos-privacy',this.privacyListener);});
   }
   ngOnChanges(changes:SimpleChanges){if(changes['space']){
-    this.context++;this.detailVersion++;this.historyVersion++;this.loading.set(false);this.saving.set(false);this.paying.set(false);
+    this.context++;this.detailVersion++;this.historyVersion++;this.monthVersion++;this.monthLoading.set(false);this.monthItems.set([]);this.monthTotals.set([]);this.monthNext.set(null);this.appliedMonth.set('');this.monthError.set('');this.month=today().slice(0,7);this.loading.set(false);this.saving.set(false);this.paying.set(false);
     this.detailLoading.set(false);this.historyLoading.set(false);this.items.set([]);this.selected.set(null);this.quota.set(null);
     this.installments.set([]);this.payments.set([]);this.next.set(null);this.nextInstallment.set(null);this.nextPayment.set(null);
-    this.receiptPayment.set(null);this.lastPayment.set(null);this.clear();this.payAmount='';this.payPending=undefined;this.payDirty=false;void this.load();
+    this.receiptPayment.set(null);this.lastPayment.set(null);this.clear();this.payAmount='';this.payPending=undefined;this.payDirty=false;void this.load();void this.loadMonth();
   }}
   private get path(){return `/api/spaces/${encodeURIComponent(this.space)}`;}
   total(){const amount=normalizeAmount(this.amount);return amount&&Number.isInteger(this.count)&&this.count>=1&&this.count<=600?money(cents(amount)*BigInt(this.count)):null;}
@@ -61,6 +72,35 @@ export class Commitments implements OnChanges{
   cancelPayment(){if(this.paying()||this.receiptBusy())return;this.payPending=undefined;this.payDirty=false;this.payAmount='';this.quota.set(null);this.payments.set([]);this.historyVersion++;this.historyLoading.set(false);this.receiptPayment.set(null);this.nextPayment.set(null);}
   receiptPath(p:Payment){return this.path+'/accounts/'+encodeURIComponent(p.cuenta_id)+'/expenses/'+encodeURIComponent(p.id)+'/receipts';}
   receipts(p:Payment){if(this.paying()||this.receiptBusy()){this.error.set('Terminá el comprobante pendiente antes de abrir otro.');return;}this.receiptPayment.set(p);}
+  async loadMonth(more=false){
+    if(this.saving()||this.paying())return;
+    const month=more?this.appliedMonth():this.month;
+    if(!/^[0-9]{4}-(0[1-9]|1[0-2])$/.test(month)||month.startsWith('0000')){this.monthError.set('Elegí un mes válido.');return;}
+    const offset=more?this.monthNext():0;if(offset===null||(more&&this.monthLoading()))return;
+    const version=++this.monthVersion,context=this.context;this.monthLoading.set(true);this.monthError.set('');
+    try{
+      const page=await this.auth.accountRequest<MonthlyPage>('GET',this.path+'/installments?month='+month+'&offset='+offset);
+      if(!this.alive||context!==this.context||version!==this.monthVersion)return;
+      if(page.mes!==month||!Array.isArray(page.items)||!Array.isArray(page.totales))throw new Error('Resumen mensual inválido');
+      this.appliedMonth.set(page.mes);this.monthTotals.set(page.totales);
+      this.monthItems.set([...new Map((more?[...this.monthItems(),...page.items]:page.items).map(row=>[row.id,row])).values()]);
+      this.monthNext.set(page.next_offset);
+    }catch{if(this.alive&&context===this.context&&version===this.monthVersion)this.monthError.set('No pudimos cargar el resumen mensual. Los datos visibles conservan su mes indicado.');}
+    finally{if(this.alive&&context===this.context&&version===this.monthVersion)this.monthLoading.set(false);}
+  }
+  async openMonthly(item:MonthlyItem){
+    if(!this.canLeave()||this.detailLoading()||this.saving())return;
+    const context=this.context;this.detailLoading.set(true);this.error.set('');
+    let debt:Commitment|null=null;
+    try{debt=await this.auth.accountRequest<Commitment>('GET',this.path+'/commitments/'+encodeURIComponent(item.compromiso_id));}
+    catch{if(this.alive&&context===this.context)this.error.set('No pudimos abrir la deuda. Reintentá desde el resumen.');}
+    finally{if(this.alive&&context===this.context)this.detailLoading.set(false);}
+    if(!debt||!this.alive||context!==this.context||!this.canLeave())return;
+    this.cancelPayment();this.selected.set(debt);this.lastPayment.set(null);
+    await this.loadInstallments(Math.floor((item.numero-1)/100)*100);
+    const quota=this.installments().find(row=>row.id===item.id);
+    if(quota)await this.selectQuota(quota);
+  }
   async load(more=false){
     if(this.loading()||this.saving()||this.paying())return;const offset=more?this.next():0;if(offset===null)return;
     const context=this.context;this.loading.set(true);this.error.set('');
@@ -108,7 +148,7 @@ export class Commitments implements OnChanges{
     try{saved=await this.auth.accountRequest<Commitment>('POST',this.path+'/commitments',this.pending);}
     catch(error){if(this.alive&&context===this.context)this.error.set(error instanceof HttpErrorResponse&&error.status===403?'No tenés permiso para crear deudas.':'No pudimos confirmar el guardado. Reintentá con los mismos datos; no se duplicará el plan.');}
     finally{if(this.alive&&context===this.context)this.saving.set(false);}
-    if(saved&&this.alive&&context===this.context){this.clear();this.notice.set('Deuda guardada con su calendario. No se descontó dinero.');await this.load();await this.choose(saved);}
+    if(saved&&this.alive&&context===this.context){this.clear();this.notice.set('Deuda guardada con su calendario. No se descontó dinero.');await this.load();await this.loadMonth();await this.choose(saved);}
   }
   async pay(){
     const quota=this.quota();if(!quota||this.paying()||this.detailLoading()||this.saving()||this.receiptBusy())return;
@@ -126,7 +166,7 @@ export class Commitments implements OnChanges{
     if(saved&&this.alive&&context===this.context){
       this.payPending=undefined;this.payDirty=false;this.payAmount='';this.lastPayment.set(saved);
       this.notice.set('Pago registrado. El gasto y el saldo de la deuda se actualizaron juntos.');this.changed.emit();
-      await this.load();await this.loadInstallments();await this.loadPayments();
+      await this.load();await this.loadInstallments();await this.loadPayments();await this.loadMonth();
     }
   }
 }

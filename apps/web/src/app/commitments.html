@@ -4,6 +4,34 @@
   @if(moreAccounts){<button type="button" class="secondary" (click)="loadAccounts.emit()" [disabled]="accountsLoading||saving()||paying()">Cargar más cuentas</button>}
   @if(error()){<p class="error" role="alert">{{ error() }}</p>}
   @if(notice()){<p class="notice" role="status">{{ notice() }}</p>}
+  <section class="monthly" aria-labelledby="monthly-title">
+    <h4 id="monthly-title">Cuánto debo este mes</h4>
+    <p>Cuotas por mes de vencimiento, con todos sus pagos registrados, incluso si se pagaron en otro mes. Incluye deudas en cuotas fijas; los gastos mensuales recurrentes se incorporarán después.</p>
+    <form (ngSubmit)="loadMonth()">
+      <label for="debt-month">Mes de vencimiento</label>
+      <input id="debt-month" name="debtMonth" type="month" [(ngModel)]="month" required [disabled]="saving()||paying()">
+      <button type="submit" class="secondary" [disabled]="monthLoading()||saving()||paying()">Consultar mes</button>
+    </form>
+    @if(monthError()){<p class="error" role="alert">{{ monthError() }}</p>}
+    @if(monthLoading()){<p role="status">Cargando resumen mensual…</p>}
+    @if(appliedMonth()){
+      <p>Mostrando vencimientos de {{ appliedMonth().split('-').reverse().join('/') }}.</p>
+      <ul class="monthly-totals">@for(t of monthTotals();track t.moneda){<li>
+        <strong>{{ t.moneda }} · {{ t.cuotas_pagadas }} de {{ t.cuotas }} cuotas completas</strong>
+        <p>Comprometido: {{ hidden()?'••••':showAmount(t.total) }} · Pagado: {{ hidden()?'••••':showAmount(t.pagado) }}</p>
+        <p>Pendiente: {{ hidden()?'••••':showAmount(t.pendiente) }} · <span class="overdue-text">Vencido: {{ hidden()?'••••':showAmount(t.vencido) }}</span></p>
+      </li>}</ul>
+      <p>No se suman monedas distintas. Lo vencido forma parte de lo pendiente.</p>
+      @if(!monthTotals().length){<p>No hay cuotas con vencimiento en este mes.</p>}
+      <ul>@for(q of monthItems();track q.id){<li [class.overdue]="q.vencida">
+        <strong>{{ q.nombre }} · Cuota {{ q.numero }}</strong>
+        <p>{{ q.vencimiento.split('-').reverse().join('/') }} · {{ q.estado==='pagada'?'Pagada':q.estado==='parcial'?'Pago parcial':'Pendiente' }}{{ q.vencida?' · Vencida':'' }}</p>
+        <p>{{ q.moneda }} {{ hidden()?'••••':showAmount(q.importe) }} · Falta: {{ hidden()?'••••':showAmount(q.pendiente) }}</p>
+        <button type="button" class="secondary" (click)="openMonthly(q)" [disabled]="paying()||saving()||detailLoading()">Ver cuota y pagos</button>
+      </li>}</ul>
+      @if(monthNext()!==null){<button type="button" class="secondary" (click)="loadMonth(true)" [disabled]="monthLoading()||saving()||paying()">Ver más cuotas del mes</button>}
+    }
+  </section>
   @if(!hidden()){
     <details><summary>Registrar deuda en cuotas</summary>
       <form #debtForm="ngForm" (ngSubmit)="save()">

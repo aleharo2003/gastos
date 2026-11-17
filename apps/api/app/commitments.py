@@ -224,3 +224,59 @@ def post_payment(space:UUID,identifier:UUID,body:PaymentInput,request:Request,re
 @router.get('/spaces/{space}/installments/{identifier}/payments')
 def get_payments(space:UUID,identifier:UUID,request:Request,response:Response,offset:int=Query(default=0,ge=0,le=100000)):
     return execute(request,response,space,lambda s,u:list_payments(s,u,space,identifier,offset))
+
+def monthly_installments(session,user,space,month,offset=0,day=None):
+    """Cuotas por mes de vencimiento; pagos acumulados aunque se paguen en otro mes."""
+    import re
+    if not isinstance(month,str) or not re.fullmatch(r'[0-9]{4}-(0[1-9]|1[0-2])',month) or month.startswith('0000'):
+        raise HTTPException(422,'Mes invalido: usar AAAA-MM',headers=NO_STORE)
+    year,number=map(int,month.split('-'))
+    first=date(year,number,1);last=date(year,number,monthrange(year,number)[1])
+    day=day or datetime.now(ZoneInfo('America/Argentina/Buenos_Aires')).date()
+    require_member(session,user,space)
+    # Una sola sentencia: resumen y pagina comparten la misma fotografia de pagos.
+    rows=session.execute(text("""WITH pagos AS (
+        SELECT p.cuota_id,SUM(g.importe) AS pagado FROM public.pagos_cuota p
+        JOIN public.gastos g ON g.espacio_id=p.espacio_id AND g.id=p.id
+        WHERE p.espacio_id=:s GROUP BY p.cuota_id),
+    del_mes AS (
+        SELECT q.*,c.nombre,c.moneda,c.cuenta_id,COALESCE(p.pagado,0) AS pagado
+        FROM public.cuotas q JOIN public.compromisos c ON c.espacio_id=q.espacio_id AND c.id=q.compromiso_id
+        LEFT JOIN pagos p ON p.cuota_id=q.id
+        WHERE q.espacio_id=:s AND q.vencimiento BETWEEN :first AND :last),
+    totales AS (
+        SELECT moneda,COUNT(*)::int AS cuotas,
+            COUNT(*) FILTER (WHERE pagado=importe)::int AS cuotas_pagadas,
+            SUM(importe)::text AS total,SUM(pagado)::text AS pagado,
+            SUM(importe-pagado)::text AS pendiente,
+            SUM(CASE WHEN vencimiento<:day THEN importe-pagado ELSE 0 END)::text AS vencido
+        FROM del_mes GROUP BY moneda),
+    resumen AS (
+        SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY t.moneda),'[]'::jsonb) AS totales FROM totales t)
+    SELECT pagina.*,resumen.totales FROM resumen LEFT JOIN (
+        SELECT * FROM del_mes ORDER BY vencimiento,id LIMIT 101 OFFSET :offset
+    ) pagina ON true ORDER BY pagina.vencimiento,pagina.id"""),
+        {'s':space,'first':first,'last':last,'day':day,'offset':offset}).mappings().all()
+    items=[row for row in rows if row['id'] is not None]
+    totals=rows[0]['totales']
+    # SUM de cuotas numeric(14,2) conserva escala; normalizar tambien el cero de CASE.
+    for total in totals:
+        for key in ('total','pagado','pendiente','vencido'):total[key]=format(Decimal(total[key]),'.2f')
+    return {'mes':month,'totales':totals,'items':[
+        public_installment(row,day)|{'nombre':row['nombre'],'moneda':row['moneda'],'cuenta_id':str(row['cuenta_id'])}
+        for row in items[:100]],'next_offset':offset+100 if len(items)>100 else None}
+
+
+@router.get('/spaces/{space}/installments')
+def get_monthly_installments(space:UUID,request:Request,response:Response,
+                             month:str=Query(pattern=r'^[0-9]{4}-(0[1-9]|1[0-2])$'),
+                             offset:int=Query(default=0,ge=0,le=100000)):
+    return execute(request,response,space,lambda s,u:monthly_installments(s,u,space,month,offset))
+
+
+@router.get('/spaces/{space}/commitments/{identifier}')
+def get_commitment(space:UUID,identifier:UUID,request:Request,response:Response):
+    def read(session,user):
+        require_commitment(session,user,space,identifier)
+        return list_commitments(session,user,space,identifier=identifier)['items'][0]
+    return execute(request,response,space,read)

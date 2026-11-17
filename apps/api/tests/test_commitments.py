@@ -50,3 +50,30 @@ class CommitmentTests(unittest.TestCase):
         self.assertEqual(client.post(path+'/commitments',json=self.payload()).status_code,401)
         payment=dict(id=str(uuid4()),cuenta_id=str(uuid4()),fecha='2026-11-17',importe='10')
         self.assertEqual(client.post(path+f'/installments/{uuid4()}/payments',json=payment).status_code,401)
+
+
+class MonthlyCommitmentTests(unittest.TestCase):
+    def test_invalid_month_is_rejected_before_query(self):
+        from app.commitments import monthly_installments
+        from fastapi import HTTPException
+        for month in ('0000-01','2026-00','2026-13','2026-1','26-01','2026-01-01'):
+            with self.subTest(month=month),self.assertRaises(HTTPException) as failure:
+                monthly_installments(None,None,None,month)
+            self.assertEqual(failure.exception.status_code,422)
+
+    def test_calendar_extremes_and_empty_pages(self):
+        from unittest.mock import Mock,patch
+        from app.commitments import monthly_installments
+        session=Mock()
+        session.execute.return_value.mappings.return_value.all.return_value=[{'id':None,'totales':[]}]
+        with patch('app.commitments.require_member'):
+            for month,last in [('0001-01',date(1,1,31)),('2024-02',date(2024,2,29)),('9999-12',date(9999,12,31))]:
+                result=monthly_installments(session,uuid4(),uuid4(),month,100)
+                self.assertEqual(result,dict(mes=month,totales=[],items=[],next_offset=None))
+                self.assertEqual(session.execute.call_args.args[1]['last'],last)
+
+    def test_monthly_and_detail_routes_require_identity(self):
+        app=FastAPI();app.include_router(router);client=TestClient(app);path=f'/spaces/{uuid4()}'
+        self.assertEqual(client.get(path+'/installments?month=2026-11').status_code,401)
+        self.assertEqual(client.get(path+f'/commitments/{uuid4()}').status_code,401)
+        self.assertEqual(client.get(path+'/installments?month=2026-13').status_code,422)
