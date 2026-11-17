@@ -99,7 +99,7 @@ def check_incomes(runtime_url, migration_url):
         sql_denied(reader,insert,params | {'u':reader},'42501')
         sql_denied(owner,'DELETE FROM public.ingresos',{},'42501')
         sql_denied(owner,'UPDATE public.ingresos SET importe=1',{},'42501')
-        with runtime_transaction(runtime) as session:
+        with runtime.begin() as session:
             assert session.execute(text('SELECT count(*) FROM public.ingresos')).scalar_one()==0
         with runtime_transaction(runtime,usuario_id=other,espacio_id=other) as session:
             assert session.execute(text('SELECT count(*) FROM public.ingresos WHERE espacio_id=:s'),{'s':owner}).scalar_one()==0
