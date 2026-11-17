@@ -9,7 +9,7 @@ Ingresos y saldos (PR #30), transferencias internas (PR #31) y metas de ahorro
 Angular → NestJS BFF → FastAPI → PostgreSQL/Supabase, con RLS/FORCE,
 identidad transaccional, dinero decimal exacto y migraciones Alembic.
 
-## Incremento en revisión: deudas fijas finitas
+## Base en revisión: deudas fijas finitas (PR #33)
 
 Rama: feature/fixed-installment-debts. Agrega planes con cuotas mensuales,
 progreso, pagos completos/parciales y comprobantes. Crear un plan no mueve dinero;
@@ -24,6 +24,14 @@ en PRs posteriores; no confundir el calendario finito con generación mensual au
 El código y las pruebas se entregan mediante PR. Consultar su CI para resultados
 ejecutados. La revisión visual móvil/escritorio y la comprobación del SHA publicado
 tras fusionar se registran por separado; esta nota no certifica un despliegue.
+
+## Incremento dependiente: resumen mensual
+
+Rama: feature/monthly-debt-summary, basada en feature/fixed-installment-debts.
+Completa la consulta mensual de las cuotas fijas existentes: comprometido, pagado,
+pendiente y vencido por moneda, con navegación al pago y paginación.
+Ver resumen-mensual-deudas.md. Sin migraciones adicionales.
+El PR #33 todavía debe integrarse; este incremento no implica su fusión.
 
 ## Orden de producto acordado
 

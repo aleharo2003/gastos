@@ -3,3 +3,5 @@ section{border-top:1px solid var(--g-border);padding-top:12px;margin-top:20px}h3
 select{width:100%;box-sizing:border-box;min-height:44px;padding:10px;border:1px solid var(--g-border);border-radius:8px;background:var(--g-surface);color:var(--g-ink);font:inherit}input{background:var(--g-surface);color:var(--g-ink)}select:focus-visible{outline:3px solid var(--g-focus);outline-offset:3px}li span,li b,small{display:block;margin-top:6px}.account-pair{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}small{color:var(--g-muted)}
 
 summary{padding:16px 0;font-weight:700;cursor:pointer}summary:focus-visible{outline:3px solid var(--g-focus);outline-offset:3px}.overdue{border-inline-start:4px solid var(--g-error)}.actions{display:flex;gap:8px;flex-wrap:wrap}.actions button{flex:1 1 140px}strong{font-variant-numeric:tabular-nums}
+
+.monthly{border:1px solid var(--g-border);border-radius:12px;padding:16px;margin:20px 0}.overdue-text{color:var(--g-error)}

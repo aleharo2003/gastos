@@ -57,4 +57,30 @@ describe('Deudas y pagos HTTP',()=>{
     }
     await request(app.getHttpServer()).get(base+'/commitments?offset=-1').set('Authorization','Bearer token').expect(400);
   });
+  it('consulta el mes y valida totales, moneda, aislamiento y paginacion',async()=>{
+    const total={moneda:'USD',cuotas:1,cuotas_pagadas:0,total:'250.00',pagado:'30.00',pendiente:'220.00',vencido:'0.00'};
+    const item={...installment,nombre:'Casa',cuenta_id:account,moneda:'USD'};
+    const page={mes:'2026-11',items:[item],totales:[total],next_offset:null};
+    const url=base+'/installments?month=2026-11&offset=0';
+    remote.mockImplementation(async()=>new Response(JSON.stringify(page)));
+    await request(app.getHttpServer()).get(url).expect(401);
+    await request(app.getHttpServer()).get(url).set('Authorization','Bearer token').expect(200).expect(page).expect('Cache-Control','no-store');
+    expect(String(remote.mock.calls[0][0])).toContain('/installments?offset=0&month=2026-11');
+    for(const invalid of [{...page,mes:'2026-12'},{...page,totales:[{...total,pendiente:'219.00'}]},
+      {...page,totales:[total,total]},{...page,items:[{...item,espacio_id:randomUUID()}]},
+      {...page,items:[{...item,vencimiento:'2026-12-01'}]},{...page,totales:[{...total,vencido:'221.00'}]}]){
+      remote.mockImplementation(async()=>new Response(JSON.stringify(invalid)));
+      await request(app.getHttpServer()).get(url).set('Authorization','Bearer token').expect(502);
+    }
+  });
+  it('rechaza meses invalidos y lee deudas fuera de la pagina visible',async()=>{
+    for(const query of ['','?month=0000-01','?month=2026-13','?month=2026-1','?month=2026-11&offset=-1','?month=2026-11&extra=yes']){
+      await request(app.getHttpServer()).get(base+'/installments'+query).set('Authorization','Bearer token').expect(400);
+    }
+    expect(remote).not.toHaveBeenCalled();
+    await request(app.getHttpServer()).get(base+'/commitments/'+id).set('Authorization','Bearer token').expect(200).expect(row);
+    remote.mockImplementation(async()=>new Response(JSON.stringify({...row,id:randomUUID()})));
+    await request(app.getHttpServer()).get(base+'/commitments/'+id).set('Authorization','Bearer token').expect(502);
+  });
+
 });

@@ -8,7 +8,7 @@ from sqlalchemy.exc import DBAPIError
 from app.accounts import AccountInput,create_account
 from app.incomes import IncomeInput,create_income,account_balance
 from app.expenses import ExpenseInput,ExpenseEdit,create_expense,edit_expense
-from app.commitments import CommitmentInput,PaymentInput,create_commitment,list_commitments,list_installments,pay_installment,list_payments
+from app.commitments import CommitmentInput,PaymentInput,create_commitment,list_commitments,list_installments,pay_installment,list_payments,monthly_installments
 from app.db.connection import create_runtime_engine,create_migration_engine
 from app.db.unit_of_work import runtime_transaction
 
@@ -66,6 +66,15 @@ def check_commitments(runtime_url,migration_url):
         assert results[0]==results[1] and balance()=='970.00'
         partial=cuotas(debt['id'])['items'][0]
         assert (partial['pagado'],partial['pendiente'],partial['estado'])==('30.00','70.00','parcial')
+        monthly=call(lambda s,u,w:monthly_installments(s,u,w,'2024-01',day=date(2024,1,31)))
+        assert monthly['totales']==[{'moneda':'ARS','cuotas':1,'cuotas_pagadas':0,'total':'100.00','pagado':'30.00','pendiente':'70.00','vencido':'0.00'}]
+        assert monthly['items'][0]['id']==q1 and not monthly['items'][0]['vencida']
+        overdue=call(lambda s,u,w:monthly_installments(s,u,w,'2024-01',day=date(2024,2,1)))
+        assert overdue['totales'][0]['vencido']=='70.00' and overdue['items'][0]['vencida']
+        assert call(lambda s,u,w:monthly_installments(s,u,w,'2024-02'))['items'][0]['vencimiento']=='2024-02-29'
+        assert call(lambda s,u,w:monthly_installments(s,u,w,'2023-12'))=={'mes':'2023-12','items':[],'totales':[],'next_offset':None}
+        assert call(lambda s,u,w:monthly_installments(s,u,w,'2024-01'),reader)==call(lambda s,u,w:monthly_installments(s,u,w,'2024-01'))
+        denied(lambda:call(lambda s,u,w:monthly_installments(s,u,w,'2024-01'),other),403)
         denied(lambda:pay(q1,payment(id=original.id,importe='31')),409)
         denied(lambda:pay(q2,original),409)
         denied(lambda:pay(q1,payment(importe='70.01')),409)
@@ -95,6 +104,9 @@ def check_commitments(runtime_url,migration_url):
         finished=next(r for r in listed() if r['id']==debt['id'])
         assert finished['cuotas_pagadas']==3 and finished['pendiente']=='0.00' and finished['proximo_vencimiento'] is None
         assert balance()=='699.00'
+        settled=call(lambda s,u,w:monthly_installments(s,u,w,'2024-01'))
+        assert settled['totales'][0]['cuotas_pagadas']==1 and settled['totales'][0]['vencido']=='0.00'
+        assert settled['totales'][0]['pendiente']=='0.00'
         # Un pago no se puede alterar desde Gastos ni por UPDATE runtime.
         source=call(lambda s,u,w:s.execute(text('SELECT * FROM public.gastos WHERE id=:id'),{'id':original.id}).mappings().one())
         edit_original=ExpenseInput(id=original.id,fecha=source['fecha'].isoformat(),descripcion=source['descripcion'],moneda='ARS',importe='30.00')
@@ -129,6 +141,20 @@ def check_commitments(runtime_url,migration_url):
                 with migrator.begin() as c:c.execute(text('INSERT INTO public.pagos_cuota(id,espacio_id,cuota_id) VALUES (:id,:s,:q)'),{'id':expense_id,'s':owner,'q':quota_id})
             except DBAPIError as e:assert e.orig.sqlstate=='23503'
             else:raise AssertionError('Pago cruzado aceptado')
+        # Totales completos por moneda aunque la pagina tenga solo 100 cuotas.
+        batch=[]
+        for index in range(101):
+            batch.append(create(body(nombre='Mensual '+str(index),moneda='USD' if index%2 else 'ARS',
+                importe='0.10',total_cuotas=1,primer_vencimiento='2040-12-31')))
+        paged=call(lambda s,u,w:monthly_installments(s,u,w,'2040-12'))
+        next_page=call(lambda s,u,w:monthly_installments(s,u,w,'2040-12',paged['next_offset']))
+        assert len(paged['items'])==100 and len(next_page['items'])==1
+        assert len({r['id'] for r in paged['items']+next_page['items']})==101
+        assert paged['totales']==next_page['totales']
+        assert [(t['moneda'],t['cuotas'],t['total']) for t in paged['totales']]==[('ARS',51,'5.10'),('USD',50,'5.00')]
+        empty_page=call(lambda s,u,w:monthly_installments(s,u,w,'2040-12',200))
+        assert not empty_page['items'] and empty_page['totales']==paged['totales']
+        assert all(r['espacio_id']==str(owner) for r in paged['items'])
         assert create(payload)['cuotas_pagadas']==3
         with migrator.begin() as c:c.execute(text('DELETE FROM public.miembros_espacio WHERE usuario_id=:u AND espacio_id=:s'),{'u':editor,'s':owner})
         denied(lambda:create(body(),editor),403)
