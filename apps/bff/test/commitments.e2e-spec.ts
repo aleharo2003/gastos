@@ -126,4 +126,10 @@ describe('Deudas y pagos HTTP',()=>{
     await request(app.getHttpServer()).post(base+'/commitments').set('Authorization','Bearer token').send({...input,total_cuotas:10}).expect(400);
   });
 
+  it('permite cuotas variables pagadas por debajo del estimado inicial',async()=>{
+    const paid={...row,variable:true,total_cuotas:null,total:'100.00',pagado:'100.00',pendiente:'0.00',cuotas_pagadas:1,proximo_vencimiento:null};
+    remote.mockImplementation(async()=>new Response(JSON.stringify({items:[paid],next_offset:null})));
+    await request(app.getHttpServer()).get(base+'/commitments').set('Authorization','Bearer token').expect(200).expect({items:[paid],next_offset:null});
+  });
+
 });

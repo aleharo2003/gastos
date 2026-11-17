@@ -97,6 +97,10 @@ def check_variable_commitments(runtime_url,migration_url,jobs_url):
         assert quotas(historic)[-1]['importe']=='160.75' and quotas(historic)[-1]['estimado']
         totals=call(lambda s,u,w:monthly_installments(s,u,w,month))['totales'][0]
         assert totals['borradores']==98 and totals['estimado']=='9800.00' and totals['pagado']=='20.00'
+        # Una factura puede bajar frente al importe inicial y quedar completamente pagada.
+        reduced=quotas(plans[2]['id'])[0]
+        call(lambda s,u,w:pay_installment(s,u,w,c,PaymentInput(id=uuid4(),cuenta_id=account,fecha=today.isoformat(),importe=reduced['importe'])))
+        assert quotas(plans[2]['id'])[0]['estado']=='pagada'
         # Las cuotas confirmadas son inmutables tambien para runtime SQL.
         assert call(lambda s,u,w:s.execute(text('UPDATE public.cuotas SET estimado=true WHERE id=:id'),{'id':current['id']}).rowcount)==0
         print('OK: variables, >100 borradores, montos previos, confirmacion atomica concurrente, rollback, lector, aislamiento, pago posterior e inmutabilidad.',flush=True)

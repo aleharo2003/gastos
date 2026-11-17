@@ -31,7 +31,7 @@ function commitment(v:unknown,space:string):Commitment{
   if(!validCreate(r)||r.espacio_id!==space||!Number.isInteger(r.cuotas_pagadas)||r.cuotas_pagadas<0||(r.total_cuotas!==null&&r.cuotas_pagadas>r.total_cuotas)||typeof r.variable!=='boolean'||typeof r.pausado!=='boolean'||!Number.isSafeInteger(r.version)||r.version<1||
     !sum(r.total)||!sum(r.pagado)||!sum(r.pendiente)||(r.total_cuotas!==null&&cents(r.total)!==cents(r.importe)*BigInt(r.total_cuotas))||
     cents(r.pagado)+cents(r.pendiente)!==cents(r.total)||!(r.proximo_vencimiento===null||date(r.proximo_vencimiento))||
-    (cents(r.pendiente)===0n)!==(r.proximo_vencimiento===null)||BigInt(r.cuotas_pagadas)*cents(r.importe)>cents(r.pagado))throw new Error();
+    (cents(r.pendiente)===0n)!==(r.proximo_vencimiento===null)||(!r.variable&&BigInt(r.cuotas_pagadas)*cents(r.importe)>cents(r.pagado)))throw new Error();
   return {variable:r.variable,id:r.id,espacio_id:space,cuenta_id:r.cuenta_id,nombre:r.nombre,moneda:r.moneda,importe:r.importe,categoria:r.categoria??null,
     primer_vencimiento:r.primer_vencimiento,total_cuotas:r.total_cuotas,pausado:r.pausado,version:r.version,cuotas_pagadas:r.cuotas_pagadas,total:r.total,pagado:r.pagado,pendiente:r.pendiente,proximo_vencimiento:r.proximo_vencimiento};
 }
