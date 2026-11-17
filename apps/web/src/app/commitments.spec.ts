@@ -84,4 +84,11 @@ describe('Deudas fijas',()=>{
     expect(c.monthItems()).toHaveLength(1);
   });
 
+  it('retira las cuotas del plan anterior si falla la apertura de otro',async()=>{
+    const {c,request,debt,quota}=await setup();
+    await c.choose(debt);expect(c.installments()[0].id).toBe(quota.id);
+    request.mockRejectedValue(new Error());await c.choose({...debt,id:'other',nombre:'Otra deuda'});
+    expect(c.selected()!.id).toBe('other');expect(c.installments()).toEqual([]);expect(c.quota()).toBeNull();
+  });
+
 });

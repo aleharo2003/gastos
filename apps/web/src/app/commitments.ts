@@ -96,7 +96,7 @@ export class Commitments implements OnChanges{
     catch{if(this.alive&&context===this.context)this.error.set('No pudimos abrir la deuda. Reintentá desde el resumen.');}
     finally{if(this.alive&&context===this.context)this.detailLoading.set(false);}
     if(!debt||!this.alive||context!==this.context||!this.canLeave())return;
-    this.cancelPayment();this.selected.set(debt);this.lastPayment.set(null);
+    this.cancelPayment();this.selected.set(debt);this.installments.set([]);this.nextInstallment.set(null);this.lastPayment.set(null);
     await this.loadInstallments(Math.floor((item.numero-1)/100)*100);
     const quota=this.installments().find(row=>row.id===item.id);
     if(quota)await this.selectQuota(quota);
@@ -111,7 +111,7 @@ export class Commitments implements OnChanges{
     }catch{if(this.alive&&context===this.context)this.error.set('No pudimos cargar las deudas.');}
     finally{if(this.alive&&context===this.context)this.loading.set(false);}
   }
-  async choose(item:Commitment){if(!this.canLeave()||this.detailLoading()||this.saving())return;this.cancelPayment();this.selected.set(item);this.lastPayment.set(null);await this.loadInstallments(0);}
+  async choose(item:Commitment){if(!this.canLeave()||this.detailLoading()||this.saving())return;this.cancelPayment();this.selected.set(item);this.installments.set([]);this.nextInstallment.set(null);this.lastPayment.set(null);await this.loadInstallments(0);}
   async loadInstallments(offset=this.installmentOffset){
     const selected=this.selected();if(!selected||this.detailLoading()||this.paying())return;
     if(offset!==this.installmentOffset&&!this.canLeave())return;
