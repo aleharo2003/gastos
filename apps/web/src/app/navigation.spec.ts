@@ -6,7 +6,7 @@ describe('Navegación del espacio', () => {
   async function setup() {
     const accounts = [{id:'one',espacio_id:'s',nombre:'Efectivo'}, {id:'two',espacio_id:'s',nombre:'Banco'}];
     TestBed.configureTestingModule({imports:[Accounts],providers:[{provide:AuthSession,useValue:{
-      accountRequest: async (_method:string,path:string) => ({items:path.includes('/expenses') ? [] : accounts,next_offset:null}),
+      accountRequest: async (_method:string,path:string) => ({items:(path.includes('/expenses') || path.includes('/incomes')) ? [] : accounts,next_offset:null}),
     }}]});
     const fixture=TestBed.createComponent(Accounts);
     fixture.componentRef.setInput('space','s'); fixture.detectChanges();
@@ -31,6 +31,13 @@ describe('Navegación del espacio', () => {
     expect(component.selected()[0].id).toBe('');
     expect(component.error()).toContain('Terminá');
     component.expenses!.description=''; component.choose('two'); fixture.detectChanges();
+    expect(component.selected()[0].id).toBe('two');
+  });
+  it('protege el ingreso pendiente al cambiar de cuenta', async () => {
+    const {fixture,component}=await setup();
+    component.incomes!.description='Sueldo pendiente';component.choose('two');
+    expect(component.selected()[0].id).toBe('');
+    component.incomes!.cancel();component.choose('two');fixture.detectChanges();
     expect(component.selected()[0].id).toBe('two');
   });
   it('abre el formulario cuando se elige editar un gasto', async () => {

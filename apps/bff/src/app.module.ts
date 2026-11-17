@@ -1,3 +1,4 @@
+import { IncomesController } from './incomes.controller.js';
 import { PlanningController } from './planning.controller.js';
 import { ExpensesController } from './expenses.controller.js';
 import { ReceiptsController } from './receipts.controller.js';
@@ -10,7 +11,7 @@ import { AuthService } from './auth.service.js';
 
 @Module({
   imports: [],
-  controllers: [PlanningController, ReceiptsController, ExpensesController, AppController, AuthController, AccountsController],
+  controllers: [IncomesController, PlanningController, ReceiptsController, ExpensesController, AppController, AuthController, AccountsController],
   providers: [AppService, AuthService],
 })
 export class AppModule {}

@@ -10,9 +10,12 @@ from app.planning import router as planning_router
 from app.receipts import router as receipts_router
 from app.personal_space import router as personal_space_router
 
+from app.incomes import router as incomes_router
+
 app = FastAPI(title="Gastos API", lifespan=lifespan)
 app.include_router(auth_router)
 app.include_router(accounts_router)
+app.include_router(incomes_router)
 app.include_router(expenses_router)
 app.include_router(receipts_router)
 app.include_router(planning_router)
