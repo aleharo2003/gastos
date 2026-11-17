@@ -2,36 +2,36 @@
 
 ## Base actual
 
-Ingresos y saldos (PR #30) y transferencias internas (PR #31) están integrados en
-main. La base de este incremento es 86b598f33ab18f8d83ef46e0583fc09702895211.
-El flujo técnico sigue siendo Angular → NestJS BFF → FastAPI → PostgreSQL/Supabase,
-con RLS/FORCE, identidad transaccional y migraciones Alembic.
+Ingresos y saldos (PR #30), transferencias internas (PR #31) y metas de ahorro
+(PR #32) están integrados en main. Base de este incremento:
+913a7c0f85db7e8c1f5c708e6f7ae9004a6f60c2.
 
-## Incremento en revisión: completar ahorros
+Angular → NestJS BFF → FastAPI → PostgreSQL/Supabase, con RLS/FORCE,
+identidad transaccional, dinero decimal exacto y migraciones Alembic.
 
-Rama: feature/savings-goals. Agrega metas con objetivo, cuenta/moneda dedicada,
-fecha opcional, progreso derivado del saldo, faltante, edición versionada,
-archivo/reactivación y preparación de aportes/retiros desde transferencias.
-Una sola meta activa por cuenta y moneda evita atribuir el mismo saldo a dos
-objetivos. No se generan nuevos ingresos/gastos al crear o editar una meta.
-Ver metas-ahorro.md para reglas, contratos y criterios de aceptación.
+## Incremento en revisión: deudas fijas finitas
 
-El código y las pruebas se entregan mediante PR. Consultar el CI de ese PR para
-resultados ejecutados; la revisión visual móvil/escritorio se registra por separado.
-Esta nota no certifica un despliegue: validar el SHA publicado tras fusionar.
+Rama: feature/fixed-installment-debts. Agrega planes con cuotas mensuales,
+progreso, pagos completos/parciales y comprobantes. Crear un plan no mueve dinero;
+pagar crea un único gasto y reduce la deuda en la misma transacción.
+Ver compromisos-fijos.md para reglas, límites y cobertura parcial de CTAS-38,
+CTAS-43 y CTAS-45. Migración requerida: 0016.
+
+El backlog CTAS ya pudo leerse. Las stories mencionadas no quedan cerradas por
+este incremento. Gastos mensuales indefinidos/variables y automatización continúan
+en PRs posteriores; no confundir el calendario finito con generación mensual automática.
+
+El código y las pruebas se entregan mediante PR. Consultar su CI para resultados
+ejecutados. La revisión visual móvil/escritorio y la comprobación del SHA publicado
+tras fusionar se registran por separado; esta nota no certifica un despliegue.
 
 ## Orden de producto acordado
 
-1. Completar y revisar ahorros/metas.
-2. Deudas y cuotas.
+1. Ahorros/metas: integrado.
+2. Deudas y cuotas: incremento actual.
 3. Obligaciones y gastos mensuales, vencimientos y pagos, según stories CTAS.
 
-Backlog aportado:
-https://aleharo.atlassian.net/jira/software/c/projects/CTAS/boards/34/backlog
-
-La lectura requiere autorización de Atlassian. Hasta acceder, no inventar IDs ni
-criterios CTAS. El handoff Piggo también distingue estimaciones de obligaciones,
-pagos y gastos reales: evitar doble contabilización al registrar pagos.
+Backlog: https://aleharo.atlassian.net/jira/software/c/projects/CTAS/boards/34/backlog
 
 ## Diseño pendiente
 

@@ -10,6 +10,7 @@ from app.planning import router as planning_router
 from app.receipts import router as receipts_router
 from app.personal_space import router as personal_space_router
 
+from app.commitments import router as commitments_router
 from app.savings_goals import router as savings_goals_router
 from app.transfers import router as transfers_router
 from app.incomes import router as incomes_router
@@ -20,6 +21,7 @@ app.include_router(accounts_router)
 app.include_router(incomes_router)
 app.include_router(transfers_router)
 app.include_router(savings_goals_router)
+app.include_router(commitments_router)
 app.include_router(expenses_router)
 app.include_router(receipts_router)
 app.include_router(planning_router)

@@ -75,6 +75,8 @@ class ExpenseEdit(BaseModel):
 
 def edit_expense(session, user, space, account, expense_id, body):
     require_account(session, user, space, account, write=True)
+    if session.execute(text('SELECT id FROM public.pagos_cuota WHERE espacio_id=:s AND id=:id'),{'s':space,'id':expense_id}).scalar_one_or_none() is not None:
+        raise HTTPException(409,'Este gasto corresponde a un pago de cuota y no puede editarse desde gastos',headers=NO_STORE)
     if body.original.id != expense_id or body.nuevo.id != expense_id:
         raise HTTPException(422, 'Identificador inconsistente', headers=NO_STORE)
     params = {'id':expense_id, 's':space, 'a':account}

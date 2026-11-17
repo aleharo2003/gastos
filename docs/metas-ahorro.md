@@ -68,6 +68,6 @@ planificación de pagos y gastos reales. La especificación Piggo menciona oblig
 vencimientos, estados y recordatorios. El backlog aportado es:
 https://aleharo.atlassian.net/jira/software/c/projects/CTAS/boards/34/backlog
 
-Su lectura requiere acceso a Atlassian. No se inventan IDs CTAS ni se considera esta
-entrega contrastada con esas stories mientras no puedan leerse. Antes de implementar
-deudas, confirmar sus criterios para cuotas, pagos, comprobantes y recurrencia.
+El backlog CTAS ya pudo consultarse para la etapa de deudas. El alcance y la cobertura
+parcial de CTAS-38, CTAS-43 y CTAS-45 se documentan en compromisos-fijos.md.
+Esta entrega de ahorros no cierra esas stories.

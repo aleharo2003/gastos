@@ -1,0 +1,226 @@
+"""Deudas fijas finitas: calendario mensual y pagos exactos sin doble gasto."""
+from calendar import monthrange
+from datetime import date,datetime
+from decimal import Decimal
+from typing import Literal
+from uuid import UUID,uuid5
+from zoneinfo import ZoneInfo
+from fastapi import APIRouter,HTTPException,Request,Response,Query
+from pydantic import BaseModel,ConfigDict,Field,StrictInt,field_validator,model_validator
+from sqlalchemy import text
+from app.accounts import execute,require_member,NO_STORE
+from app.expenses import Category,require_account
+from app.incomes import IncomeInput
+
+router=APIRouter()
+
+
+def monthly_due(first,offset):
+    month=first.year*12+first.month-1+offset
+    year,month=divmod(month,12)
+    return date(year,month+1,min(first.day,monthrange(year,month+1)[1]))
+
+
+class CommitmentInput(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    id:UUID
+    cuenta_id:UUID
+    nombre:str
+    moneda:Literal['ARS','USD','EUR']
+    importe:Decimal
+    categoria:Category|None=None
+    primer_vencimiento:date
+    total_cuotas:StrictInt=Field(ge=1,le=600)
+
+    @field_validator('id','cuenta_id')
+    @classmethod
+    def identifier(cls,value):return IncomeInput.identifier(value)
+
+    @field_validator('nombre')
+    @classmethod
+    def name(cls,value):return IncomeInput.description(value)
+
+    @field_validator('importe',mode='before')
+    @classmethod
+    def amount(cls,value):return IncomeInput.amount(value)
+
+    @field_validator('primer_vencimiento',mode='before')
+    @classmethod
+    def iso_date(cls,value):return IncomeInput.iso_date(value)
+
+    @model_validator(mode='after')
+    def date_range(self):
+        if self.primer_vencimiento.year*12+self.primer_vencimiento.month-1+self.total_cuotas-1>=10000*12:
+            raise ValueError('El calendario supera el rango de fechas')
+        return self
+
+
+class PaymentInput(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    id:UUID
+    cuenta_id:UUID
+    fecha:date
+    importe:Decimal
+
+    @field_validator('id','cuenta_id')
+    @classmethod
+    def identifier(cls,value):return IncomeInput.identifier(value)
+
+    @field_validator('importe',mode='before')
+    @classmethod
+    def amount(cls,value):return IncomeInput.amount(value)
+
+    @field_validator('fecha',mode='before')
+    @classmethod
+    def iso_date(cls,value):return IncomeInput.iso_date(value)
+
+
+def public_commitment(row):
+    paid=row['pagado']
+    total=row['importe']*row['total_cuotas']
+    return {key:str(row[key]) for key in ('id','espacio_id','cuenta_id')}|{
+        'nombre':row['nombre'],'moneda':row['moneda'],'importe':format(row['importe'],'.2f'),
+        'categoria':row['categoria'],'primer_vencimiento':row['primer_vencimiento'].isoformat(),
+        'total_cuotas':row['total_cuotas'],'cuotas_pagadas':row['cuotas_pagadas'],
+        'total':format(total,'.2f'),'pagado':format(paid,'.2f'),'pendiente':format(total-paid,'.2f'),
+        'proximo_vencimiento':row['proximo_vencimiento'].isoformat() if row['proximo_vencimiento'] else None}
+
+
+def list_commitments(session,user,space,offset=0,identifier=None):
+    require_member(session,user,space)
+    clause=' AND c.id=:id' if identifier is not None else ''
+    rows=session.execute(text("""WITH pagos AS (
+        SELECT p.cuota_id,SUM(g.importe) AS pagado FROM public.pagos_cuota p
+        JOIN public.gastos g ON g.espacio_id=p.espacio_id AND g.id=p.id
+        WHERE p.espacio_id=:s GROUP BY p.cuota_id)
+        SELECT c.*,COUNT(*) FILTER (WHERE COALESCE(p.pagado,0)>=q.importe) AS cuotas_pagadas,
+            COALESCE(SUM(p.pagado),0) AS pagado,
+            MIN(q.vencimiento) FILTER (WHERE COALESCE(p.pagado,0)<q.importe) AS proximo_vencimiento
+        FROM public.compromisos c JOIN public.cuotas q ON q.espacio_id=c.espacio_id AND q.compromiso_id=c.id
+        LEFT JOIN pagos p ON p.cuota_id=q.id WHERE c.espacio_id=:s"""+clause+"""
+        GROUP BY c.id ORDER BY c.id LIMIT 101 OFFSET :offset"""),{'s':space,'id':identifier,'offset':offset}).mappings().all()
+    return {'items':[public_commitment(r) for r in rows[:100]],'next_offset':offset+100 if len(rows)>100 else None}
+
+
+def create_commitment(session,user,space,body):
+    require_account(session,user,space,body.cuenta_id,write=True)
+    params={'id':body.id,'s':space,'a':body.cuenta_id,'u':user,'n':body.nombre,'m':body.moneda,
+            'i':body.importe,'c':body.categoria,'f':body.primer_vencimiento,'t':body.total_cuotas}
+    inserted=session.execute(text("""INSERT INTO public.compromisos
+        (id,espacio_id,cuenta_id,usuario_id,nombre,moneda,importe,categoria,primer_vencimiento,total_cuotas)
+        VALUES (:id,:s,:a,:u,:n,:m,:i,:c,:f,:t) ON CONFLICT (id) DO NOTHING RETURNING id"""),params).scalar_one_or_none()
+    row=session.execute(text('SELECT * FROM public.compromisos WHERE espacio_id=:s AND id=:id'),params).mappings().one_or_none()
+    if (row is None or str(row['usuario_id'])!=str(user) or
+        any(row[k]!=getattr(body,k) for k in ('cuenta_id','nombre','moneda','importe','categoria','primer_vencimiento','total_cuotas'))):
+        raise HTTPException(409,'Identificador usado para otro compromiso',headers=NO_STORE)
+    if inserted is not None:
+        session.execute(text("""INSERT INTO public.cuotas(id,espacio_id,compromiso_id,numero,vencimiento,importe)
+            VALUES (:id,:s,:c,:n,:v,:i)"""),[
+            {'id':uuid5(body.id,str(n)),'s':space,'c':body.id,'n':n,'v':monthly_due(body.primer_vencimiento,n-1),'i':body.importe}
+            for n in range(1,body.total_cuotas+1)])
+    return list_commitments(session,user,space,identifier=body.id)['items'][0]
+
+
+def require_commitment(session,user,space,identifier):
+    require_member(session,user,space)
+    if session.execute(text('SELECT id FROM public.compromisos WHERE espacio_id=:s AND id=:id'),
+                       {'s':space,'id':identifier}).scalar_one_or_none() is None:
+        raise HTTPException(404,'Compromiso no disponible',headers=NO_STORE)
+
+
+def public_installment(row,day=None):
+    day=day or datetime.now(ZoneInfo('America/Argentina/Buenos_Aires')).date()
+    paid=row['pagado'];remaining=row['importe']-paid
+    return {key:str(row[key]) for key in ('id','espacio_id','compromiso_id')}|{
+        'numero':row['numero'],'vencimiento':row['vencimiento'].isoformat(),
+        'importe':format(row['importe'],'.2f'),'pagado':format(paid,'.2f'),'pendiente':format(remaining,'.2f'),
+        'estado':'pagada' if remaining==0 else 'parcial' if paid>0 else 'pendiente',
+        'vencida':remaining>0 and row['vencimiento']<day}
+
+
+def list_installments(session,user,space,identifier,offset=0):
+    require_commitment(session,user,space,identifier)
+    rows=session.execute(text("""SELECT q.*,COALESCE(SUM(g.importe),0) AS pagado FROM public.cuotas q
+        LEFT JOIN public.pagos_cuota p ON p.espacio_id=q.espacio_id AND p.cuota_id=q.id
+        LEFT JOIN public.gastos g ON g.espacio_id=p.espacio_id AND g.id=p.id
+        WHERE q.espacio_id=:s AND q.compromiso_id=:id GROUP BY q.id
+        ORDER BY q.numero LIMIT 101 OFFSET :offset"""),{'s':space,'id':identifier,'offset':offset}).mappings().all()
+    return {'items':[public_installment(row) for row in rows[:100]],'next_offset':offset+100 if len(rows)>100 else None}
+
+
+def public_payment(row):
+    return {key:str(row[key]) for key in ('id','espacio_id','cuota_id','cuenta_id')}|{
+        'fecha':row['fecha'].isoformat(),'moneda':row['moneda'],'importe':format(row['importe'],'.2f')}
+
+
+def require_installment(session,user,space,identifier,write=False):
+    require_member(session,user,space,write=write)
+    row=session.execute(text("""SELECT q.*,c.nombre,c.moneda,c.categoria,c.cuenta_id
+        FROM public.cuotas q JOIN public.compromisos c ON c.espacio_id=q.espacio_id AND c.id=q.compromiso_id
+        WHERE q.espacio_id=:s AND q.id=:id"""),{'s':space,'id':identifier}).mappings().one_or_none()
+    if row is None:raise HTTPException(404,'Cuota no disponible',headers=NO_STORE)
+    return row
+
+
+def pay_installment(session,user,space,identifier,body):
+    identifier=UUID(str(identifier))
+    row=require_installment(session,user,space,identifier,write=True)
+    require_account(session,user,space,body.cuenta_id,write=True)
+    # Un solo bloqueo transaccional por cuota serializa pagos sin conceder UPDATE a cuotas.
+    session.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))"),
+                    {'key':f'cuota:{space}:{identifier}'})
+    params={'id':body.id,'s':space,'q':identifier,'a':body.cuenta_id,'u':user,'f':body.fecha,'i':body.importe}
+    existing=session.execute(text("""SELECT p.cuota_id,g.* FROM public.pagos_cuota p
+        JOIN public.gastos g ON g.espacio_id=p.espacio_id AND g.id=p.id WHERE p.espacio_id=:s AND p.id=:id"""),params).mappings().one_or_none()
+    if existing is not None:
+        if (existing['cuota_id']!=identifier or str(existing['usuario_id'])!=str(user) or
+            any(existing[k]!=getattr(body,k) for k in ('cuenta_id','fecha','importe'))):
+            raise HTTPException(409,'Identificador usado para otro pago',headers=NO_STORE)
+        return public_payment(existing)
+    paid=session.execute(text("""SELECT COALESCE(SUM(g.importe),0) FROM public.pagos_cuota p
+        JOIN public.gastos g ON g.espacio_id=p.espacio_id AND g.id=p.id
+        WHERE p.espacio_id=:s AND p.cuota_id=:q"""),params).scalar_one()
+    if body.importe>row['importe']-paid:
+        raise HTTPException(409,'El pago supera el saldo pendiente; actualiza las cuotas',headers=NO_STORE)
+    params.update(d=('Cuota '+str(row['numero'])+' · '+row['nombre'])[:160],m=row['moneda'],c=row['categoria'])
+    inserted=session.execute(text("""INSERT INTO public.gastos
+        (id,espacio_id,cuenta_id,usuario_id,fecha,descripcion,moneda,importe,categoria)
+        VALUES (:id,:s,:a,:u,:f,:d,:m,:i,:c) ON CONFLICT (id) DO NOTHING RETURNING id"""),params).scalar_one_or_none()
+    if inserted is None:raise HTTPException(409,'Identificador usado para otro gasto',headers=NO_STORE)
+    session.execute(text('INSERT INTO public.pagos_cuota(id,espacio_id,cuota_id) VALUES (:id,:s,:q)'),params)
+    return public_payment({'id':body.id,'espacio_id':space,'cuota_id':identifier,'cuenta_id':body.cuenta_id,
+                           'fecha':body.fecha,'moneda':row['moneda'],'importe':body.importe})
+
+
+def list_payments(session,user,space,identifier,offset=0):
+    require_installment(session,user,space,identifier)
+    rows=session.execute(text("""SELECT p.cuota_id,g.* FROM public.pagos_cuota p
+        JOIN public.gastos g ON g.espacio_id=p.espacio_id AND g.id=p.id
+        WHERE p.espacio_id=:s AND p.cuota_id=:q ORDER BY g.fecha DESC,g.id DESC LIMIT 101 OFFSET :offset"""),
+        {'s':space,'q':identifier,'offset':offset}).mappings().all()
+    return {'items':[public_payment(row) for row in rows[:100]],'next_offset':offset+100 if len(rows)>100 else None}
+
+
+@router.post('/spaces/{space}/commitments')
+def post_commitment(space:UUID,body:CommitmentInput,request:Request,response:Response):
+    return execute(request,response,space,lambda s,u:create_commitment(s,u,space,body))
+
+
+@router.get('/spaces/{space}/commitments')
+def get_commitments(space:UUID,request:Request,response:Response,offset:int=Query(default=0,ge=0,le=100000)):
+    return execute(request,response,space,lambda s,u:list_commitments(s,u,space,offset))
+
+
+@router.get('/spaces/{space}/commitments/{identifier}/installments')
+def get_installments(space:UUID,identifier:UUID,request:Request,response:Response,offset:int=Query(default=0,ge=0,le=100000)):
+    return execute(request,response,space,lambda s,u:list_installments(s,u,space,identifier,offset))
+
+
+@router.post('/spaces/{space}/installments/{identifier}/payments')
+def post_payment(space:UUID,identifier:UUID,body:PaymentInput,request:Request,response:Response):
+    return execute(request,response,space,lambda s,u:pay_installment(s,u,space,identifier,body))
+
+
+@router.get('/spaces/{space}/installments/{identifier}/payments')
+def get_payments(space:UUID,identifier:UUID,request:Request,response:Response,offset:int=Query(default=0,ge=0,le=100000)):
+    return execute(request,response,space,lambda s,u:list_payments(s,u,space,identifier,offset))

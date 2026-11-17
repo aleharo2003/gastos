@@ -187,7 +187,7 @@ export class Expenses implements OnInit {
       if(this.appliedFilters()){this.notice.set('Guardado. La lista respeta los filtros; el gasto puede quedar fuera de los resultados.');}
     } catch (error) {
       if (this.alive) this.error.set(error instanceof HttpErrorResponse && error.status === 409 && this.editing
-        ? 'El gasto cambió desde otra sesión. Tu formulario se conserva. Actualizá la lista y volvé a seleccionar Editar para revisar los valores actuales.'
+        ? 'El gasto cambió desde otra sesión o corresponde a un pago de cuota. Tu formulario se conserva. Los pagos de cuotas no se editan desde Gastos; para otros gastos, actualizá la lista y revisá los valores actuales.'
         : error instanceof HttpErrorResponse && error.status === 403
         ? 'No tenés permiso para registrar gastos en este espacio.'
         : 'No pudimos confirmar el guardado. Reintentá sin cambiar los datos para evitar duplicar esta solicitud.');

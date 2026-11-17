@@ -24,6 +24,7 @@ from check_read_rls import check_read_rls
 from check_personal_space import check_personal_space
 from check_accounts_api import check_accounts_api
 from check_planning import check_planning
+from check_commitments import check_commitments
 from check_savings_goals import check_savings_goals
 from check_transfers import check_transfers
 from check_incomes import check_incomes
@@ -285,6 +286,7 @@ def check_database(fixture):
         check_incomes(urls[RUNTIME], urls[MIGRATOR])
         check_transfers(urls[RUNTIME], urls[MIGRATOR])
         check_savings_goals(urls[RUNTIME], urls[MIGRATOR])
+        check_commitments(urls[RUNTIME], urls[MIGRATOR])
         check_planning(urls[RUNTIME], urls[MIGRATOR])
         check_receipts(urls[RUNTIME], urls[MIGRATOR])
         try:

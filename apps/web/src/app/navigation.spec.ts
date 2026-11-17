@@ -1,3 +1,4 @@
+import { Commitments } from './commitments';
 import { By } from '@angular/platform-browser';
 import { Transfers } from './transfers';
 import { TestBed } from '@angular/core/testing';
@@ -8,7 +9,7 @@ describe('Navegación del espacio', () => {
   async function setup() {
     const accounts = [{id:'one',espacio_id:'s',nombre:'Efectivo'}, {id:'two',espacio_id:'s',nombre:'Banco'}];
     TestBed.configureTestingModule({imports:[Accounts],providers:[{provide:AuthSession,useValue:{
-      accountRequest: async (_method:string,path:string) => ({items:(path.includes('/expenses') || path.includes('/incomes') || path.includes('/transfers') || path.includes('/savings-goals')) ? [] : accounts,next_offset:null}),
+      accountRequest: async (_method:string,path:string) => ({items:(path.includes('/expenses') || path.includes('/incomes') || path.includes('/transfers') || path.includes('/savings-goals') || path.includes('/commitments')) ? [] : accounts,next_offset:null}),
     }}]});
     const fixture=TestBed.createComponent(Accounts);
     fixture.componentRef.setInput('space','s'); fixture.detectChanges();
@@ -58,6 +59,14 @@ describe('Navegación del espacio', () => {
     transfer.amount='10';component.fundGoal({...goal,retirar:true});
     expect(transfer.destination).toBe('two');expect(transfer.amount).toBe('10');expect(transfer.error()).toContain('pendiente');
     fixture.destroy();
+  });
+  it('conserva el borrador de deuda al cambiar de seccion', async () => {
+    const {fixture,component}=await setup();
+    const debt=fixture.debugElement.query(By.directive(Commitments)).componentInstance as Commitments;
+    component.tab.set('debts');fixture.detectChanges();debt.name='Casa';debt.amount='250';debt.count=10;
+    component.tab.set('accounts');fixture.detectChanges();component.tab.set('debts');fixture.detectChanges();
+    expect(fixture.debugElement.query(By.directive(Commitments)).componentInstance).toBe(debt);
+    expect(debt.name).toBe('Casa');expect(debt.amount).toBe('250');
   });
   it('abre el formulario cuando se elige editar un gasto', async () => {
     const {fixture,component}=await setup();
