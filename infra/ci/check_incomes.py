@@ -65,7 +65,7 @@ def check_incomes(runtime_url, migration_url):
         call(create_income,other,other,foreign,payload(importe='999999999999.99'))
         expense=ExpenseInput(id=uuid4(),fecha='2026-11-16',descripcion='Compra',moneda='ARS',importe='150.20')
         call(create_expense,owner,owner,account,expense)
-        assert totals()['ARS']==dict(moneda='ARS',ingresos='100.10',gastos='150.20',saldo='-50.10')
+        assert totals()['ARS']==dict(moneda='ARS',ingresos='100.10',gastos='150.20',transferencias_entrada='0.00',transferencias_salida='0.00',saldo='-50.10')
         assert totals()['USD']['saldo']=='0.10'
         assert totals()['EUR']['saldo']=='0.00'
         assert totals(None)['ARS']['saldo']=='-0.10'

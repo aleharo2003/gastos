@@ -1,0 +1,57 @@
+<section aria-labelledby="savings-title">
+  <h3 id="savings-title">Ahorros y transferencias</h3>
+  <p>Creá una cuenta «Ahorros» en Cuentas y transferí dinero desde tu banco o efectivo. Para retirarlo, invertí origen y destino. Tu dinero total se conserva.</p>
+  <p>Se mueve el mismo importe y la misma moneda en ambas cuentas. Las transferencias no cuentan como ingresos ni gastos.</p>
+  @if(accounts.length<2){<p>Necesitás al menos dos cuentas. Podés agregarlas desde Cuentas.</p>}
+  @if(moreAccounts){<button type="button" class="secondary" (click)="loadAccounts.emit()" [disabled]="accountsLoading||saving()">Cargar más cuentas</button>}
+  @if(error()){<p class="error" role="alert">{{ error() }}</p>}
+  @if(notice()){<p class="notice" role="status">{{ notice() }}</p><button type="button" class="secondary" (click)="viewAccount.emit(savedDestination)">Ver saldo de {{ accountName(savedDestination) }}</button>}
+  <form #transferForm="ngForm" (ngSubmit)="save()">
+    <div class="account-pair">
+      <div><label for="transfer-origin">Desde</label>
+        <select id="transfer-origin" name="transferOrigin" [(ngModel)]="origin" (ngModelChange)="originChanged()" required [disabled]="saving()">
+          <option value="">Elegí la cuenta de origen</option>
+          @for(account of accounts;track account.id){<option [value]="account.id">{{ account.nombre }}</option>}
+        </select>
+      </div>
+      <div><label for="transfer-destination">Hacia</label>
+        <select id="transfer-destination" name="transferDestination" [(ngModel)]="destination" required [disabled]="saving()">
+          <option value="">Elegí la cuenta de destino</option>
+          @for(account of destinations();track account.id){<option [value]="account.id">{{ account.nombre }}</option>}
+        </select>
+      </div>
+    </div>
+    <label for="transfer-date">Fecha</label>
+    <input id="transfer-date" name="transferDate" type="date" [(ngModel)]="date" required [disabled]="saving()">
+    <label for="transfer-description">Descripción</label>
+    <input id="transfer-description" name="transferDescription" [(ngModel)]="description" required maxlength="160" placeholder="Por ejemplo, ahorro del mes" [disabled]="saving()">
+    <label for="transfer-currency">Moneda en ambas cuentas</label>
+    <select id="transfer-currency" name="transferCurrency" [(ngModel)]="currency" [disabled]="saving()"><option>ARS</option><option>USD</option><option>EUR</option></select>
+    <label for="transfer-amount">Importe</label>
+    <input id="transfer-amount" name="transferAmount" inputmode="decimal" [(ngModel)]="amount" required aria-describedby="transfer-amount-help" placeholder="100000,00" [disabled]="saving()">
+    <small id="transfer-amount-help">Sin separador de miles; coma o punto para los decimales. No se convierte moneda.</small>
+    <small>El saldo se calcula con lo registrado, incluso fechas futuras. Podés registrar una transferencia aunque deje saldo negativo.</small>
+    <button type="submit" [disabled]="transferForm.invalid||accounts.length<2||loading()||saving()">{{ saving()?'Guardando…':'Registrar transferencia' }}</button>
+    <button type="button" class="secondary" (click)="clear()" [disabled]="saving()">Limpiar formulario</button>
+  </form>
+  <h4>Historial de transferencias</h4>
+  <label for="transfer-history-account">Filtrar por cuenta</label>
+  <select id="transfer-history-account" [(ngModel)]="historyAccount" [disabled]="loading()||saving()">
+    <option value="">Todas las cuentas</option>
+    @for(account of accounts;track account.id){<option [value]="account.id">{{ account.nombre }}</option>}
+  </select>
+  <button type="button" class="secondary" (click)="applyHistory()" [disabled]="loading()||saving()">Aplicar filtro</button>
+  @if(loading()){<p role="status">Cargando transferencias…</p>}
+  @if(!loading()&&!items().length&&!error()){<p>No hay transferencias para mostrar.</p>}
+  <ul>
+    @for(item of items();track item.id){
+      <li><strong>{{ item.descripcion }}</strong>
+        <span>Desde {{ accountName(item.origen_id) }} hacia {{ accountName(item.destino_id) }}</span>
+        <span>{{ item.fecha.split('-').reverse().join('/') }}</span>
+        <b>{{ item.moneda }} {{ hidden()?'••••':showAmount(item.importe) }}</b>
+      </li>
+    }
+  </ul>
+  <button type="button" class="secondary" (click)="load()" [disabled]="loading()||saving()">Actualizar transferencias</button>
+  @if(next()!==null){<button type="button" class="secondary" (click)="load(true)" [disabled]="loading()||saving()">Ver más transferencias</button>}
+</section>

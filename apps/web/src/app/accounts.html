@@ -2,8 +2,9 @@
   <button type="button" (click)="tab.set('expenses')" [attr.aria-current]="tab() === 'expenses' ? 'page' : null">Gastos</button>
   <button type="button" (click)="tab.set('accounts')" [attr.aria-current]="tab() === 'accounts' ? 'page' : null">Cuentas</button>
   <button type="button" (click)="tab.set('plan')" [attr.aria-current]="tab() === 'plan' ? 'page' : null">Presupuesto</button>
+  <button type="button" (click)="tab.set('savings')" [attr.aria-current]="tab() === 'savings' ? 'page' : null">Ahorros</button>
 </nav>
-<app-planning [space]="space" [compact]="tab() !== 'plan'" [hidden]="tab() === 'accounts'" [revision]="planRevision()" (configure)="tab.set('plan')" />
+<app-planning [space]="space" [compact]="tab() !== 'plan'" [hidden]="tab() === 'accounts' || tab() === 'savings'" [revision]="planRevision()" (configure)="tab.set('plan')" />
 <section [hidden]="tab() !== 'accounts' && items().length > 0" aria-labelledby="accounts-title">
   <h3 id="accounts-title">Tus cuentas</h3>
   <p>Una cuenta indica dónde tenés tu dinero: efectivo, banco o billetera.</p>
@@ -27,6 +28,8 @@
     </button>
   </form>
 </section>
+
+<app-transfers [hidden]="tab() !== 'savings'" [space]="space" [accounts]="items()" [moreAccounts]="next() !== null" [accountsLoading]="loading()" (loadAccounts)="load(true)" (changed)="planRevision.update(incrementPlan)" (viewAccount)="choose($event)" />
 
 <div [hidden]="tab() !== 'expenses'">
   @if (items().length) {

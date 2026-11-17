@@ -1,3 +1,4 @@
+import { Transfers } from './transfers';
 import { Incomes } from './incomes';
 import { Planning } from './planning';
 import { Expenses } from './expenses';
@@ -10,7 +11,7 @@ type Account = { id: string; espacio_id: string; nombre: string };
 type Page = { items: Account[]; next_offset: number | null };
 
 @Component({
-  selector: 'app-accounts', imports: [FormsModule, Expenses, Planning, Incomes],
+  selector: 'app-accounts', imports: [FormsModule, Expenses, Planning, Incomes, Transfers],
   templateUrl: './accounts.html', styleUrl: './accounts.css',
 })
 export class Accounts implements OnInit {
@@ -22,7 +23,7 @@ export class Accounts implements OnInit {
   readonly error = signal('');
   readonly notice = signal('');
   readonly next = signal<number | null>(null);
-  readonly tab = signal<'expenses' | 'accounts' | 'plan'>('expenses');
+  readonly tab = signal<'expenses' | 'accounts' | 'plan' | 'savings'>('expenses');
   @ViewChild(Expenses) expenses?: Expenses;
   @ViewChild(Incomes) incomes?: Incomes;
   choose(id: string): void {

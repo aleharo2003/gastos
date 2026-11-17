@@ -1,3 +1,4 @@
+from app.db.models.transferencia import Transferencia
 from app.db.models.ingreso import Ingreso
 from app.db.models.plan_gasto import PlanGasto
 from app.db.models.gasto import Gasto
@@ -7,4 +8,4 @@ from app.db.models.cuenta import Cuenta
 from app.db.models.perfil import Perfil
 from app.db.models.miembro_espacio import MiembroEspacio
 
-__all__ = ["Ingreso", "PlanGasto", "Comprobante", "Gasto", "Espacio", "Cuenta", "Perfil", "MiembroEspacio"]
+__all__ = ["Transferencia", "Ingreso", "PlanGasto", "Comprobante", "Gasto", "Espacio", "Cuenta", "Perfil", "MiembroEspacio"]

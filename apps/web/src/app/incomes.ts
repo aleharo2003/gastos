@@ -7,7 +7,7 @@ import { normalizeAmount, showAmount } from './expenses';
 type Payload={id:string;fecha:string;descripcion:string;moneda:string;importe:string};
 type Income=Payload & {espacio_id:string;cuenta_id:string};
 type Page={items:Income[];next_offset:number|null};
-type Balance={totales:{moneda:string;ingresos:string;gastos:string;saldo:string}[]};
+type Balance={totales:{moneda:string;ingresos:string;gastos:string;saldo:string;transferencias_entrada?:string;transferencias_salida?:string}[]};
 @Component({selector:'app-incomes',imports:[FormsModule],templateUrl:'./incomes.html',styleUrl:'./incomes.css'})
 export class Incomes implements OnChanges {
   @Input({required:true}) space='';
