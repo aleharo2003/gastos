@@ -42,6 +42,26 @@ describe('Deudas y pagos HTTP',()=>{
     await request(app.getHttpServer()).post(url).set('Authorization', 'Bearer token')
       .send(value).expect(409);
   });
+  it('importa un CSV en el espacio y devuelve el error por fila', async () => {
+    const url = base + '/index-values/import';
+    const body = { csv: 'indice,periodo,variacion\nCAC,2026-10,2.3456\n' };
+    await request(app.getHttpServer()).post(url).send(body).expect(401);
+    await request(app.getHttpServer()).post(url).set('Authorization', 'Bearer token')
+      .send({ csv: 'a'.repeat(32769) }).expect(400);
+    expect(remote).not.toHaveBeenCalled();
+
+    const result = { importadas: 1, existentes: 0 };
+    remote.mockImplementation(async () => new Response(JSON.stringify(result)));
+    await request(app.getHttpServer()).post(url).set('Authorization', 'Bearer token')
+      .send(body).expect(200).expect(result).expect('Cache-Control', 'no-store');
+    expect(remote.mock.calls[0][0].pathname).toBe('/spaces/' + space + '/index-values/import');
+    expect(JSON.parse(remote.mock.calls[0][1].body)).toEqual(body);
+
+    const detail = 'Fila 2: el índice ya tiene otra variación para ese mes.';
+    remote.mockImplementation(async () => new Response(JSON.stringify({ detail }), { status: 409 }));
+    await request(app.getHttpServer()).post(url).set('Authorization', 'Bearer token')
+      .send(body).expect(409).expect({ message: detail });
+  });
   it('exige token y reenvia el plan sin convertir dinero',async()=>{
     await request(app.getHttpServer()).post(base+'/commitments').send(payload).expect(401);expect(remote).not.toHaveBeenCalled();
     await request(app.getHttpServer()).post(base+'/commitments').set('Authorization','Bearer token').send(payload).expect(200).expect(row).expect('Cache-Control','no-store');

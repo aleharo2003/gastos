@@ -144,6 +144,7 @@ function dueOverview(value:unknown){
 
 }
 
+type IndexCsv = { csv: string };
 type IndexValue = { indice: string; periodo: string; variacion: string };
 
 function validIndexValue(value: unknown): value is IndexValue {
@@ -185,6 +186,22 @@ export class CommitmentsController{
       throw new BadRequestException('Variacion invalida');
     }
     return this.forward(token, space, 'index-values', undefined, 0, body);
+  }
+
+  @Post('index-values/import')
+  @HttpCode(200)
+  async importIndexValues(
+    @Param('space') space: string, @Body() body: unknown,
+    @Req() req: Request, @Res({passthrough: true}) res: Response,
+  ) {
+    res.setHeader('Cache-Control', 'no-store');
+    const token = await this.token(req, res);
+    const input = body as IndexCsv;
+    if (!input || typeof input.csv !== 'string' || Object.keys(input).length !== 1 ||
+        !input.csv.length || Buffer.byteLength(input.csv, 'utf8') > 32 * 1024) {
+      throw new BadRequestException('Seleccioná un CSV de hasta 32 KiB.');
+    }
+    return this.forward(token, space, 'index-import', undefined, 0, { csv: input.csv });
   }
 
   @Post('installments/:id/skip')
@@ -297,18 +314,33 @@ export class CommitmentsController{
 
 
 
-  private async forward(token:string,rawSpace:string,kind:'index-values'|'commitments'|'installments'|'payments'|'monthly'|'detail'|'pause'|'drafts'|'confirm'|'skip'|'overview',id:string|undefined,offset=0,body?:IndexValue|Create|Pay|Confirm|{version:number}|{pausado:boolean;version:number},month?:string){
+  private async forward(token:string,rawSpace:string,kind:'index-import'|'index-values'|'commitments'|'installments'|'payments'|'monthly'|'detail'|'pause'|'drafts'|'confirm'|'skip'|'overview',id:string|undefined,offset=0,body?:IndexCsv|IndexValue|Create|Pay|Confirm|{version:number}|{pausado:boolean;version:number},month?:string){
     if(!UUID.test(rawSpace))throw new BadRequestException('Espacio invalido');const space=rawSpace.toLowerCase();
     try{
       const base=new URL(process.env.API_BASE_URL??'http://127.0.0.1:8000'),local=['localhost','127.0.0.1','[::1]','api'].includes(base.hostname);
       if(base.username||base.password||base.search||base.hash||base.pathname!=='/'||(base.protocol!=='https:'&&!(base.protocol==='http:'&&local)))throw new Error();
       const rawTimeout=process.env.API_TIMEOUT_MS??'5000',timeout=Number(rawTimeout);
       if(!/^\d+$/.test(rawTimeout)||!Number.isSafeInteger(timeout)||timeout<1||timeout>2147483647)throw new Error();
-      const suffix=kind==='index-values'?'index-values':kind==='overview'?'due-overview':kind==='skip'?`installments/${id}/skip`:kind==='drafts'?'installment-drafts':kind==='confirm'?'installment-confirmations':(kind==='detail'||kind==='pause')?`commitments/${id}`:kind==='monthly'?'installments':kind==='commitments'?'commitments':kind==='installments'?`commitments/${id}/installments`:`installments/${id}/payments`;
+      const suffix=kind==='index-import'?'index-values/import':kind==='index-values'?'index-values':kind==='overview'?'due-overview':kind==='skip'?`installments/${id}/skip`:kind==='drafts'?'installment-drafts':kind==='confirm'?'installment-confirmations':(kind==='detail'||kind==='pause')?`commitments/${id}`:kind==='monthly'?'installments':kind==='commitments'?'commitments':kind==='installments'?`commitments/${id}/installments`:`installments/${id}/payments`;
       const result=await fetch(new URL(`/spaces/${space}/${suffix}?offset=${offset}${kind==='monthly'?'&month='+month:''}`,base),{method:kind==='pause'?'PATCH':body?'POST':'GET',redirect:'error',signal:AbortSignal.timeout(timeout),
         headers:{Accept:'application/json',Authorization:`Bearer ${token}`,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
+      if (kind === 'index-import' && [409, 422].includes(result.status)) {
+        const error = await boundedJson(result, 4096) as { detail?: unknown } | null;
+        const message = typeof error?.detail === 'string' && error.detail.length <= 200
+          ? error.detail : 'No se pudo importar el CSV.';
+        throw new HttpException({ message }, result.status);
+      }
       if([400,401,403,404,409,422,503].includes(result.status))throw new HttpException('No se pudo completar la operacion',result.status);
       if(!result.ok)throw new Error();const data=await boundedJson(result,262144);
+      if (kind === 'index-import') {
+        const summary = data as { importadas: number; existentes: number } | null;
+        if (!summary || !Number.isInteger(summary.importadas) || !Number.isInteger(summary.existentes) ||
+            summary.importadas < 0 || summary.existentes < 0 ||
+            summary.importadas + summary.existentes < 1 || summary.importadas + summary.existentes > 500) {
+          throw new Error();
+        }
+        return { importadas: summary.importadas, existentes: summary.existentes };
+      }
       if (kind === 'index-values') {
         if (body) {
           const input = body as IndexValue;
