@@ -1,5 +1,7 @@
 """Cuotas elegibles por fecha argentina, configuración, saldo y espacio."""
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, date, datetime
+from threading import Barrier
 from decimal import Decimal
 from uuid import uuid4
 
@@ -42,6 +44,11 @@ def check_reminder_candidates(runtime_url, migration_url, jobs_url):
             rows = connection.execute(text('SELECT * FROM public.candidatos_avisos_email(:instant)'),
                                       {'instant': instant}).mappings().all()
         return {row['nombre']: row for row in rows if row['usuario_id'] in (owner, other, spectator)}
+
+    def enqueue(instant):
+        with migrator.begin() as connection:
+            return connection.execute(text('SELECT public.encolar_avisos_email(:instant)'),
+                                      {'instant': instant}).scalar_one()
 
     try:
         for actor in (owner, other, spectator):
@@ -96,11 +103,40 @@ def check_reminder_candidates(runtime_url, migration_url, jobs_url):
         preferences(owner, canal='ninguno')
         assert candidates() == {}
 
+        preferences(owner, canal='email', dias_anticipacion=3)
+        # La misma cuota puede quedar en la ventana en fechas distintas.
+        first = datetime(2026, 2, 11, 12, 0, tzinfo=UTC)
+        next_day = datetime(2026, 2, 12, 12, 0, tzinfo=UTC)
+        barrier = Barrier(2, timeout=10)
+
+        def concurrent_enqueue(_):
+            barrier.wait()
+            return enqueue(first)
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            assert sorted(pool.map(concurrent_enqueue, range(2))) == [0, 5]
+        assert enqueue(first) == 0
+        assert enqueue(next_day) == 4
+        assert enqueue(next_day) == 0
+        with migrator.connect() as connection:
+            assert connection.execute(text("""
+                SELECT fecha_aviso FROM public.avisos_email
+                WHERE usuario_id = :owner AND espacio_id = :owner AND cuota_id = :quota
+                ORDER BY fecha_aviso
+            """), {'owner': owner, 'quota': upcoming}).scalars().all() == [
+                date(2026, 2, 11), date(2026, 2, 12),
+            ]
+
         for engine in (runtime, jobs):
             with engine.connect() as connection:
                 assert not connection.execute(text("""
                     SELECT has_function_privilege(current_user,
                         'public.candidatos_avisos_email(timestamptz)', 'EXECUTE')
+                """)).scalar_one()
+                assert not connection.execute(text("""
+                    SELECT has_function_privilege(current_user,
+                        'public.encolar_avisos_email(timestamptz)', 'EXECUTE')
+                    OR has_table_privilege(current_user, 'public.avisos_email', 'SELECT')
                 """)).scalar_one()
     finally:
         runtime.dispose()

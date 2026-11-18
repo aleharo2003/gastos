@@ -1,3 +1,4 @@
+from app.db.models.aviso_email import AvisoEmail
 from app.db.models.preferencia_aviso import PreferenciaAviso
 from app.db.models.variacion_indice import VariacionIndice
 from app.db.models.compromiso import Compromiso,Cuota,PagoCuota
@@ -12,4 +13,4 @@ from app.db.models.cuenta import Cuenta
 from app.db.models.perfil import Perfil
 from app.db.models.miembro_espacio import MiembroEspacio
 
-__all__ = ["PreferenciaAviso", "VariacionIndice", "Compromiso","Cuota","PagoCuota", "MetaAhorro", "Transferencia", "Ingreso", "PlanGasto", "Comprobante", "Gasto", "Espacio", "Cuenta", "Perfil", "MiembroEspacio"]
+__all__ = ["AvisoEmail", "PreferenciaAviso", "VariacionIndice", "Compromiso","Cuota","PagoCuota", "MetaAhorro", "Transferencia", "Ingreso", "PlanGasto", "Comprobante", "Gasto", "Espacio", "Cuenta", "Perfil", "MiembroEspacio"]
