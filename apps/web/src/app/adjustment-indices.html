@@ -14,6 +14,17 @@
   </fieldset>
 </form>
 @if (saveError()) { <p class="error" role="alert">{{ saveError() }}</p> }
+<form ngNoForm (submit)="$event.preventDefault(); importCsv(csvInput)">
+  <fieldset [disabled]="saving()">
+    <legend>Importar histórico</legend>
+    <label for="adjustment-csv">Archivo CSV UTF-8</label>
+    <input #csvInput id="adjustment-csv" type="file" accept=".csv,text/csv" aria-describedby="adjustment-csv-help" required>
+    <p id="adjustment-csv-help">Usá las columnas <code>indice,periodo,variacion</code> y el formato AAAA-MM para el período.
+      Por ejemplo, <code>CAC,2026-10,2.3456</code>. Hasta 500 variaciones y 32 KiB.</p>
+    <button type="submit" [disabled]="loading()">Importar CSV</button>
+  </fieldset>
+</form>
+@if (importError()) { <p class="error" role="alert">{{ importError() }}</p> }
 @if (notice()) { <p class="notice" role="status">{{ notice() }}</p> }
 @if (listError()) {
   <p class="error" role="alert">{{ listError() }}</p>
