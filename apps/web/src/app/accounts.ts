@@ -27,6 +27,7 @@ export class Accounts implements OnInit {
   readonly notice = signal('');
   readonly next = signal<number | null>(null);
   readonly tab = signal<'today' | 'expenses' | 'accounts' | 'plan' | 'savings' | 'debts'>('today');
+  @ViewChild(Commitments) commitments?: Commitments;
   @ViewChild(Expenses) expenses?: Expenses;
   @ViewChild(Incomes) incomes?: Incomes;
   @ViewChild(Transfers) transfers?: Transfers;
@@ -50,6 +51,11 @@ export class Accounts implements OnInit {
     const select = event.target as HTMLSelectElement;
     this.choose(select.value);
     select.value = this.selected()[0]?.id ?? '';
+  }
+  duePaymentSaved(): void {
+    this.planRevision.update(this.incrementPlan);
+    void this.expenses?.load();
+    void this.commitments?.refreshPayments();
   }
   readonly draftCount=signal(0);
   readonly planRevision=signal(0);

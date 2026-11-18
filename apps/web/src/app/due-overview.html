@@ -1,12 +1,44 @@
 <section aria-labelledby="due-overview-title">
   <header>
     <h3 id="due-overview-title">Qué tengo que pagar</h3>
-    <button type="button" (click)="load()" [disabled]="loading()">Actualizar</button>
+    <button type="button" (click)="load()" [disabled]="loading() || saving()">Actualizar</button>
   </header>
   @if (error()) {
     <p class="error" role="alert">No pudimos actualizar los vencimientos. Volvé a intentar.</p>
   }
   @if (loading()) { <p role="status">Cargando vencimientos…</p> }
+  @if (notice()) { <p role="status">{{ notice() }}</p> }
+  @if (paymentError()) { <p class="error" role="alert">{{ paymentError() }}</p> }
+  @if (selected(); as item) {
+    @if (!hidden()) {
+      <form class="card payment" (ngSubmit)="pay()" aria-labelledby="due-payment-title">
+        <h4 id="due-payment-title">Registrar pago · {{ item.nombre }}</h4>
+        <p>Cuota {{ item.numero }} · Saldo al abrir {{ item.moneda }} {{ amount(item.pendiente) }}</p>
+        <fieldset [disabled]="saving() || uncertain()">
+          <label for="due-pay-account">Cuenta</label>
+          <select id="due-pay-account" name="dueAccount" [(ngModel)]="account" required>
+            <option value="">Elegí una cuenta</option>
+            @for (entry of accounts; track entry.id) {
+              <option [value]="entry.id">{{ entry.nombre }}</option>
+            }
+          </select>
+          @if (moreAccounts) {
+            <button type="button" (click)="loadAccounts.emit()" [disabled]="accountsLoading">Cargar más cuentas</button>
+          }
+          <label for="due-pay-date">Fecha de pago</label>
+          <input id="due-pay-date" type="date" name="dueDate" [(ngModel)]="paymentDate" required />
+          <label for="due-pay-amount">Importe en {{ item.moneda }}</label>
+          <input id="due-pay-amount" name="dueAmount" inputmode="decimal" [(ngModel)]="paymentAmount" required />
+        </fieldset>
+        <div class="payment-actions">
+          <button type="submit" [disabled]="saving()">{{ saving() ? 'Registrando…' : uncertain() ? 'Reintentar pago' : 'Registrar pago' }}</button>
+          @if (!uncertain()) {
+            <button type="button" (click)="cancelPayment()" [disabled]="saving()">Cancelar</button>
+          }
+        </div>
+      </form>
+    }
+  }
   @if (overview(); as data) {
     <p>{{ shortDate(data.fecha) }} · Semana hasta el {{ shortDate(data.fin_semana) }}</p>
     @if (hasPending(data)) {
@@ -26,7 +58,16 @@
                 @for (item of group.items; track item.id) {
                   <li>
                     <div><strong>{{ item.nombre }}</strong><small>Cuota {{ item.numero }} · {{ shortDate(item.vencimiento) }}</small></div>
-                    <div><strong>{{ item.moneda }} {{ amount(item.pendiente) }}</strong>@if(item.estimado){<small>Estimado</small>}</div>
+                    <div>
+                      <strong>{{ item.moneda }} {{ amount(item.pendiente) }}</strong>
+                      @if (item.estimado) {
+                        <small>Estimado</small>
+                      } @else if (!hidden()) {
+                        <button type="button" (click)="startPayment(item)"
+                          [disabled]="!!selected() || loading() || error()"
+                          [attr.aria-label]="'Registrar pago de ' + item.nombre + ', cuota ' + item.numero">Pagar</button>
+                      }
+                    </div>
                   </li>
                 }
               </ul>

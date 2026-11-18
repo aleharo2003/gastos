@@ -7,9 +7,9 @@
   <button type="button" (click)="tab.set('debts')" [attr.aria-current]="tab() === 'debts' ? 'page' : null">Deudas</button>
 </nav>
 @if(draftCount()>0){<p role="status">Tenés {{ draftCount() }} montos estimados por confirmar. <button type="button" class="secondary" (click)="tab.set('debts')">Revisar estimados</button></p>}
-@if (tab() === 'today') {
-  <app-due-overview [space]="space" (openDebts)="tab.set('debts')" />
-}
+<app-due-overview [space]="space" [active]="tab() === 'today'" [hidden]="tab() !== 'today'"
+  [accounts]="items()" [moreAccounts]="next() !== null" [accountsLoading]="loading()"
+  (loadAccounts)="load(true)" (paymentSaved)="duePaymentSaved()" (openDebts)="tab.set('debts')" />
 <app-planning [space]="space" [compact]="tab() !== 'plan'" [hidden]="tab() !== 'plan' && tab() !== 'expenses'" [revision]="planRevision()" (configure)="tab.set('plan')" />
 <section [hidden]="tab() !== 'accounts' && items().length > 0" aria-labelledby="accounts-title">
   <h3 id="accounts-title">Tus cuentas</h3>

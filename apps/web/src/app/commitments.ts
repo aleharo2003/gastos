@@ -2,19 +2,18 @@ import { Component,DestroyRef,EventEmitter,inject,Input,OnChanges,Output,signal,
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { AuthSession } from './auth-session';
+import { installmentLocalDate as today, prepareInstallmentPayment, submitInstallmentPayment, type InstallmentPayment, type Payment } from './installment-payment';
 import { Receipts } from './receipts';
 import { normalizeAmount,showAmount } from './expenses';
 import { cents,money } from './money-reference';
+export type { Payment } from './installment-payment';
 export type Commitment={cuotas_no_aplican?:number;variable?:boolean;pausado?:boolean;version?:number;id:string;espacio_id:string;cuenta_id:string;nombre:string;moneda:string;importe:string;categoria:string|null;
   primer_vencimiento:string;total_cuotas:number|null;cuotas_pagadas:number;total:string;pagado:string;pendiente:string;proximo_vencimiento:string|null};
 export type Installment={estimado?:boolean;version?:number;id:string;espacio_id:string;compromiso_id:string;numero:number;vencimiento:string;importe:string;pagado:string;pendiente:string;estado:string;vencida:boolean};
-export type Payment={id:string;espacio_id:string;cuota_id:string;cuenta_id:string;fecha:string;moneda:string;importe:string};
 export type MonthlyItem=Installment & {nombre:string;moneda:string;cuenta_id:string};
 export type MonthlyTotal={no_aplican?:number;borradores?:number;estimado?:string;moneda:string;cuotas:number;cuotas_pagadas:number;total:string;pagado:string;pendiente:string;vencido:string};
 export type MonthlyPage={mes:string;items:MonthlyItem[];totales:MonthlyTotal[];next_offset:number|null};
 type Create={variable:boolean;id:string;cuenta_id:string;nombre:string;moneda:string;importe:string;categoria:string|null;primer_vencimiento:string;total_cuotas:number|null};
-type Pay={id:string;cuenta_id:string;fecha:string;importe:string};
-const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Argentina/Buenos_Aires',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 @Component({selector:'app-commitments',imports:[FormsModule,Receipts],templateUrl:'./commitments.html',styleUrl:'./commitments.css'})
 export class Commitments implements OnChanges{
   @Input({required:true}) space='';
@@ -56,7 +55,7 @@ export class Commitments implements OnChanges{
   readonly draftNext=signal<number|null>(null);draftOffset=0;draftDirty=false;
   draftValues:Record<string,{amount:string;selected:boolean;version:number}>={};
   private draftVersion=0;
-  private pending?:Create;private payPending?:{quota:string;body:Pay};
+  private pending?:Create;private payPending?:InstallmentPayment;
   private readonly privacyListener=(event:Event)=>this.hidden.set((event as CustomEvent).detail===true);
   constructor(){
     try{this.hidden.set(localStorage.getItem('gastos.totals.hidden')==='true');}catch{}
@@ -238,14 +237,20 @@ export class Commitments implements OnChanges{
       await Promise.all([this.load(),this.loadMonth(),this.loadDrafts(0),this.loadInstallments()]);
     }
   }
+  async refreshPayments(): Promise<void> {
+    await this.load();
+    await this.loadInstallments();
+    await this.loadPayments();
+    await this.loadMonth();
+  }
   async pay(){
     const quota=this.quota();if(quota?.estado==='no_aplica')return;if(quota?.estimado){this.error.set('Confirmá el monto estimado antes de registrar pagos.');return;}if(!quota||this.paying()||this.detailLoading()||this.saving()||this.receiptBusy())return;
-    const importe=normalizeAmount(this.payAmount);
-    if(!importe||!this.payDate||!this.accounts.some(a=>a.id===this.payAccount)||cents(importe)>cents(quota.pendiente)){this.error.set('Elegí una cuenta y un importe positivo que no supere el saldo de la cuota.');return;}
-    const value={cuenta_id:this.payAccount,fecha:this.payDate,importe};
-    if(!this.payPending||this.payPending.quota!==quota.id||Object.entries(value).some(([key,v])=>this.payPending!.body[key as keyof Pay]!==v))this.payPending={quota:quota.id,body:{id:crypto.randomUUID(),...value}};
+    const pending=prepareInstallmentPayment(quota.id,{cuenta_id:this.payAccount,fecha:this.payDate,importe:this.payAmount},
+      quota.pendiente,this.accounts,this.payPending);
+    if(!pending){this.error.set('Elegí una cuenta y un importe positivo que no supere el saldo de la cuota.');return;}
+    this.payPending=pending;
     const context=this.context;this.paying.set(true);this.payDirty=true;this.error.set('');this.notice.set('');let saved:Payment|null=null;
-    try{saved=await this.auth.accountRequest<Payment>('POST',this.path+'/installments/'+encodeURIComponent(quota.id)+'/payments',this.payPending.body);}
+    try{saved=await submitInstallmentPayment(this.auth,this.space,pending);}
     catch(error){if(this.alive&&context===this.context)this.error.set(error instanceof HttpErrorResponse&&error.status===409
       ?'El saldo pendiente cambió o el identificador ya fue usado. Actualizá las cuotas para revisar el pago; tu formulario se conserva.'
       :error instanceof HttpErrorResponse&&error.status===403?'No tenés permiso para registrar pagos.'
@@ -254,7 +259,7 @@ export class Commitments implements OnChanges{
     if(saved&&this.alive&&context===this.context){
       this.payPending=undefined;this.payDirty=false;this.payAmount='';this.lastPayment.set(saved);
       this.notice.set('Pago registrado. El gasto y el saldo de la deuda se actualizaron juntos.');this.changed.emit();
-      await this.load();await this.loadInstallments();await this.loadPayments();await this.loadMonth();
+      await this.refreshPayments();
     }
   }
 }
