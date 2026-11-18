@@ -18,6 +18,30 @@ describe('Deudas y pagos HTTP',()=>{
     remote=vi.fn().mockImplementation(async()=>new Response(JSON.stringify(row)));vi.stubGlobal('fetch',remote);
   });
   afterEach(async()=>{await app.close();vi.unstubAllEnvs();vi.unstubAllGlobals();});
+  it('registra y consulta una variacion como decimal exacto, con autorizacion', async () => {
+    const url = base + '/index-values';
+    const value = { indice: 'CAC', periodo: '2026-10', variacion: '-0.1234' };
+    await request(app.getHttpServer()).get(url).expect(401);
+    await request(app.getHttpServer()).post(url).set('Authorization', 'Bearer token')
+      .send({ ...value, variacion: -0.1234 }).expect(400);
+    expect(remote).not.toHaveBeenCalled();
+
+    remote.mockImplementation(async () => new Response(JSON.stringify(value)));
+    await request(app.getHttpServer()).post(url).set('Authorization', 'Bearer token')
+      .send(value).expect(200).expect(value).expect('Cache-Control', 'no-store');
+    expect(JSON.parse(remote.mock.calls[0][1].body)).toEqual(value);
+
+    const page = { items: [value], next_offset: null };
+    remote.mockImplementation(async () => new Response(JSON.stringify(page)));
+    await request(app.getHttpServer()).get(url + '?offset=100').set('Authorization', 'Bearer token')
+      .expect(200).expect(page);
+    expect(remote.mock.calls[1][0].pathname).toBe('/spaces/' + space + '/index-values');
+    expect(remote.mock.calls[1][0].search).toBe('?offset=100');
+
+    remote.mockImplementation(async () => new Response('{}', { status: 409 }));
+    await request(app.getHttpServer()).post(url).set('Authorization', 'Bearer token')
+      .send(value).expect(409);
+  });
   it('exige token y reenvia el plan sin convertir dinero',async()=>{
     await request(app.getHttpServer()).post(base+'/commitments').send(payload).expect(401);expect(remote).not.toHaveBeenCalled();
     await request(app.getHttpServer()).post(base+'/commitments').set('Authorization','Bearer token').send(payload).expect(200).expect(row).expect('Cache-Control','no-store');

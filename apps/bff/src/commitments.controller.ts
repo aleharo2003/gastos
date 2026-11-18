@@ -275,7 +275,7 @@ export class CommitmentsController{
     if(!validId(id)||!validPay(body)||Object.keys(body).some(k=>!['id','cuenta_id','fecha','importe'].includes(k)))throw new BadRequestException('Pago invalido');
     return this.forward(token,space,'payments',id.toLowerCase(),0,{...body,id:body.id.toLowerCase(),cuenta_id:body.cuenta_id.toLowerCase()});
   }
-  private async read(space:string,kind:'index-values'|'commitments'|'installments'|'payments',id:string|undefined,query:Record<string,unknown>,req:Request,res:Response){
+  private async read(space:string,kind:'commitments'|'installments'|'payments',id:string|undefined,query:Record<string,unknown>,req:Request,res:Response){
     res.setHeader('Cache-Control','no-store');const token=await this.token(req,res);
     if((id!==undefined&&!validId(id))||Object.keys(query).some(k=>k!=='offset')||
       (query.offset!==undefined&&(typeof query.offset!=='string'||!/^\d{1,6}$/.test(query.offset)||Number(query.offset)>100000)))throw new BadRequestException('Pagina invalida');
@@ -297,7 +297,7 @@ export class CommitmentsController{
 
 
 
-  private async forward(token:string,rawSpace:string,kind:'commitments'|'installments'|'payments'|'monthly'|'detail'|'pause'|'drafts'|'confirm'|'skip'|'overview',id:string|undefined,offset=0,body?:IndexValue|Create|Pay|Confirm|{version:number}|{pausado:boolean;version:number},month?:string){
+  private async forward(token:string,rawSpace:string,kind:'index-values'|'commitments'|'installments'|'payments'|'monthly'|'detail'|'pause'|'drafts'|'confirm'|'skip'|'overview',id:string|undefined,offset=0,body?:IndexValue|Create|Pay|Confirm|{version:number}|{pausado:boolean;version:number},month?:string){
     if(!UUID.test(rawSpace))throw new BadRequestException('Espacio invalido');const space=rawSpace.toLowerCase();
     try{
       const base=new URL(process.env.API_BASE_URL??'http://127.0.0.1:8000'),local=['localhost','127.0.0.1','[::1]','api'].includes(base.hostname);
