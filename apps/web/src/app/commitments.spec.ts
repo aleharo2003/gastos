@@ -19,6 +19,23 @@ describe('Deudas fijas',()=>{
     expect(c.total()).toBe('2.501,00');request.mockRejectedValue(new Error());await c.save();await c.save();
     const writes=request.mock.calls.filter(row=>row[0]==='POST');expect(writes[0][2]).toEqual(writes[1][2]);expect(writes[0][2].importe).toBe('250.10');
   });
+  it('envía capital y TNA del préstamo y muestra el desglose programado', async () => {
+    const {f,c,request,debt,quota}=await setup();
+    c.name='Préstamo';c.account='bank';c.amount='3000,00';c.count=3;
+    c.loanSystem='aleman';c.loanRate='12,50';
+    expect(c.total()).toBeNull();
+    await c.save();
+    const write=request.mock.calls.find(row=>row[0]==='POST');
+    expect(write?.[2]).toMatchObject({sistema_amortizacion:'aleman',tna:'12.50',importe:'3000.00',total_cuotas:3});
+    await c.choose({...debt,sistema_amortizacion:'aleman',tna:'12.5'});
+    const scheduled={...quota,capital:'1000.00',interes:'30.00',saldo_capital:'2000.00'};
+    c.installments.set([scheduled]);
+    await c.selectQuota(scheduled);
+    f.detectChanges();
+    expect(f.nativeElement.textContent).toContain('Saldo de capital según el plan');
+    expect(f.nativeElement.textContent).not.toContain('Marcar como «No aplica»');
+    expect(f.nativeElement.querySelector('#payment-amount')).not.toBeNull();
+  });
   it('envía el índice y la última cuota sin presentar un total fijo', async () => {
     const {c,request}=await setup();
     c.name='Terreno';c.account='bank';c.amount='100,50';c.count=3;c.indexed=true;c.indexName=' CAC ';

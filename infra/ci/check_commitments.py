@@ -1,6 +1,7 @@
 """Deudas fijas y pagos reales contra PostgreSQL desechable."""
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date,timedelta
+from decimal import Decimal
 from uuid import UUID,uuid4
 from fastapi import HTTPException
 from sqlalchemy import text
@@ -185,6 +186,32 @@ def check_commitments(runtime_url,migration_url):
         with migrator.begin() as c:c.execute(text('DELETE FROM public.miembros_espacio WHERE usuario_id=:u AND espacio_id=:s'),{'u':editor,'s':owner})
         denied(lambda:create(body(),editor),403)
         print('OK: planes finitos, calendario anclado, pagos parciales, reintentos y sobrepago concurrente, rollback atomico, gastos inmutables, >100 pagos/cuotas y RLS.',flush=True)
+        loan = body(nombre='Préstamo', importe='3000', sistema_amortizacion='aleman', tna='12',
+                    primer_vencimiento='2028-01-31')
+        debt = create(loan)
+        assert debt['total']=='3060.00' and debt['sistema_amortizacion']=='aleman' and debt['tna']=='12'
+        assert create(loan)==debt
+        denied(lambda:create(body(id=loan.id, nombre='Préstamo', importe='3000', sistema_amortizacion='aleman',
+                                  tna='13', primer_vencimiento='2028-01-31')),409)
+        rows = cuotas(debt['id'])['items']
+        assert [r['vencimiento'] for r in rows]==['2028-01-31','2028-02-29','2028-03-31']
+        assert [(r['capital'],r['interes'],r['importe'],r['saldo_capital']) for r in rows]==[
+            ('1000.00','30.00','1030.00','2000.00'),
+            ('1000.00','20.00','1020.00','1000.00'),
+            ('1000.00','10.00','1010.00','0.00'),
+        ]
+        first = rows[0]
+        denied(lambda:call(lambda s,u,w:skip_installment(s,u,w,first['id'],first['version'])),409)
+        previous_balance = Decimal(balance())
+        pay(first['id'],payment(importe='30'))
+        assert Decimal(balance())==previous_balance-Decimal('30')
+        updated=cuotas(debt['id'])['items'][0]
+        assert updated['estado']=='parcial' and updated['saldo_capital']==first['saldo_capital']
+        denied(lambda:cuotas(debt['id'],who=other,space=other),404)
+
+        invalid=body(importe='0.01', sistema_amortizacion='frances', tna='12')
+        denied(lambda:create(invalid),422)
+        assert str(invalid.id) not in {entry['id'] for entry in listed()}
     finally:
         with migrator.begin() as c:
             for table in ['pagos_cuota','cuotas','compromisos','gastos','ingresos','cuentas']:
