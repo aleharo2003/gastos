@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, DestroyRef, ElementRef, inject, Input, OnChanges, signal, viewChild } from '@angular/core';
+import { Component, DestroyRef, ElementRef, EventEmitter, inject, Input, OnChanges, Output, signal, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { AuthSession } from './auth-session';
 
@@ -15,6 +15,7 @@ type IndexPage = { items: IndexValue[]; next_offset: number | null };
 })
 export class AdjustmentIndices implements OnChanges {
   @Input({ required: true }) space = '';
+  @Output() ratesSaved = new EventEmitter<void>();
 
   private readonly auth = inject(AuthSession);
   private readonly destroy = inject(DestroyRef);
@@ -97,6 +98,7 @@ export class AdjustmentIndices implements OnChanges {
       if (!this.active(generation)) return;
       this.notice.set('Variación guardada.');
       this.variacion = '';
+      this.ratesSaved.emit();
       await this.load();
     } catch (error) {
       if (!this.active(generation)) return;
@@ -135,6 +137,7 @@ export class AdjustmentIndices implements OnChanges {
       if (!this.active(generation)) return;
       input.value = '';
       this.notice.set(`Importadas: ${result.importadas}. Ya registradas: ${result.existentes}.`);
+      if (result.importadas) this.ratesSaved.emit();
       await this.load();
     } catch (error) {
       if (!this.active(generation)) return;

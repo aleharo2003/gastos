@@ -19,6 +19,35 @@ describe('Deudas fijas',()=>{
     expect(c.total()).toBe('2.501,00');request.mockRejectedValue(new Error());await c.save();await c.save();
     const writes=request.mock.calls.filter(row=>row[0]==='POST');expect(writes[0][2]).toEqual(writes[1][2]);expect(writes[0][2].importe).toBe('250.10');
   });
+  it('envía el índice y la última cuota sin presentar un total fijo', async () => {
+    const {c,request}=await setup();
+    c.name='Terreno';c.account='bank';c.amount='100,50';c.count=3;c.indexed=true;c.indexName=' CAC ';
+    expect(c.total()).toBeNull();
+    request.mockRejectedValue(new Error());
+    await c.save();await c.save();
+    const writes=request.mock.calls.filter(row=>row[0]==='POST');
+    expect(writes[0][2]).toEqual(writes[1][2]);
+    expect(writes[0][2]).toMatchObject({indice_ajuste:'CAC',importe:'100.50',total_cuotas:3});
+    c.indexed=false;await c.save();
+    const fixed=request.mock.calls.filter(row=>row[0]==='POST')[2][2];
+    expect(fixed.indice_ajuste).toBeUndefined();
+    expect(fixed.id).not.toBe(writes[0][2].id);
+  });
+  it('muestra una cuota provisoria y habilita el pago con el valor recalculado', async () => {
+    const {f,c,request,debt,quota}=await setup();
+    await c.choose({...debt,indice_ajuste:'CAC'});
+    await c.selectQuota({...quota,pendiente_ajuste:true});
+    f.detectChanges();
+    expect(f.nativeElement.textContent).toContain('Importe provisorio');
+    expect(f.nativeElement.querySelector('#payment-amount')).toBeNull();
+    await c.pay();
+    expect(request.mock.calls.some(row=>row[0]==='POST')).toBe(false);
+    request.mockResolvedValueOnce({items:[{...quota,importe:'110.00',pendiente:'110.00'}],next_offset:null});
+    await c.loadInstallments();
+    f.detectChanges();
+    expect(f.nativeElement.querySelector('#payment-amount')).not.toBeNull();
+    expect(c.payAmount).toBe('110.00');
+  });
   it('conserva el identificador de pago ante respuesta perdida',async()=>{
     const {c,request,debt,quota}=await setup();await c.choose(debt);await c.selectQuota(quota);c.payAmount='30,00';
     request.mockRejectedValue(new Error());await c.pay();await c.pay();

@@ -44,6 +44,20 @@ describe('Pagos desde Hoy', () => {
     return { fixture, component: fixture.componentInstance, request };
   }
 
+  it('señala las cuotas pendientes de ajuste y bloquea el pago', async () => {
+    const { fixture, component, request } = await setup();
+    const data = overview('100.00');
+    const pending = { ...installment, pendiente_ajuste: true };
+    data.grupos.hoy.items = [pending];
+    request.mockResolvedValueOnce(data);
+    await component.load();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Pendiente de ajuste');
+    expect(fixture.nativeElement.querySelector('li button')).toBeNull();
+    component.startPayment(pending);
+    expect(component.selected()).toBeNull();
+  });
+
   it('registra un pago parcial y refresca el panel', async () => {
     const { fixture, component, request } = await setup();
     const changed = vi.fn();

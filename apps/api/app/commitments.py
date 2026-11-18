@@ -470,7 +470,7 @@ def due_overview(session, user, space, today=None):
     month_end = today.replace(day=monthrange(today.year,today.month)[1])
     rows = session.execute(text("""
         WITH amounts AS (
-            SELECT q.id, q.numero, q.vencimiento, q.estimado, c.nombre, c.moneda,
+            SELECT q.id, q.numero, q.vencimiento, q.estimado, q.pendiente_ajuste, c.nombre, c.moneda,
                 q.importe, COALESCE(pay.pagado,0) AS pagado
             FROM public.cuotas q
             JOIN public.compromisos c ON c.id=q.compromiso_id AND c.espacio_id=q.espacio_id
@@ -492,13 +492,13 @@ def due_overview(session, user, space, today=None):
         )
         SELECT 'total' AS type, grupo, moneda, COUNT(*) AS cantidad,
             SUM(pendiente) AS pendiente, NULL::numeric AS pagado, NULL::date AS vencimiento,
-            NULL::uuid AS id, NULL::text AS nombre, NULL::int AS numero, NULL::boolean AS estimado
+            NULL::uuid AS id, NULL::text AS nombre, NULL::int AS numero, NULL::boolean AS estimado, NULL::boolean AS pendiente_ajuste
         FROM pending GROUP BY grupo,moneda
         UNION ALL
-        SELECT 'item', grupo, moneda, NULL, pendiente, NULL, vencimiento,id,nombre,numero,estimado
+        SELECT 'item', grupo, moneda, NULL, pendiente, NULL, vencimiento,id,nombre,numero,estimado,pendiente_ajuste
         FROM ranked WHERE rank<=20
         UNION ALL
-        SELECT 'mes', NULL, moneda, COUNT(*), SUM(importe-pagado), SUM(pagado), NULL,NULL,NULL,NULL,NULL
+        SELECT 'mes', NULL, moneda, COUNT(*), SUM(importe-pagado), SUM(pagado), NULL,NULL,NULL,NULL,NULL,NULL
         FROM amounts WHERE vencimiento BETWEEN :month_start AND :month_end GROUP BY moneda
         ORDER BY type,grupo,moneda,vencimiento,id
     """), {'space':space,'today':today,'week_end':week_end,
@@ -518,7 +518,7 @@ def due_overview(session, user, space, today=None):
                 'id':str(row['id']),'nombre':row['nombre'],'numero':row['numero'],
                 'moneda':row['moneda'],'pendiente':amount,'estimado':row['estimado'],
                 'vencimiento':row['vencimiento'].isoformat(),
-            })
+            } | ({'pendiente_ajuste': True} if row['pendiente_ajuste'] else {}))
     for group in groups.values():
         group['items'].sort(key=lambda item:(item['vencimiento'],item['id']))
     return {'fecha':today.isoformat(),'fin_semana':week_end.isoformat(),

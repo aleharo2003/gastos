@@ -8,7 +8,7 @@ import { money, rateUnits, type CurrencyTotal } from './money-reference';
 import { limitUsage, type PlanMoney } from './planning-math';
 
 type DueTotal = { moneda: string; pendiente: string };
-type DueItem = DueTotal & { id: string; nombre: string; numero: number; vencimiento: string; estimado: boolean };
+type DueItem = DueTotal & { id: string; nombre: string; numero: number; vencimiento: string; estimado: boolean; pendiente_ajuste?: boolean };
 type Group = { cantidad: number; totales: DueTotal[]; items: DueItem[] };
 
 type Overview = {
@@ -101,7 +101,7 @@ export class DueOverview implements OnChanges {
   }
 
   startPayment(item: DueItem): void {
-    if (item.estimado || this.hidden() || this.selected() || this.saving() || this.loading() || this.error()) return;
+    if (item.estimado || item.pendiente_ajuste || this.hidden() || this.selected() || this.saving() || this.loading() || this.error()) return;
     this.paymentError.set('');
     this.notice.set('');
     this.account = this.accounts.length === 1 ? this.accounts[0].id : '';
@@ -124,7 +124,7 @@ export class DueOverview implements OnChanges {
 
   async pay(): Promise<void> {
     const item = this.selected();
-    if (!item || item.estimado || this.saving() || this.hidden()) return;
+    if (!item || item.estimado || item.pendiente_ajuste || this.saving() || this.hidden()) return;
 
     const payment = this.pendingPayment ?? prepareInstallmentPayment(item.id, {
       cuenta_id: this.account, fecha: this.paymentDate, importe: this.paymentAmount,
