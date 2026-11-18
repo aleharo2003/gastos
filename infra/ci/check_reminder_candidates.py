@@ -45,6 +45,12 @@ def check_reminder_candidates(runtime_url, migration_url, jobs_url):
                                       {'instant': instant}).mappings().all()
         return {row['nombre']: row for row in rows if row['usuario_id'] in (owner, other, spectator)}
 
+    def ready(instant):
+        with migrator.connect() as connection:
+            rows = connection.execute(text('SELECT * FROM public.avisos_email_para_preparar(:instant)'),
+                                      {'instant': instant}).mappings().all()
+            return {str(row['cuota_id']): row for row in rows if row['usuario_id'] == owner}
+
     def enqueue(instant):
         with migrator.begin() as connection:
             return connection.execute(text('SELECT public.encolar_avisos_email(:instant)'),
@@ -107,6 +113,7 @@ def check_reminder_candidates(runtime_url, migration_url, jobs_url):
         # La misma cuota puede quedar en la ventana en fechas distintas.
         first = datetime(2026, 2, 11, 12, 0, tzinfo=UTC)
         next_day = datetime(2026, 2, 12, 12, 0, tzinfo=UTC)
+        assert ready(first) == {}
         barrier = Barrier(2, timeout=10)
 
         def concurrent_enqueue(_):
@@ -127,6 +134,16 @@ def check_reminder_candidates(runtime_url, migration_url, jobs_url):
                 date(2026, 2, 11), date(2026, 2, 12),
             ]
 
+        assert ready(first)[upcoming]['pendiente'] == Decimal('70.00')
+        for amount, expected in (('10', Decimal('60.00')), ('60', None)):
+            payment = PaymentInput(id=uuid4(), cuenta_id=wallet, fecha='2026-02-11', importe=amount)
+            run(lambda s, u, w: pay_installment(s, u, w, upcoming, payment))
+            refreshed = ready(first).get(upcoming)
+            assert (refreshed['pendiente'] if refreshed else None) == expected
+        preferences(owner, canal='ninguno')
+        assert ready(first) == {}
+        assert ready(next_day) == {}
+
         for engine in (runtime, jobs):
             with engine.connect() as connection:
                 assert not connection.execute(text("""
@@ -137,6 +154,8 @@ def check_reminder_candidates(runtime_url, migration_url, jobs_url):
                     SELECT has_function_privilege(current_user,
                         'public.encolar_avisos_email(timestamptz)', 'EXECUTE')
                     OR has_table_privilege(current_user, 'public.avisos_email', 'SELECT')
+                    OR has_function_privilege(current_user,
+                        'public.avisos_email_para_preparar(timestamptz)', 'EXECUTE')
                 """)).scalar_one()
     finally:
         runtime.dispose()
