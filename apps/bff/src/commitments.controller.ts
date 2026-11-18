@@ -1,6 +1,8 @@
 import { BadGatewayException,BadRequestException,Body,Controller,Get,HttpCode,HttpException,Param,Patch,Post,Query,Req,Res,UnauthorizedException } from '@nestjs/common';
 import type { Request,Response } from 'express';
 import { AuthService } from './auth.service.js';
+import { validateBalance } from './incomes.controller.js';
+import { validLimits } from './planning.controller.js';
 import { boundedJson } from './token-verifier.js';
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const validId=(v:unknown):v is string=>typeof v==='string'&&UUID.test(v)&&!/^0{8}-0{4}-0{4}-0{4}-0{12}$/.test(v);
@@ -84,6 +86,8 @@ type DueOverview = {
   fin_semana:string;
   grupos:Record<DueGroupKey,DueGroup>;
   resumen_mes:(DueTotal & { pagado:string })[];
+  saldos:unknown;
+  presupuesto:{limites:unknown;gastos:{moneda:string;dia:string;mes:string;semana:string}[]};
 };
 
 function dueTotals<T extends DueTotal>(value:T[]):T[]{
@@ -125,7 +129,19 @@ function dueOverview(value:unknown){
     if(!sum(pagado))throw new Error();
     return {moneda,pendiente,pagado};
   });
-  return {fecha:page.fecha,fin_semana:page.fin_semana,grupos:Object.fromEntries(groups),resumen_mes:month};
+  const saldos=validateBalance(page.saldos).totales.map(({moneda,saldo})=>({moneda,saldo}));
+  const budget=page.presupuesto;
+  if(!budget||!validLimits(budget.limites)||!Array.isArray(budget.gastos)||budget.gastos.length>3)throw new Error();
+  const currenciesSeen=new Set<string>();
+  const gastos=budget.gastos.map(row=>{
+    if(!row||!currencies.includes(row.moneda)||currenciesSeen.has(row.moneda)||
+       !sum(row.dia)||!sum(row.mes)||!sum(row.semana)||cents(row.dia)>cents(row.semana))throw new Error();
+    currenciesSeen.add(row.moneda);
+    return {moneda:row.moneda,dia:row.dia,mes:row.mes,semana:row.semana};
+  });
+  return {fecha:page.fecha,fin_semana:page.fin_semana,grupos:Object.fromEntries(groups),resumen_mes:month,
+    saldos,presupuesto:{limites:budget.limites,gastos}};
+
 }
 
 @Controller('api/spaces/:space')

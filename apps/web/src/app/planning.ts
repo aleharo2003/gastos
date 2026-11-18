@@ -3,7 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { AuthSession } from './auth-session';
 import { CurrencyTotal,cents,money,rateUnits,reference } from './money-reference';
-import { emptyPlan,normalizedAmount,PlanData,PlanEnvelope,projected,progress } from './planning-math';
+import { emptyPlan,normalizedAmount,PlanData,PlanEnvelope,projected,progress,limitUsage } from './planning-math';
 type Summary={fecha:string;mes:string;semana_desde:string;semana_hasta:string;totales:CurrencyTotal[]};
 @Component({selector:'app-planning',imports:[FormsModule],templateUrl:'./planning.html',styleUrl:'./planning.css'})
 export class Planning implements OnChanges {
@@ -87,10 +87,7 @@ export class Planning implements OnChanges {
   readonly money=money;
   limit(period:'diario'|'semanal'){
     const limit=this.saved()?.datos.limites[period];if(!limit)return null;
-    const summary=this.summary();
-    const spent=summary?reference(summary.totales,period==='diario'?'dia':'semana',limit.moneda,rateUnits(this.rate())):null;
-    const amount=cents(limit.importe);
-    return {moneda:limit.moneda,amount,spent,progress:spent===null?null:progress(spent,amount),difference:spent===null?null:spent>amount?spent-amount:amount-spent};
+    return limitUsage(limit,this.summary()?.totales,period,this.rate());
   }
   projection(period:'semana'|'mes') {return this.saved()?projected(this.saved()!.datos.conceptos,period,this.currency,this.rate()):null;}
   month(){const rows=this.summary()?.totales;return rows?reference(rows,'mes',this.currency,rateUnits(this.rate())):null;}

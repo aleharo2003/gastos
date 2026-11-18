@@ -8,7 +8,7 @@ from sqlalchemy.exc import DBAPIError
 from app.accounts import AccountInput,create_account
 from app.incomes import IncomeInput,create_income,account_balance
 from app.expenses import ExpenseInput,ExpenseEdit,create_expense,edit_expense
-from app.commitments import CommitmentInput,PaymentInput,create_commitment,list_commitments,list_installments,pay_installment,list_payments,monthly_installments,due_overview,skip_installment
+from app.commitments import CommitmentInput,PaymentInput,create_commitment,list_commitments,list_installments,pay_installment,list_payments,monthly_installments,due_overview,skip_installment,today_overview
 from app.db.connection import create_runtime_engine,create_migration_engine
 from app.db.unit_of_work import runtime_transaction
 
@@ -80,6 +80,10 @@ def check_commitments(runtime_url,migration_url):
         assert today['grupos']['hoy']['totales']==[{'moneda':'ARS','pendiente':'70.00'}]
         assert today['grupos']['vencidas']['cantidad']==0
         assert today['resumen_mes']==[{'moneda':'ARS','pagado':'30.00','pendiente':'70.00'}]
+        overview = call(lambda s,u,w:today_overview(s,u,w,date(2026,11,17)))
+        assert overview['saldos']['totales'][0]['saldo']=='970.00'
+        assert overview['presupuesto']=={'limites':{'diario':None,'semanal':None},
+            'gastos':[{'moneda':'ARS','dia':'30.00','semana':'30.00','mes':'30.00'}]}
         tomorrow=call(lambda s,u,w:due_overview(s,u,w,date(2024,2,1)))
         assert tomorrow['grupos']['vencidas']['items'][0]['id']==q1
         denied(lambda:pay(q1,payment(id=original.id,importe='31')),409)

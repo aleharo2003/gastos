@@ -9,8 +9,9 @@ from fastapi import APIRouter,HTTPException,Request,Response,Query
 from pydantic import BaseModel,ConfigDict,Field,StrictInt,field_validator,model_validator
 from sqlalchemy import text
 from app.accounts import execute,require_member,NO_STORE
-from app.expenses import Category,require_account
-from app.incomes import IncomeInput
+from app.expenses import Category,expense_summary,require_account
+from app.incomes import IncomeInput,account_balance
+from app.planning import get_plan
 
 router=APIRouter()
 
@@ -508,6 +509,19 @@ def due_overview(session, user, space, today=None):
             'grupos':groups,'resumen_mes':month}
 
 
+def today_overview(session, user, space, today=None):
+    today = today or datetime.now(ZoneInfo('America/Argentina/Buenos_Aires')).date()
+    result = due_overview(session, user, space, today)
+    balance = account_balance(session, user, space)
+    plan = get_plan(session, user, space)
+    usage = expense_summary(session, user, space, day=today)
+    return {
+        **result,
+        'saldos': balance,
+        'presupuesto': {'limites': plan['datos']['limites'], 'gastos': usage['totales']},
+    }
+
+
 @router.get('/spaces/{space}/due-overview')
 def get_due_overview(space: UUID, request: Request, response: Response):
-    return execute(request,response,space,lambda session,user:due_overview(session,user,space))
+    return execute(request,response,space,lambda session,user:today_overview(session,user,space))

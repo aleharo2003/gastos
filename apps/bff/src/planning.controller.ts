@@ -9,14 +9,19 @@ const keys=(v:Record<string,unknown>,allowed:string[])=>Object.keys(v).every(k=>
 function money(v:unknown):boolean {
   return record(v) && ['ARS','USD'].includes(v.moneda as string) && typeof v.importe==='string' && /^(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,2})?$/.test(v.importe) && /[1-9]/.test(v.importe);
 }
+export function validLimits(value:unknown):value is Record<'diario'|'semanal', {moneda:'ARS'|'USD';importe:string}|null> {
+  if(!record(value)||!keys(value,['diario','semanal']))return false;
+  for(const key of ['diario','semanal']){
+    const limit=value[key];
+    if(limit!==null && (!money(limit)||!record(limit)||!keys(limit,['moneda','importe'])))return false;
+  }
+  return true;
+}
+
 export function validPlan(v:unknown):boolean {
   if(!record(v)||!keys(v,['version','datos'])||!Number.isInteger(v.version)||Number(v.version)<0||Number(v.version)>2147483646||!record(v.datos))return false;
   const d=v.datos;
-  if(!keys(d,['limites','conceptos'])||!record(d.limites)||!keys(d.limites,['diario','semanal'])||!Array.isArray(d.conceptos)||d.conceptos.length>40)return false;
-  for(const key of ['diario','semanal']){
-    const limit=d.limites[key];
-    if(limit!==null && (!money(limit)||!record(limit)||!keys(limit,['moneda','importe'])))return false;
-  }
+  if(!keys(d,['limites','conceptos'])||!validLimits(d.limites)||!Array.isArray(d.conceptos)||d.conceptos.length>40)return false;
   const seen=new Set<string>();
   for(const c of d.conceptos){
     if(!record(c)||!keys(c,['id','concepto','frecuencia','moneda','importe'])||!money(c)||typeof c.id!=='string'||!UUID.test(c.id)||seen.has(c.id.toLowerCase())||typeof c.concepto!=='string'||[...c.concepto.trim()].length<1||[...c.concepto.trim()].length>80||/[\x00-\x1f\x7f]/.test(c.concepto)||!['semana','mes'].includes(c.frecuencia as string))return false;

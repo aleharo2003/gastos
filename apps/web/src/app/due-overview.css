@@ -20,3 +20,6 @@ input, select { font: inherit; color: inherit; background: var(--g-surface); bor
 .payment-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 .payment-actions button[type=submit] { background: var(--g-accent); color: var(--g-on-accent); }
 li button { display: block; margin-top: 6px; }
+
+.context { margin-top: 12px; }
+.budget li { flex-direction: column; }

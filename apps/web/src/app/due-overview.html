@@ -81,6 +81,39 @@
     } @else {
       <p class="card" role="status">No tenés cuotas vencidas ni pendientes para hoy o el resto de la semana.</p>
     }
+    <div class="groups context">
+      <section class="card" aria-labelledby="due-balances-title">
+        <h4 id="due-balances-title">Saldo de tus cuentas</h4>
+        <ul>
+          @for (total of data.saldos; track total.moneda) {
+            <li><span>{{ total.moneda }}</span><strong>{{ amount(total.saldo) }}</strong></li>
+          }
+        </ul>
+      </section>
+      <section class="card" aria-labelledby="due-budget-title">
+        <h4 id="due-budget-title">Presupuesto</h4>
+        @if (data.presupuesto.limites.diario || data.presupuesto.limites.semanal) {
+          <ul class="budget">
+            @for (period of periods; track period.key) {
+              @if (budgetUsage(period.key); as usage) {
+                <li>
+                  <strong>{{ period.label }}</strong>
+                  @if (usage.spent !== null) {
+                    <span>{{ usage.moneda }} {{ formatBudget(usage.spent) }} de {{ formatBudget(usage.amount) }}</span>
+                    @if (!hidden() && usage.progress?.exceeded) { <small class="error">Límite superado</small> }
+                  } @else {
+                    <small>Conversión no disponible para los gastos de este período.</small>
+                  }
+                </li>
+              }
+            }
+          </ul>
+        } @else { <p>Todavía no configuraste límites.</p> }
+        @if (!hidden() && rate()) {
+          <small>Cotización de referencia · 1 USD = ARS {{ rate() }}</small>
+        }
+      </section>
+    </div>
     <section class="card month" aria-labelledby="due-month-title">
       <h4 id="due-month-title">Resumen de cuotas del mes</h4>
       @if (data.resumen_mes.length) {
