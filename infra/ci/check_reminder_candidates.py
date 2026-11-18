@@ -51,6 +51,16 @@ def check_reminder_candidates(runtime_url, migration_url, jobs_url):
                                       {'instant': instant}).mappings().all()
             return {str(row['cuota_id']): row for row in rows if row['usuario_id'] == owner}
 
+    def reserve(instant, actor=owner, space=owner):
+        with migrator.begin() as connection:
+            return connection.execute(text('SELECT public.reservar_entrega_aviso_email(:actor,:space,:instant)'),
+                                      {'actor': actor, 'space': space, 'instant': instant}).scalar_one()
+
+    def resolve(attempt, result, reference=None):
+        with migrator.begin() as connection:
+            return connection.execute(text('SELECT public.resolver_entrega_aviso_email(:attempt,:result,:reference)'),
+                                      {'attempt': attempt, 'result': result, 'reference': reference}).scalar_one()
+
     def enqueue(instant):
         with migrator.begin() as connection:
             return connection.execute(text('SELECT public.encolar_avisos_email(:instant)'),
@@ -114,6 +124,7 @@ def check_reminder_candidates(runtime_url, migration_url, jobs_url):
         first = datetime(2026, 2, 11, 12, 0, tzinfo=UTC)
         next_day = datetime(2026, 2, 12, 12, 0, tzinfo=UTC)
         assert ready(first) == {}
+        assert reserve(first) is None
         barrier = Barrier(2, timeout=10)
 
         def concurrent_enqueue(_):
@@ -133,6 +144,32 @@ def check_reminder_candidates(runtime_url, migration_url, jobs_url):
             """), {'owner': owner, 'quota': upcoming}).scalars().all() == [
                 date(2026, 2, 11), date(2026, 2, 12),
             ]
+
+        assert reserve(first, other, owner) is None
+        assert reserve(first, owner, other) is None
+
+        def concurrent_reserve(_):
+            barrier.wait()
+            return reserve(first)
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            attempts = [attempt for attempt in pool.map(concurrent_reserve, range(2)) if attempt is not None]
+        assert len(attempts) == 1
+        attempt = attempts[0]
+        assert reserve(first) is None
+        assert not resolve(attempt, 'aceptada')
+        assert resolve(attempt, 'reintento')
+        retry = reserve(first)
+        assert retry is not None and retry != attempt
+        assert not resolve(attempt, 'aceptada', 'aceptacion-vieja')
+        assert resolve(retry, 'aceptada', 'aceptacion-del-proveedor')
+        assert not resolve(retry, 'reintento')
+        assert reserve(first) is None
+
+        ambiguous = reserve(next_day)
+        assert ambiguous is not None
+        assert resolve(ambiguous, 'incierta')
+        assert reserve(next_day) is None
 
         assert ready(first)[upcoming]['pendiente'] == Decimal('70.00')
         for amount, expected in (('10', Decimal('60.00')), ('60', None)):
@@ -156,6 +193,11 @@ def check_reminder_candidates(runtime_url, migration_url, jobs_url):
                     OR has_table_privilege(current_user, 'public.avisos_email', 'SELECT')
                     OR has_function_privilege(current_user,
                         'public.avisos_email_para_preparar(timestamptz)', 'EXECUTE')
+                    OR has_function_privilege(current_user,
+                        'public.reservar_entrega_aviso_email(uuid,uuid,timestamptz)', 'EXECUTE')
+                    OR has_function_privilege(current_user,
+                        'public.resolver_entrega_aviso_email(uuid,text,text)', 'EXECUTE')
+                    OR has_table_privilege(current_user, 'public.entregas_avisos_email', 'SELECT')
                 """)).scalar_one()
     finally:
         runtime.dispose()
