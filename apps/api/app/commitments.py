@@ -125,15 +125,37 @@ def list_commitments(session,user,space,offset=0,identifier=None):
     rows=session.execute(text("""WITH pagos AS (
         SELECT p.cuota_id,SUM(g.importe) AS pagado FROM public.pagos_cuota p
         JOIN public.gastos g ON g.espacio_id=p.espacio_id AND g.id=p.id
-        WHERE p.espacio_id=:s GROUP BY p.cuota_id)
+        WHERE p.espacio_id=:s GROUP BY p.cuota_id),
+        compromisos_resumidos AS (
         SELECT c.*,COALESCE(SUM(q.importe) FILTER (WHERE NOT q.no_aplica),0) AS total_generado,
             COUNT(*) FILTER (WHERE q.no_aplica) AS cuotas_no_aplican,COUNT(*) FILTER (WHERE COALESCE(p.pagado,0)>=q.importe) AS cuotas_pagadas,
             COALESCE(SUM(p.pagado),0) AS pagado,
             MIN(q.vencimiento) FILTER (WHERE NOT q.no_aplica AND COALESCE(p.pagado,0)<q.importe) AS proximo_vencimiento
         FROM public.compromisos c LEFT JOIN public.cuotas q ON q.espacio_id=c.espacio_id AND q.compromiso_id=c.id
         LEFT JOIN pagos p ON p.cuota_id=q.id WHERE c.espacio_id=:s"""+clause+"""
-        GROUP BY c.id ORDER BY c.id LIMIT 101 OFFSET :offset"""),{'s':space,'id':identifier,'offset':offset}).mappings().all()
-    return {'items':[public_commitment(r) for r in rows[:100]],'next_offset':offset+100 if len(rows)>100 else None}
+        GROUP BY c.id), resumen AS (
+            SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY t.moneda), '[]'::jsonb) AS totales
+            FROM (
+                SELECT moneda, SUM(total_generado-pagado)::text AS pendiente
+                FROM compromisos_resumidos
+                GROUP BY moneda HAVING SUM(total_generado-pagado)>0
+            ) t
+        )
+        SELECT pagina.*,resumen.totales FROM resumen LEFT JOIN (
+            SELECT * FROM compromisos_resumidos ORDER BY id LIMIT 101 OFFSET :offset
+        ) pagina ON true ORDER BY pagina.id
+        """),{'s':space,'id':identifier,'offset':offset}).mappings().all()
+    items = [row for row in rows if row['id'] is not None]
+    result = {
+        'items': [public_commitment(row) for row in items[:100]],
+        'next_offset': offset + 100 if len(items) > 100 and offset <= 99900 else None,
+    }
+    if identifier is None:
+        result['totales'] = [
+            {'moneda': row['moneda'], 'pendiente': format(Decimal(row['pendiente']), '.2f')}
+            for row in rows[0]['totales']
+        ]
+    return result
 
 
 def create_commitment(session,user,space,body):

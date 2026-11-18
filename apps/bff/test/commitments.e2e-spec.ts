@@ -96,6 +96,14 @@ describe('Deudas y pagos HTTP',()=>{
     await request(app.getHttpServer()).get(base+'/commitments/'+id+'/installments')
       .set('Authorization','Bearer token').expect(200).expect(page);
   });
+  it('devuelve el saldo global por moneda en una página vacía', async () => {
+    const route=base+'/commitments?offset=200';
+    const page={items:[],next_offset:null,totales:[{moneda:'USD',pendiente:'30.00'}]};
+    remote.mockImplementation(async()=>new Response(JSON.stringify(page)));
+    await request(app.getHttpServer()).get(route).set('Authorization','Bearer token').expect(200).expect(page);
+    page.totales.push({...page.totales[0]});
+    await request(app.getHttpServer()).get(route).set('Authorization','Bearer token').expect(502);
+  });
   it('exige token y reenvia el plan sin convertir dinero',async()=>{
     await request(app.getHttpServer()).post(base+'/commitments').send(payload).expect(401);expect(remote).not.toHaveBeenCalled();
     await request(app.getHttpServer()).post(base+'/commitments').set('Authorization','Bearer token').send(payload).expect(200).expect(row).expect('Cache-Control','no-store');

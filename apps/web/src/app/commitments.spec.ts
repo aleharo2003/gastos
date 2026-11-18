@@ -14,6 +14,18 @@ describe('Deudas fijas',()=>{
     const f=TestBed.createComponent(Commitments);f.componentRef.setInput('space','s');f.componentRef.setInput('accounts',[{id:'bank',nombre:'Banco'}]);
     f.detectChanges();await f.whenStable();f.detectChanges();return {f,c:f.componentInstance,request,debt,quota};
   }
+  it('muestra saldos globales y actualiza el detalle fuera de la página visible', async () => {
+    const {f,c,request,debt}=await setup();
+    await c.choose(debt);
+    request.mockResolvedValueOnce({
+      items:[],next_offset:null,totales:[{moneda:'ARS',pendiente:'1250.00'},{moneda:'USD',pendiente:'30.00'}],
+    }).mockResolvedValueOnce({...debt,pagado:'30.00',pendiente:'170.00'});
+    await c.load();
+    f.detectChanges();
+    expect(f.nativeElement.querySelector('[aria-label="Saldo pendiente por moneda"]').textContent).toContain('1.250,00');
+    expect(f.nativeElement.textContent).toContain('Pendiente: 170,00');
+    expect(request.mock.calls.at(-1)).toEqual(['GET','/api/spaces/s/commitments/debt']);
+  });
   it('calcula el total como centavos exactos y conserva UUID al reintentar el alta',async()=>{
     const {c,request}=await setup();c.name='Casa';c.account='bank';c.amount='250,10';c.count=10;
     expect(c.total()).toBe('2.501,00');request.mockRejectedValue(new Error());await c.save();await c.save();

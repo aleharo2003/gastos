@@ -12,6 +12,7 @@ type LoanSystem = 'frances' | 'aleman';
 export type Commitment={sistema_amortizacion?:LoanSystem;tna?:string;indice_ajuste?:string;cuotas_no_aplican?:number;variable?:boolean;pausado?:boolean;version?:number;id:string;espacio_id:string;cuenta_id:string;nombre:string;moneda:string;importe:string;categoria:string|null;
   primer_vencimiento:string;total_cuotas:number|null;cuotas_pagadas:number;total:string;pagado:string;pendiente:string;proximo_vencimiento:string|null};
 export type Installment={capital?:string;interes?:string;saldo_capital?:string;pendiente_ajuste?:boolean;estimado?:boolean;version?:number;id:string;espacio_id:string;compromiso_id:string;numero:number;vencimiento:string;importe:string;pagado:string;pendiente:string;estado:string;vencida:boolean};
+type OutstandingTotal={moneda:string;pendiente:string};
 export type MonthlyItem=Installment & {nombre:string;moneda:string;cuenta_id:string};
 export type MonthlyTotal={no_aplican?:number;borradores?:number;estimado?:string;moneda:string;cuotas:number;cuotas_pagadas:number;total:string;pagado:string;pendiente:string;vencido:string};
 export type MonthlyPage={mes:string;items:MonthlyItem[];totales:MonthlyTotal[];next_offset:number|null};
@@ -28,6 +29,7 @@ export class Commitments implements OnChanges{
   @Output() changed=new EventEmitter<void>();
   @ViewChild(Receipts) receiptPanel?:Receipts;
   readonly items=signal<Commitment[]>([]);
+  readonly outstanding=signal<OutstandingTotal[]|null>(null);
   readonly next=signal<number|null>(null);
   readonly installments=signal<Installment[]>([]);
   readonly nextInstallment=signal<number|null>(null);
@@ -68,7 +70,7 @@ export class Commitments implements OnChanges{
   ngOnChanges(changes:SimpleChanges){if(changes['space']){
     this.draftVersion++;this.drafts.set([]);this.draftCount.set(0);this.draftsChanged.emit(0);this.draftNext.set(null);this.draftOffset=0;this.draftValues={};this.draftDirty=false;this.draftLoading.set(false);this.draftError.set('');
     this.context++;this.detailVersion++;this.historyVersion++;this.monthVersion++;this.monthLoading.set(false);this.monthItems.set([]);this.monthTotals.set([]);this.monthNext.set(null);this.appliedMonth.set('');this.monthError.set('');this.month=today().slice(0,7);this.loading.set(false);this.saving.set(false);this.paying.set(false);
-    this.detailLoading.set(false);this.historyLoading.set(false);this.items.set([]);this.selected.set(null);this.quota.set(null);
+    this.detailLoading.set(false);this.historyLoading.set(false);this.items.set([]);this.outstanding.set(null);this.selected.set(null);this.quota.set(null);
     this.installments.set([]);this.payments.set([]);this.next.set(null);this.nextInstallment.set(null);this.nextPayment.set(null);
     this.receiptPayment.set(null);this.lastPayment.set(null);this.clear();this.payAmount='';this.payPending=undefined;this.payDirty=false;void this.load();void this.loadMonth();void this.loadDrafts();
   }}
@@ -151,10 +153,16 @@ export class Commitments implements OnChanges{
   async load(more=false){
     if(this.loading()||this.saving()||this.paying())return;const offset=more?this.next():0;if(offset===null)return;
     const context=this.context;this.loading.set(true);this.error.set('');
-    try{const page=await this.auth.accountRequest<{items:Commitment[];next_offset:number|null}>('GET',this.path+'/commitments?offset='+offset);
+    try{const page=await this.auth.accountRequest<{items:Commitment[];next_offset:number|null;totales?:OutstandingTotal[]}>('GET',this.path+'/commitments?offset='+offset);
       if(!this.alive||context!==this.context)return;
       this.items.set([...new Map((more?[...this.items(),...page.items]:page.items).map(row=>[row.id,row])).values()]);this.next.set(page.next_offset);
-      if(this.selected())this.selected.set(this.items().find(row=>row.id===this.selected()!.id)??this.selected());
+      this.outstanding.set(page.totales??null);
+      const selected=this.selected();
+      if(selected){
+        const fresh=this.items().find(row=>row.id===selected.id)??await this.auth.accountRequest<Commitment>(
+          'GET',this.path+'/commitments/'+encodeURIComponent(selected.id));
+        if(this.alive&&context===this.context&&this.selected()?.id===selected.id)this.selected.set(fresh);
+      }
     }catch{if(this.alive&&context===this.context)this.error.set('No pudimos cargar las deudas.');}
     finally{if(this.alive&&context===this.context)this.loading.set(false);}
   }
