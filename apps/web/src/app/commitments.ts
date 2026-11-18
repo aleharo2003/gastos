@@ -1,4 +1,5 @@
 import { Component,DestroyRef,EventEmitter,inject,Input,OnChanges,Output,signal,SimpleChanges,ViewChild } from '@angular/core';
+import { AdjustmentIndices } from './adjustment-indices';
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { AuthSession } from './auth-session';
@@ -14,9 +15,10 @@ export type MonthlyItem=Installment & {nombre:string;moneda:string;cuenta_id:str
 export type MonthlyTotal={no_aplican?:number;borradores?:number;estimado?:string;moneda:string;cuotas:number;cuotas_pagadas:number;total:string;pagado:string;pendiente:string;vencido:string};
 export type MonthlyPage={mes:string;items:MonthlyItem[];totales:MonthlyTotal[];next_offset:number|null};
 type Create={variable:boolean;id:string;cuenta_id:string;nombre:string;moneda:string;importe:string;categoria:string|null;primer_vencimiento:string;total_cuotas:number|null};
-@Component({selector:'app-commitments',imports:[FormsModule,Receipts],templateUrl:'./commitments.html',styleUrl:'./commitments.css'})
+@Component({selector:'app-commitments',imports:[FormsModule,Receipts,AdjustmentIndices],templateUrl:'./commitments.html',styleUrl:'./commitments.css'})
 export class Commitments implements OnChanges{
   @Input({required:true}) space='';
+  protected readonly indicesOpen = signal(false);
   @Input() accounts:{id:string;nombre:string}[]=[];
   @Input() moreAccounts=false;
   @Input() accountsLoading=false;

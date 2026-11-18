@@ -1,0 +1,34 @@
+<form (ngSubmit)="save()">
+  <fieldset [disabled]="saving()">
+    <legend>Cargar variación mensual</legend>
+    <label for="adjustment-index">Índice</label>
+    <input id="adjustment-index" name="indice" [(ngModel)]="indice" maxlength="80"
+           placeholder="Por ejemplo, CAC" required>
+    <label for="adjustment-period">Mes (AAAA-MM)</label>
+    <input id="adjustment-period" name="periodo" type="month" [(ngModel)]="periodo"
+           min="0001-01" max="9999-12" placeholder="AAAA-MM" required>
+    <label for="adjustment-rate">Variación (%)</label>
+    <input id="adjustment-rate" name="variacion" inputmode="decimal" [(ngModel)]="variacion"
+           placeholder="Por ejemplo, 2,3" maxlength="12" required>
+    <button type="submit" [disabled]="loading()">Guardar variación</button>
+  </fieldset>
+</form>
+@if (saveError()) { <p class="error" role="alert">{{ saveError() }}</p> }
+@if (notice()) { <p class="notice" role="status">{{ notice() }}</p> }
+@if (listError()) {
+  <p class="error" role="alert">{{ listError() }}</p>
+  <button type="button" class="secondary" (click)="load()" [disabled]="loading() || saving()">Reintentar consulta</button>
+}
+@if (loading()) { <p role="status">Cargando variaciones…</p> }
+@if (loaded() && !items().length && !loading()) { <p>Todavía no hay variaciones cargadas.</p> }
+@if (items().length) {
+  <ul aria-label="Variaciones cargadas">
+    @for (item of items(); track item.indice + ':' + item.periodo) {
+      <li><strong>{{ item.indice }}</strong> · {{ item.periodo }} · {{ item.variacion.replace('.', ',') }} %</li>
+    }
+  </ul>
+}
+@if (nextOffset() !== null) {
+  <button type="button" class="secondary" (click)="load(nextOffset() ?? 0)"
+          [disabled]="loading() || saving()">Cargar más variaciones</button>
+}
