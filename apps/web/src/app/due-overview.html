@@ -1,0 +1,55 @@
+<section aria-labelledby="due-overview-title">
+  <header>
+    <h3 id="due-overview-title">Qué tengo que pagar</h3>
+    <button type="button" (click)="load()" [disabled]="loading()">Actualizar</button>
+  </header>
+  @if (error()) {
+    <p class="error" role="alert">No pudimos actualizar los vencimientos. Volvé a intentar.</p>
+  }
+  @if (loading()) { <p role="status">Cargando vencimientos…</p> }
+  @if (overview(); as data) {
+    <p>{{ shortDate(data.fecha) }} · Semana hasta el {{ shortDate(data.fin_semana) }}</p>
+    @if (hasPending(data)) {
+      <div class="groups">
+        @for (section of sections; track section.key) {
+          @let group = data.grupos[section.key];
+          <section class="card" [class.overdue]="section.key === 'vencidas' && group.cantidad"
+            [attr.aria-labelledby]="'due-group-' + section.key">
+            <h4 [id]="'due-group-' + section.key">{{ section.title }}</h4>
+            @if (group.cantidad) {
+              <p class="totals">
+                @for (total of group.totales; track total.moneda) {
+                  <strong>{{ total.moneda }} {{ amount(total.pendiente) }}</strong>
+                }
+              </p>
+              <ul>
+                @for (item of group.items; track item.id) {
+                  <li>
+                    <div><strong>{{ item.nombre }}</strong><small>Cuota {{ item.numero }} · {{ shortDate(item.vencimiento) }}</small></div>
+                    <div><strong>{{ item.moneda }} {{ amount(item.pendiente) }}</strong>@if(item.estimado){<small>Estimado</small>}</div>
+                  </li>
+                }
+              </ul>
+              @if (group.cantidad > group.items.length) {
+                <p>Mostrando {{ group.items.length }} de {{ group.cantidad }} cuotas. Consultá el resto en Deudas.</p>
+              }
+            } @else { <p>Sin cuotas pendientes.</p> }
+          </section>
+        }
+      </div>
+    } @else {
+      <p class="card" role="status">No tenés cuotas vencidas ni pendientes para hoy o el resto de la semana.</p>
+    }
+    <section class="card month" aria-labelledby="due-month-title">
+      <h4 id="due-month-title">Resumen de cuotas del mes</h4>
+      @if (data.resumen_mes.length) {
+        <ul>
+          @for (total of data.resumen_mes; track total.moneda) {
+            <li><strong>{{ total.moneda }}</strong><span>Pagado {{ amount(total.pagado) }}</span><span>Pendiente {{ amount(total.pendiente) }}</span></li>
+          }
+        </ul>
+      } @else { <p>No hay cuotas aplicables para este mes.</p> }
+    </section>
+    <button type="button" (click)="openDebts.emit()">Ir a Deudas</button>
+  }
+</section>

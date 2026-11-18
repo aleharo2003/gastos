@@ -74,6 +74,60 @@ function monthlyPage(value:unknown,space:string,month:string,offset:number){
   });
   return {mes:month,items,totales,next_offset:page.next_offset};
 }
+const dueGroups = ['hoy','semana','vencidas'] as const;
+type DueGroupKey = typeof dueGroups[number];
+type DueTotal = { moneda:string; pendiente:string };
+type DueItem = DueTotal & { id:string; nombre:string; numero:number; vencimiento:string; estimado:boolean };
+type DueGroup = { cantidad:number; totales:DueTotal[]; items:DueItem[] };
+type DueOverview = {
+  fecha:string;
+  fin_semana:string;
+  grupos:Record<DueGroupKey,DueGroup>;
+  resumen_mes:(DueTotal & { pagado:string })[];
+};
+
+function dueTotals<T extends DueTotal>(value:T[]):T[]{
+  if(!Array.isArray(value)||value.length>3||new Set(value.map(row=>row?.moneda)).size!==value.length)throw new Error();
+  for(const row of value){
+    if(!row||!currencies.includes(row.moneda)||!sum(row.pendiente))throw new Error();
+  }
+  return value;
+}
+
+function dueOverview(value:unknown){
+  const page=value as DueOverview;
+  if(!page||!date(page.fecha)||!date(page.fin_semana)||page.fin_semana<page.fecha||!page.grupos)throw new Error();
+  const groups=dueGroups.map(key=>{
+    const group=page.grupos[key];
+    if(!group||!Number.isSafeInteger(group.cantidad)||group.cantidad<0||!Array.isArray(group.items)||
+       group.items.length!==Math.min(group.cantidad,20))throw new Error();
+    const totals=dueTotals(group.totales).map(({moneda,pendiente})=>{
+      if(cents(pendiente)<=0n)throw new Error();
+      return {moneda,pendiente};
+    });
+    if((group.cantidad===0)!==(totals.length===0))throw new Error();
+    const seen=new Set<string>();
+    const items=group.items.map(row=>{
+      if(!row||!validId(row.id)||seen.has(row.id)||typeof row.nombre!=='string'||!row.nombre.trim()||
+         [...row.nombre].length>160||!Number.isInteger(row.numero)||row.numero<1||row.numero>119988||
+         !date(row.vencimiento)||typeof row.estimado!=='boolean'||!sum(row.pendiente)||cents(row.pendiente)<=0n||
+         !totals.some(total=>total.moneda===row.moneda)||
+         (key==='hoy'&&row.vencimiento!==page.fecha)||
+         (key==='vencidas'&&row.vencimiento>=page.fecha)||
+         (key==='semana'&&(row.vencimiento<=page.fecha||row.vencimiento>page.fin_semana)))throw new Error();
+      seen.add(row.id);
+      const {id,nombre,numero,vencimiento,moneda,pendiente,estimado}=row;
+      return {id,nombre,numero,vencimiento,moneda,pendiente,estimado};
+    });
+    return [key,{cantidad:group.cantidad,totales:totals,items}] as const;
+  });
+  const month=dueTotals(page.resumen_mes).map(({moneda,pendiente,pagado})=>{
+    if(!sum(pagado))throw new Error();
+    return {moneda,pendiente,pagado};
+  });
+  return {fecha:page.fecha,fin_semana:page.fin_semana,grupos:Object.fromEntries(groups),resumen_mes:month};
+}
+
 @Controller('api/spaces/:space')
 export class CommitmentsController{
   constructor(private readonly auth:AuthService){}
@@ -89,6 +143,15 @@ export class CommitmentsController{
       throw new BadRequestException('Version invalida');
     }
     return this.forward(token,space,'skip',id.toLowerCase(),0,{version:value.version});
+  }
+
+  @Get('due-overview')
+  async overview(@Param('space') space:string,@Query() query:Record<string,unknown>,
+                 @Req() req:Request,@Res({passthrough:true}) res:Response){
+    res.setHeader('Cache-Control','no-store');
+    const token=await this.token(req,res);
+    if(Object.keys(query).length)throw new BadRequestException('Consulta invalida');
+    return this.forward(token,space,'overview',undefined);
   }
 
   @Get('installment-drafts')
@@ -178,14 +241,14 @@ export class CommitmentsController{
 
 
 
-  private async forward(token:string,rawSpace:string,kind:'commitments'|'installments'|'payments'|'monthly'|'detail'|'pause'|'drafts'|'confirm'|'skip',id:string|undefined,offset=0,body?:Create|Pay|Confirm|{version:number}|{pausado:boolean;version:number},month?:string){
+  private async forward(token:string,rawSpace:string,kind:'commitments'|'installments'|'payments'|'monthly'|'detail'|'pause'|'drafts'|'confirm'|'skip'|'overview',id:string|undefined,offset=0,body?:Create|Pay|Confirm|{version:number}|{pausado:boolean;version:number},month?:string){
     if(!UUID.test(rawSpace))throw new BadRequestException('Espacio invalido');const space=rawSpace.toLowerCase();
     try{
       const base=new URL(process.env.API_BASE_URL??'http://127.0.0.1:8000'),local=['localhost','127.0.0.1','[::1]','api'].includes(base.hostname);
       if(base.username||base.password||base.search||base.hash||base.pathname!=='/'||(base.protocol!=='https:'&&!(base.protocol==='http:'&&local)))throw new Error();
       const rawTimeout=process.env.API_TIMEOUT_MS??'5000',timeout=Number(rawTimeout);
       if(!/^\d+$/.test(rawTimeout)||!Number.isSafeInteger(timeout)||timeout<1||timeout>2147483647)throw new Error();
-      const suffix=kind==='skip'?`installments/${id}/skip`:kind==='drafts'?'installment-drafts':kind==='confirm'?'installment-confirmations':(kind==='detail'||kind==='pause')?`commitments/${id}`:kind==='monthly'?'installments':kind==='commitments'?'commitments':kind==='installments'?`commitments/${id}/installments`:`installments/${id}/payments`;
+      const suffix=kind==='overview'?'due-overview':kind==='skip'?`installments/${id}/skip`:kind==='drafts'?'installment-drafts':kind==='confirm'?'installment-confirmations':(kind==='detail'||kind==='pause')?`commitments/${id}`:kind==='monthly'?'installments':kind==='commitments'?'commitments':kind==='installments'?`commitments/${id}/installments`:`installments/${id}/payments`;
       const result=await fetch(new URL(`/spaces/${space}/${suffix}?offset=${offset}${kind==='monthly'?'&month='+month:''}`,base),{method:kind==='pause'?'PATCH':body?'POST':'GET',redirect:'error',signal:AbortSignal.timeout(timeout),
         headers:{Accept:'application/json',Authorization:`Bearer ${token}`,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
       if([400,401,403,404,409,422,503].includes(result.status))throw new HttpException('No se pudo completar la operacion',result.status);
@@ -219,6 +282,7 @@ export class CommitmentsController{
         return row;
       }
       if(kind==='detail'){const row=commitment(data,space);if(row.id!==id)throw new Error();return row;}
+      if(kind==='overview')return dueOverview(data);
       if(kind==='monthly')return monthlyPage(data,space,month!,offset);
       if(body){
         if(kind==='commitments'){
