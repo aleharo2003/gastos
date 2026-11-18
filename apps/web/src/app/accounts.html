@@ -5,11 +5,13 @@
   <button type="button" (click)="tab.set('plan')" [attr.aria-current]="tab() === 'plan' ? 'page' : null">Presupuesto</button>
   <button type="button" (click)="tab.set('savings')" [attr.aria-current]="tab() === 'savings' ? 'page' : null">Ahorros</button>
   <button type="button" (click)="tab.set('debts')" [attr.aria-current]="tab() === 'debts' ? 'page' : null">Deudas</button>
+  <button type="button" (click)="tab.set('reminders')" [attr.aria-current]="tab() === 'reminders' ? 'page' : null">Avisos</button>
 </nav>
 @if(draftCount()>0){<p role="status">Tenés {{ draftCount() }} montos estimados por confirmar. <button type="button" class="secondary" (click)="tab.set('debts')">Revisar estimados</button></p>}
 <app-due-overview [space]="space" [active]="tab() === 'today'" [hidden]="tab() !== 'today'"
   [accounts]="items()" [moreAccounts]="next() !== null" [accountsLoading]="loading()"
   (loadAccounts)="load(true)" (paymentSaved)="duePaymentSaved()" (openDebts)="tab.set('debts')" />
+<app-reminder-preferences [space]="space" [active]="tab() === 'reminders'" [hidden]="tab() !== 'reminders'" />
 <app-planning [space]="space" [compact]="tab() !== 'plan'" [hidden]="tab() !== 'plan' && tab() !== 'expenses'" [revision]="planRevision()" (configure)="tab.set('plan')" />
 <section [hidden]="tab() !== 'accounts' && items().length > 0" aria-labelledby="accounts-title">
   <h3 id="accounts-title">Tus cuentas</h3>

@@ -1,0 +1,4 @@
+:host([hidden]) { display: none; }
+.events { margin: 16px 0; }
+.events label { display: flex; align-items: center; gap: 10px; }
+.events input { width: 22px; min-height: 22px; margin: 0; }

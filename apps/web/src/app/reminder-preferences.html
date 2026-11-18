@@ -1,0 +1,44 @@
+<section class="planning" aria-labelledby="reminder-title">
+  <h3 id="reminder-title">Preferencias de recordatorios</h3>
+  <p>Guardá cómo querés recibir los avisos cuando se habilite el envío.</p>
+
+  @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
+  @if (notice()) { <p class="notice" role="status">{{ notice() }}</p> }
+  @if (loading()) { <p role="status">Cargando tus preferencias…</p> }
+  @if (draft; as value) {
+    <form #preferencesForm="ngForm" (ngSubmit)="save()">
+      <fieldset [disabled]="saving()">
+        <label for="reminder-channel">Canal</label>
+        <select id="reminder-channel" name="channel" [(ngModel)]="value.canal">
+          <option value="ninguno">Ninguno</option>
+          <option value="email">Correo electrónico</option>
+          <option value="push">Notificaciones push</option>
+        </select>
+        @if (value.canal === 'ninguno') { <p>Los avisos están desactivados. Podés guardar el resto de tus preferencias.</p> }
+        <div class="limit-grid">
+          <div>
+            <label for="reminder-days">Días de anticipación (0 a 30)</label>
+            <input id="reminder-days" name="days" type="number" min="0" max="30" step="1"
+                   [(ngModel)]="value.dias_anticipacion" required>
+          </div>
+          <div>
+            <label for="reminder-time">Horario (Argentina)</label>
+            <input id="reminder-time" name="time" type="time" step="60" [(ngModel)]="value.hora_local"
+                   pattern="([01][0-9]|2[0-3]):[0-5][0-9]" required>
+          </div>
+        </div>
+        <fieldset class="events">
+          <legend>Eventos</legend>
+          <label><input name="upcoming" type="checkbox" [(ngModel)]="value.vencimientos"> Próximos vencimientos</label>
+          <label><input name="overdue" type="checkbox" [(ngModel)]="value.vencidas"> Cuotas vencidas</label>
+          <label><input name="weekly" type="checkbox" [(ngModel)]="value.resumen_semanal"> Resumen semanal</label>
+        </fieldset>
+        <button class="primary" type="submit" [disabled]="preferencesForm.invalid || saving()">
+          {{ saving() ? 'Guardando…' : 'Guardar preferencias' }}
+        </button>
+      </fieldset>
+    </form>
+  } @else if (!loading() && error()) {
+    <button type="button" (click)="load()">Reintentar</button>
+  }
+</section>
