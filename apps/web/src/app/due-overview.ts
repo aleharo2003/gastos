@@ -4,6 +4,8 @@ import { FormsModule } from '@angular/forms';
 import { installmentLocalDate, prepareInstallmentPayment, submitInstallmentPayment, type InstallmentPayment } from './installment-payment';
 import { AuthSession } from './auth-session';
 import { showAmount } from './expenses';
+import { money, rateUnits, type CurrencyTotal } from './money-reference';
+import { limitUsage, type PlanMoney } from './planning-math';
 
 type DueTotal = { moneda: string; pendiente: string };
 type DueItem = DueTotal & { id: string; nombre: string; numero: number; vencimiento: string; estimado: boolean };
@@ -14,6 +16,8 @@ type Overview = {
   fin_semana: string;
   grupos: Record<'hoy' | 'semana' | 'vencidas', Group>;
   resumen_mes: (DueTotal & { pagado: string })[];
+  saldos: { moneda: string; saldo: string }[];
+  presupuesto: { limites: Record<'diario' | 'semanal', PlanMoney | null>; gastos: CurrencyTotal[] };
 };
 
 @Component({
@@ -35,6 +39,8 @@ export class DueOverview implements OnChanges {
   readonly loading = signal(false);
   readonly error = signal(false);
   readonly hidden = signal(false);
+  readonly rate = signal('');
+  readonly periods = [{ key: 'diario', label: 'Diario' }, { key: 'semanal', label: 'Semanal' }] as const;
   readonly sections = [
     { key: 'hoy', title: 'Vencen hoy' },
     { key: 'semana', title: 'Resto de la semana' },
@@ -57,13 +63,20 @@ export class DueOverview implements OnChanges {
     this.hidden.set((event as CustomEvent).detail === true);
   };
 
+  private readonly rateListener = (event: Event) => {
+    const detail = (event as CustomEvent).detail;
+    if (detail?.space === this.space && typeof detail.rate === 'string') this.rate.set(detail.rate);
+  };
+
   constructor() {
     try { this.hidden.set(localStorage.getItem('gastos.totals.hidden') === 'true'); } catch {}
     window.addEventListener('gastos-privacy', this.privacyListener);
+    window.addEventListener('gastos-reference', this.rateListener);
     inject(DestroyRef).onDestroy(() => {
       this.requestVersion++;
       this.paymentVersion++;
       window.removeEventListener('gastos-privacy', this.privacyListener);
+      window.removeEventListener('gastos-reference', this.rateListener);
     });
   }
 
@@ -77,7 +90,14 @@ export class DueOverview implements OnChanges {
       this.saving.set(false);
       this.clearPayment();
     }
-    if (this.active && (changes['space'] || changes['active'])) void this.load();
+    if (this.active && (changes['space'] || changes['active'])) {
+      this.rate.set('');
+      try {
+        const saved = JSON.parse(localStorage.getItem('gastos.reference.' + this.space) ?? 'null');
+        if (typeof saved?.rate === 'string' && rateUnits(saved.rate)) this.rate.set(saved.rate);
+      } catch {}
+      void this.load();
+    }
   }
 
   startPayment(item: DueItem): void {
@@ -157,13 +177,23 @@ export class DueOverview implements OnChanges {
       const result = await this.auth.accountRequest<Overview>(
         'GET', `/api/spaces/${encodeURIComponent(this.space)}/due-overview`,
       );
-      if (!result?.grupos || !Array.isArray(result.resumen_mes)) throw new Error('Resumen inválido');
+      if (!result?.grupos || !Array.isArray(result.resumen_mes) || !Array.isArray(result.saldos) || !result.presupuesto?.limites) throw new Error('Resumen inválido');
       if (version === this.requestVersion) this.overview.set(result);
     } catch {
       if (version === this.requestVersion) this.error.set(true);
     } finally {
       if (version === this.requestVersion) this.loading.set(false);
     }
+  }
+
+  budgetUsage(period: 'diario' | 'semanal') {
+    const budget = this.overview()?.presupuesto;
+    const limit = budget?.limites[period];
+    return limit ? limitUsage(limit, budget?.gastos, period, this.rate()) : null;
+  }
+
+  formatBudget(value: bigint): string {
+    return this.hidden() ? '••••' : money(value);
   }
 
   hasPending(overview: Overview): boolean {

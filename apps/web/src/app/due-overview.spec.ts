@@ -20,6 +20,11 @@ describe('Pagos desde Hoy', () => {
         semana: empty, vencidas: empty,
       },
       resumen_mes: [],
+      saldos: [{ moneda: 'ARS', saldo: '-35.50' }],
+      presupuesto: {
+        limites: { diario: { moneda: 'ARS', importe: '100.00' }, semanal: null },
+        gastos: [{ moneda: 'USD', dia: '1.00', semana: '1.00', mes: '1.00' }],
+      },
     };
   }
 
@@ -82,5 +87,21 @@ describe('Pagos desde Hoy', () => {
     await component.pay();
     expect(request).toHaveBeenCalledTimes(1);
     expect(component.paymentError()).toContain('no supere el saldo');
+  });
+  it('muestra saldos, usa la referencia del espacio y respeta la privacidad', async () => {
+    const { fixture, component } = await setup();
+    expect(fixture.nativeElement.textContent).toContain('-35,50');
+    expect(component.budgetUsage('diario')?.spent).toBeNull();
+    window.dispatchEvent(new CustomEvent('gastos-reference', { detail: { space: 'other', rate: '150' } }));
+    expect(component.budgetUsage('diario')?.spent).toBeNull();
+    window.dispatchEvent(new CustomEvent('gastos-reference', { detail: { space: 'shared', rate: '150' } }));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('ARS 150,00 de 100,00');
+    expect(fixture.nativeElement.textContent).toContain('Límite superado');
+    window.dispatchEvent(new CustomEvent('gastos-privacy', { detail: true }));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).not.toContain('-35,50');
+    expect(fixture.nativeElement.textContent).not.toContain('150,00');
+    expect(fixture.nativeElement.textContent).not.toContain('Límite superado');
   });
 });

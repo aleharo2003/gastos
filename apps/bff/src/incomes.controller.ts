@@ -22,7 +22,7 @@ function income(value:unknown, space:string, account?:string):Income {
   return {id:row.id,espacio_id:space,cuenta_id:row.cuenta_id,fecha:row.fecha,
     descripcion:row.descripcion,moneda:row.moneda,importe:row.importe};
 }
-function balance(value:unknown) {
+export function validateBalance(value:unknown) {
   const data=value as {totales:{moneda:string;ingresos:string;gastos:string;saldo:string;transferencias_entrada?:string;transferencias_salida?:string}[]};
   if(!data || !Array.isArray(data.totales) || data.totales.length!==3)throw new Error();
   const seen=new Set<string>();
@@ -114,7 +114,7 @@ export class IncomesController {
       if([400,401,403,404,409,422,503].includes(result.status))throw new HttpException('No se pudo completar la operacion',result.status);
       if(!result.ok)throw new Error();
       const data=await boundedJson(result,131072);
-      if(operation==='balance')return balance(data);
+      if(operation==='balance')return validateBalance(data);
       if(body)return income(data,space,account);
       const page=data as {items:unknown[];next_offset:number|null};
       if(!page || !Array.isArray(page.items) || page.items.length>100 ||

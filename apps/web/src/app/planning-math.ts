@@ -1,4 +1,4 @@
-import { cents,rateUnits } from './money-reference';
+import { cents,rateUnits,reference,type CurrencyTotal } from './money-reference';
 export type PlanMoney={moneda:'ARS'|'USD';importe:string};
 export type PlanConcept=PlanMoney & {id:string;concepto:string;frecuencia:'semana'|'mes'};
 export type PlanData={limites:{diario:PlanMoney|null;semanal:PlanMoney|null};conceptos:PlanConcept[]};
@@ -28,4 +28,15 @@ export function progress(spent:bigint,limit:bigint){
   const tenths=spent*1000n/limit;
   return {text:`${tenths/10n},${tenths%10n}%`,width:Number(tenths>1000n?1000n:tenths)/10,
     exceeded:spent>limit,warning:spent*100n>=limit*80n};
+}
+
+
+export function limitUsage(limit:PlanMoney, rows:CurrencyTotal[]|undefined, period:'diario'|'semanal', rate:string) {
+  const amount=cents(normalizedAmount(limit.importe) ?? limit.importe);
+  const spent=rows ? reference(rows,period==='diario'?'dia':'semana',limit.moneda,rateUnits(rate)) : null;
+  return {
+    moneda:limit.moneda, amount, spent,
+    progress:spent===null ? null : progress(spent,amount),
+    difference:spent===null ? null : spent>amount ? spent-amount : amount-spent,
+  };
 }

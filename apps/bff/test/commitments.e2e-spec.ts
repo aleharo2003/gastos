@@ -147,11 +147,19 @@ describe('Deudas y pagos HTTP',()=>{
     const item={id:quota,nombre:'Casa',numero:1,vencimiento:'2026-11-17',moneda:'USD',pendiente:'220.00',estimado:false};
     const data={fecha:'2026-11-17',fin_semana:'2026-11-22',
       grupos:{hoy:{cantidad:1,totales:[{moneda:'USD',pendiente:'220.00'}],items:[item]},semana:empty,vencidas:empty},
-      resumen_mes:[{moneda:'USD',pendiente:'220.00',pagado:'30.00'}]};
-    remote.mockImplementation(async()=>new Response(JSON.stringify(data)));
+      resumen_mes:[{moneda:'USD',pendiente:'220.00',pagado:'30.00'}],
+      saldos:['ARS','USD','EUR'].map(moneda=>({moneda,saldo:moneda==='ARS'?'-30.00':'0.00'})),
+      presupuesto:{limites:{diario:{moneda:'ARS',importe:'100.00'},semanal:null},
+        gastos:[{moneda:'ARS',dia:'30.00',semana:'30.00',mes:'30.00'}]}};
+    const upstream={...data,saldos:{totales:data.saldos.map(row=>({...row,ingresos:'0.00',
+      gastos:row.moneda==='ARS'?'30.00':'0.00'}))}};
+    remote.mockImplementation(async()=>new Response(JSON.stringify(upstream)));
     await request(app.getHttpServer()).get(route).expect(401);
     await request(app.getHttpServer()).get(route).set('Authorization','Bearer token').expect(200).expect(data);
     await request(app.getHttpServer()).get(route+'?fecha=2026-11-17').set('Authorization','Bearer token').expect(400);
+    data.presupuesto.gastos[0].semana='20.00';
+    await request(app.getHttpServer()).get(route).set('Authorization','Bearer token').expect(502);
+    data.presupuesto.gastos[0].semana='30.00';
     item.vencimiento='2026-11-16';
     await request(app.getHttpServer()).get(route).set('Authorization','Bearer token').expect(502);
   });
