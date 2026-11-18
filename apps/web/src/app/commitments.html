@@ -1,6 +1,10 @@
 <section aria-labelledby="commitments-title">
   <h3 id="commitments-title">Deudas y gastos mensuales</h3>
   <p>Registrá deudas en cuotas o gastos mensuales fijos o variables sin fecha final. Crear un plan no descuenta dinero; cada pago sí. Los gastos sin fecha final generan una cuota por mes hasta que los pauses. Los montos variables se revisan antes de pagar.</p>
+  <details (toggle)="indicesOpen.set(indexDetails.open)" #indexDetails>
+    <summary>Índices de ajuste</summary>
+    @if (indicesOpen()) { <app-adjustment-indices [space]="space" /> }
+  </details>
   @if(moreAccounts){<button type="button" class="secondary" (click)="loadAccounts.emit()" [disabled]="accountsLoading||saving()||paying()">Cargar más cuentas</button>}
   @if(error()){<p class="error" role="alert">{{ error() }}</p>}
   @if(notice()){<p class="notice" role="status">{{ notice() }}</p>}

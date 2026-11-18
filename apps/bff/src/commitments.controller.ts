@@ -144,9 +144,49 @@ function dueOverview(value:unknown){
 
 }
 
+type IndexValue = { indice: string; periodo: string; variacion: string };
+
+function validIndexValue(value: unknown): value is IndexValue {
+  const row = value as IndexValue;
+  return !!row && typeof row.indice === 'string' && row.indice === row.indice.trim() &&
+    [...row.indice].length >= 1 && [...row.indice].length <= 80 && !/[\x00-\x1f\x7f]/.test(row.indice) &&
+    typeof row.periodo === 'string' && /^(?!0000)[0-9]{4}-(0[1-9]|1[0-2])$/.test(row.periodo) &&
+    typeof row.variacion === 'string' && /^-?[0-9]{1,6}(\.[0-9]{1,4})?$/.test(row.variacion) &&
+    Number(row.variacion) > -100;
+}
+
 @Controller('api/spaces/:space')
 export class CommitmentsController{
   constructor(private readonly auth:AuthService){}
+  @Get('index-values')
+  async listIndexValues(
+    @Param('space') space: string, @Query() query: Record<string, unknown>,
+    @Req() req: Request, @Res({passthrough: true}) res: Response,
+  ) {
+    res.setHeader('Cache-Control', 'no-store');
+    const token = await this.token(req, res);
+    if (Object.keys(query).some(key => key !== 'offset') ||
+        (query.offset !== undefined && (typeof query.offset !== 'string' ||
+          !/^\d{1,6}$/.test(query.offset) || Number(query.offset) > 100000))) {
+      throw new BadRequestException('Pagina invalida');
+    }
+    return this.forward(token, space, 'index-values', undefined, Number(query.offset ?? 0));
+  }
+
+  @Post('index-values')
+  @HttpCode(200)
+  async saveIndexValue(
+    @Param('space') space: string, @Body() body: unknown,
+    @Req() req: Request, @Res({passthrough: true}) res: Response,
+  ) {
+    res.setHeader('Cache-Control', 'no-store');
+    const token = await this.token(req, res);
+    if (!validIndexValue(body) || Object.keys(body).length !== 3) {
+      throw new BadRequestException('Variacion invalida');
+    }
+    return this.forward(token, space, 'index-values', undefined, 0, body);
+  }
+
   @Post('installments/:id/skip')
   @HttpCode(200)
   async skip(@Param('space') space:string,@Param('id') id:string,@Body() body:unknown,
@@ -257,18 +297,38 @@ export class CommitmentsController{
 
 
 
-  private async forward(token:string,rawSpace:string,kind:'commitments'|'installments'|'payments'|'monthly'|'detail'|'pause'|'drafts'|'confirm'|'skip'|'overview',id:string|undefined,offset=0,body?:Create|Pay|Confirm|{version:number}|{pausado:boolean;version:number},month?:string){
+  private async forward(token:string,rawSpace:string,kind:'index-values'|'commitments'|'installments'|'payments'|'monthly'|'detail'|'pause'|'drafts'|'confirm'|'skip'|'overview',id:string|undefined,offset=0,body?:IndexValue|Create|Pay|Confirm|{version:number}|{pausado:boolean;version:number},month?:string){
     if(!UUID.test(rawSpace))throw new BadRequestException('Espacio invalido');const space=rawSpace.toLowerCase();
     try{
       const base=new URL(process.env.API_BASE_URL??'http://127.0.0.1:8000'),local=['localhost','127.0.0.1','[::1]','api'].includes(base.hostname);
       if(base.username||base.password||base.search||base.hash||base.pathname!=='/'||(base.protocol!=='https:'&&!(base.protocol==='http:'&&local)))throw new Error();
       const rawTimeout=process.env.API_TIMEOUT_MS??'5000',timeout=Number(rawTimeout);
       if(!/^\d+$/.test(rawTimeout)||!Number.isSafeInteger(timeout)||timeout<1||timeout>2147483647)throw new Error();
-      const suffix=kind==='overview'?'due-overview':kind==='skip'?`installments/${id}/skip`:kind==='drafts'?'installment-drafts':kind==='confirm'?'installment-confirmations':(kind==='detail'||kind==='pause')?`commitments/${id}`:kind==='monthly'?'installments':kind==='commitments'?'commitments':kind==='installments'?`commitments/${id}/installments`:`installments/${id}/payments`;
+      const suffix=kind==='index-values'?'index-values':kind==='overview'?'due-overview':kind==='skip'?`installments/${id}/skip`:kind==='drafts'?'installment-drafts':kind==='confirm'?'installment-confirmations':(kind==='detail'||kind==='pause')?`commitments/${id}`:kind==='monthly'?'installments':kind==='commitments'?'commitments':kind==='installments'?`commitments/${id}/installments`:`installments/${id}/payments`;
       const result=await fetch(new URL(`/spaces/${space}/${suffix}?offset=${offset}${kind==='monthly'?'&month='+month:''}`,base),{method:kind==='pause'?'PATCH':body?'POST':'GET',redirect:'error',signal:AbortSignal.timeout(timeout),
         headers:{Accept:'application/json',Authorization:`Bearer ${token}`,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
       if([400,401,403,404,409,422,503].includes(result.status))throw new HttpException('No se pudo completar la operacion',result.status);
       if(!result.ok)throw new Error();const data=await boundedJson(result,262144);
+      if (kind === 'index-values') {
+        if (body) {
+          const input = body as IndexValue;
+          if (!validIndexValue(data) || data.indice !== input.indice || data.periodo !== input.periodo ||
+              Number(data.variacion) !== Number(input.variacion)) throw new Error();
+          const { indice, periodo, variacion } = data;
+          return { indice, periodo, variacion };
+        }
+        const page = data as { items: unknown[]; next_offset: number | null };
+        if (!page || !Array.isArray(page.items) || page.items.length > 100 ||
+            !(page.next_offset === null || (page.items.length === 100 && page.next_offset === offset + 100))) {
+          throw new Error();
+        }
+        const items = page.items.map(value => {
+          if (!validIndexValue(value)) throw new Error();
+          const { indice, periodo, variacion } = value;
+          return { indice, periodo, variacion };
+        });
+        return { items, next_offset: page.next_offset };
+      }
       if(kind==='skip'){
         const row=data as {id:string;estado:string;version:number};
         if(!row||row.id!==id||row.estado!=='no_aplica'||row.version!==(body as {version:number}).version+1)throw new Error();
