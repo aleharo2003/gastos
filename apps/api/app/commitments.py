@@ -2,6 +2,7 @@
 from calendar import monthrange
 from datetime import date,datetime,timedelta
 from decimal import Decimal
+import re
 from typing import Literal
 from uuid import UUID,uuid5
 from zoneinfo import ZoneInfo
@@ -9,6 +10,7 @@ from fastapi import APIRouter,HTTPException,Request,Response,Query
 from pydantic import BaseModel,ConfigDict,Field,StrictInt,field_validator,model_validator
 from sqlalchemy import text
 from app.adjustment_indices import IndexValueInput
+from app.amortization import AmortizationSystem, amortize
 from app.accounts import execute,require_member,NO_STORE
 from app.expenses import Category,expense_summary,require_account
 from app.incomes import IncomeInput,account_balance
@@ -32,6 +34,8 @@ class CommitmentInput(BaseModel):
     importe:Decimal
     variable:bool=Field(default=False,strict=True)
     indice_ajuste: str | None = None
+    sistema_amortizacion: AmortizationSystem | None = None
+    tna: Decimal | None = None
     categoria:Category|None=None
     primer_vencimiento:date
     total_cuotas:StrictInt|None=Field(ge=1,le=600)
@@ -57,8 +61,21 @@ class CommitmentInput(BaseModel):
     def adjust_index(cls, value):
         return IndexValueInput.validate_index(value) if value is not None else None
 
+    @field_validator('tna', mode='before')
+    @classmethod
+    def annual_rate(cls, value):
+        if value is None:
+            return None
+        if not isinstance(value, str) or not re.fullmatch(r'[0-9]{1,18}(\.[0-9]{1,8})?', value):
+            raise ValueError('La TNA debe ser un porcentaje no negativo con hasta ocho decimales')
+        return Decimal(value)
+
     @model_validator(mode='after')
     def date_range(self):
+        if (self.sistema_amortizacion is None) != (self.tna is None):
+            raise ValueError('Indicá el sistema de amortización y la TNA juntos')
+        if self.sistema_amortizacion is not None and (self.variable or self.indice_ajuste is not None or self.total_cuotas is None):
+            raise ValueError('El préstamo amortizado requiere un plazo fijo y una tasa fija')
         if self.indice_ajuste is not None and (self.variable or self.total_cuotas is None):
             raise ValueError('El ajuste por índice requiere un plan con cantidad de cuotas')
         if self.variable and self.total_cuotas is not None:raise ValueError('Un gasto variable debe ser mensual sin fin conocido')
@@ -97,7 +114,9 @@ def public_commitment(row):
         'pausado':row['pausado'],'version':row['version'],'variable':row['variable'],
         'total':format(total,'.2f'),'pagado':format(paid,'.2f'),'pendiente':format(total-paid,'.2f'),
         'proximo_vencimiento':row['proximo_vencimiento'].isoformat() if row['proximo_vencimiento'] else None} | (
-            {'indice_ajuste': row['indice_ajuste']} if row.get('indice_ajuste') is not None else {})
+            {'indice_ajuste': row['indice_ajuste']} if row.get('indice_ajuste') is not None else {}) | (
+            {'sistema_amortizacion': row['sistema_amortizacion'], 'tna': format(row['tna'], '.8f').rstrip('0').rstrip('.')}
+            if row.get('sistema_amortizacion') is not None else {})
 
 
 def list_commitments(session,user,space,offset=0,identifier=None):
@@ -121,13 +140,13 @@ def create_commitment(session,user,space,body):
     require_account(session,user,space,body.cuenta_id,write=True)
     params={'id':body.id,'s':space,'a':body.cuenta_id,'u':user,'n':body.nombre,'m':body.moneda,
             'i':body.importe,'c':body.categoria,'f':body.primer_vencimiento,'t':body.total_cuotas,'variable':body.variable,
-            'indice':body.indice_ajuste}
+            'indice':body.indice_ajuste,'sistema':body.sistema_amortizacion,'tna':body.tna}
     inserted=session.execute(text("""INSERT INTO public.compromisos
-        (id,espacio_id,cuenta_id,usuario_id,nombre,moneda,importe,categoria,primer_vencimiento,total_cuotas,variable,indice_ajuste)
-        VALUES (:id,:s,:a,:u,:n,:m,:i,:c,:f,:t,:variable,:indice) ON CONFLICT (id) DO NOTHING RETURNING id"""),params).scalar_one_or_none()
+        (id,espacio_id,cuenta_id,usuario_id,nombre,moneda,importe,categoria,primer_vencimiento,total_cuotas,variable,indice_ajuste,sistema_amortizacion,tna)
+        VALUES (:id,:s,:a,:u,:n,:m,:i,:c,:f,:t,:variable,:indice,:sistema,:tna) ON CONFLICT (id) DO NOTHING RETURNING id"""),params).scalar_one_or_none()
     row=session.execute(text('SELECT * FROM public.compromisos WHERE espacio_id=:s AND id=:id'),params).mappings().one_or_none()
     if (row is None or str(row['usuario_id'])!=str(user) or
-        any(row[k]!=getattr(body,k) for k in ('cuenta_id','nombre','moneda','importe','categoria','primer_vencimiento','total_cuotas','variable','indice_ajuste'))):
+        any(row[k]!=getattr(body,k) for k in ('cuenta_id','nombre','moneda','importe','categoria','primer_vencimiento','total_cuotas','variable','indice_ajuste','sistema_amortizacion','tna'))):
         raise HTTPException(409,'Identificador usado para otro compromiso',headers=NO_STORE)
     if inserted is not None and body.total_cuotas is None:
         today=datetime.now(ZoneInfo('America/Argentina/Buenos_Aires')).date()
@@ -135,11 +154,32 @@ def create_commitment(session,user,space,body):
             raise HTTPException(422,'El gasto mensual debe comenzar este mes o en uno futuro',headers=NO_STORE)
         seed_current_installment(session,space,row,today)
     elif inserted is not None and body.indice_ajuste is None:
-        session.execute(text("""INSERT INTO public.cuotas(id,espacio_id,compromiso_id,numero,vencimiento,importe)
-            VALUES (:id,:s,:c,:n,:v,:i)"""),[
-            {'id':uuid5(body.id,str(n)),'s':space,'c':body.id,'n':n,'v':monthly_due(body.primer_vencimiento,n-1),'i':body.importe}
-            for n in range(1,body.total_cuotas+1)])
+        insert_finite_installments(session, space, body)
     return list_commitments(session,user,space,identifier=body.id)['items'][0]
+
+
+def insert_finite_installments(session, space, body):
+    amortization = None
+    if body.sistema_amortizacion is not None:
+        try:
+            amortization = amortize(body.importe, body.tna, body.total_cuotas, body.sistema_amortizacion)
+        except ValueError as error:
+            raise HTTPException(422, str(error), headers=NO_STORE) from None
+
+    rows = []
+    for number in range(1, body.total_cuotas + 1):
+        quote = amortization[number - 1] if amortization is not None else None
+        rows.append({
+            'id': uuid5(body.id, str(number)), 'space': space, 'commitment': body.id, 'number': number,
+            'due': monthly_due(body.primer_vencimiento, number - 1), 'amount': quote.amount if quote else body.importe,
+            'capital': quote.principal if quote else None, 'interest': quote.interest if quote else None,
+            'balance': quote.balance if quote else None,
+        })
+    session.execute(text("""
+        INSERT INTO public.cuotas
+            (id, espacio_id, compromiso_id, numero, vencimiento, importe, capital, interes, saldo_capital)
+        VALUES (:id, :space, :commitment, :number, :due, :amount, :capital, :interest, :balance)
+    """), rows)
 
 
 def require_commitment(session,user,space,identifier):
@@ -159,7 +199,9 @@ def public_installment(row,day=None):
         'estimado':row.get('estimado',False),'version':row.get('version',1),
         'estado':'no_aplica' if skipped else 'borrador' if row.get('estimado',False) else 'pagada' if remaining==0 else 'parcial' if paid>0 else 'pendiente',
         'vencida':remaining>0 and row['vencimiento']<day} | (
-            {'pendiente_ajuste': True} if row.get('pendiente_ajuste') else {})
+            {'pendiente_ajuste': True} if row.get('pendiente_ajuste') else {}) | (
+            {key: format(row[key], '.2f') for key in ('capital','interes','saldo_capital')}
+            if row.get('capital') is not None else {})
 
 
 def list_installments(session,user,space,identifier,offset=0):
@@ -256,7 +298,6 @@ def get_payments(space:UUID,identifier:UUID,request:Request,response:Response,of
 
 def monthly_installments(session,user,space,month,offset=0,day=None):
     """Cuotas por mes de vencimiento; pagos acumulados aunque se paguen en otro mes."""
-    import re
     if not isinstance(month,str) or not re.fullmatch(r'[0-9]{4}-(0[1-9]|1[0-2])',month) or month.startswith('0000'):
         raise HTTPException(422,'Mes invalido: usar AAAA-MM',headers=NO_STORE)
     year,number=map(int,month.split('-'))
@@ -444,6 +485,8 @@ def skip_installment(session, user, space, identifier, version):
         return {'id': str(identifier), 'estado': 'no_aplica', 'version': row['version']}
     if row['pendiente_ajuste']:
         raise HTTPException(409,'Esperá el ajuste del índice antes de cambiar la cuota',headers=NO_STORE)
+    if row['capital'] is not None:
+        raise HTTPException(409, 'Las cuotas de un préstamo forman parte del plan de amortización', headers=NO_STORE)
     if row['no_aplica'] or row['version'] != version:
         raise HTTPException(409, 'La cuota cambió en otra sesión', headers=NO_STORE)
     saved = session.execute(text("""UPDATE public.cuotas

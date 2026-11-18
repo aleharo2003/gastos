@@ -68,7 +68,23 @@
         <select id="debt-account" name="debtAccount" [(ngModel)]="account" required [disabled]="saving()"><option value="">Elegí una cuenta</option>@for(a of accounts;track a.id){<option [value]="a.id">{{ a.nombre }}</option>}</select>
         <label for="debt-currency">Moneda</label><select id="debt-currency" name="debtCurrency" [(ngModel)]="currency" [disabled]="saving()"><option>ARS</option><option>USD</option><option>EUR</option></select>
         @if(!indefinite){
+          @if(!indexed){
+            <label for="debt-loan-system">Sistema de amortización</label>
+            <select id="debt-loan-system" name="loanSystem" [(ngModel)]="loanSystem" [disabled]="saving()">
+              <option value="">Sin amortización bancaria</option>
+              <option value="frances">Francés</option>
+              <option value="aleman">Alemán</option>
+            </select>
+            @if(loanSystem){
+              <label for="debt-loan-rate">Tasa nominal anual (TNA %)</label>
+              <input id="debt-loan-rate" name="loanRate" [(ngModel)]="loanRate" inputmode="decimal" maxlength="27"
+                     placeholder="12,50" required [disabled]="saving()" aria-describedby="debt-loan-help">
+              <p id="debt-loan-help">Piggo divide la TNA por 12 para calcular el interés mensual sobre el capital pendiente.</p>
+            }
+          }
+          @if(!loanSystem){
           <label class="checkbox"><input type="checkbox" name="indexed" [(ngModel)]="indexed" [disabled]="saving()"> Ajustar por índice</label>
+          }
           @if(indexed){
             <label for="debt-index">Nombre del índice</label>
             <input id="debt-index" name="debtIndex" [(ngModel)]="indexName" maxlength="80" required
@@ -76,7 +92,7 @@
             <p id="debt-index-help">Usá el mismo nombre que en «Índices de ajuste». Piggo calcula la próxima cuota a partir de la última que pagaste.</p>
           }
         }
-        <label for="debt-amount">{{ !indefinite && indexed ? 'Importe de la última cuota' : 'Importe de cada cuota / estimado inicial' }}</label><input id="debt-amount" name="debtAmount" inputmode="decimal" [(ngModel)]="amount" required placeholder="250,00" [disabled]="saving()">
+        <label for="debt-amount">{{ !indefinite && indexed ? 'Importe de la última cuota' : !indefinite && loanSystem ? 'Capital del préstamo' : 'Importe de cada cuota / estimado inicial' }}</label><input id="debt-amount" name="debtAmount" inputmode="decimal" [(ngModel)]="amount" required placeholder="250,00" [disabled]="saving()">
         <small>Sin separador de miles; hasta dos decimales.</small>
         <label class="checkbox"><input type="checkbox" name="indefinite" [(ngModel)]="indefinite" [disabled]="saving()"> Gasto mensual sin cantidad final de cuotas</label>
         @if(indefinite){<label class="checkbox"><input type="checkbox" name="variable" [(ngModel)]="variable" [disabled]="saving()"> El importe cambia cada mes (luz, agua, tarjeta)</label><p>Para variables, el importe inicial será un estimado que deberás confirmar.</p>}
@@ -92,7 +108,8 @@
   }
   @if(loading()){<p role="status">Cargando deudas…</p>}
   @if(!items().length&&!loading()){<p>Todavía no hay deudas registradas.</p>}
-  <ul>@for(item of items();track item.id){<li><strong>{{ item.nombre }}</strong>@if(item.indice_ajuste){<p>Ajuste por {{ item.indice_ajuste }}</p>}@if(item.variable){<p>Importe variable · Revisá los estimados antes de pagar.</p>}
+  <ul>@for(item of items();track item.id){<li><strong>{{ item.nombre }}</strong>
+    @if(item.sistema_amortizacion){<p>Sistema {{ item.sistema_amortizacion==='frances'?'francés':'alemán' }} · TNA {{ item.tna?.replace('.', ',') }} %</p>}@if(item.indice_ajuste){<p>Ajuste por {{ item.indice_ajuste }}</p>}@if(item.variable){<p>Importe variable · Revisá los estimados antes de pagar.</p>}
     @if(item.total_cuotas!==null){<p>{{ item.cuotas_pagadas }} de {{ item.total_cuotas }} cuotas pagadas · {{ item.total_cuotas-item.cuotas_pagadas-(item.cuotas_no_aplican??0) }} por completar</p>}
     @else{<p>{{ item.cuotas_pagadas }} cuotas pagadas · Sin fecha final · {{ item.pausado?'Pausado':'Activo' }}</p>}
     @if(item.cuotas_no_aplican){<p>Cuotas que no aplican: {{ item.cuotas_no_aplican }}</p>}
@@ -111,6 +128,11 @@
       <strong>Cuota {{ item.numero }} @if(debt.total_cuotas!==null){<span>de {{ debt.total_cuotas }}</span>}</strong>
       <p>{{ item.vencimiento.split('-').reverse().join('/') }} · {{ item.estado==='no_aplica'?'No aplica':item.pendiente_ajuste?'Pendiente de ajuste':item.estimado?'Monto estimado (sin confirmar)':item.estado==='pagada'?'Pagada':item.estado==='parcial'?'Pago parcial':'Pendiente' }}{{ item.vencida?' · Vencida':'' }}</p>
       <p>{{ debt.moneda }} {{ hidden()?'••••':showAmount(item.importe) }} · Falta: {{ hidden()?'••••':showAmount(item.pendiente) }}</p>
+      @if(item.capital!==undefined){
+        <p>Capital de la cuota: {{ hidden()?'••••':showAmount(item.capital) }} ·
+          Interés: {{ hidden()?'••••':showAmount(item.interes!) }} ·
+          Saldo de capital según el plan: {{ hidden()?'••••':showAmount(item.saldo_capital!) }}</p>
+      }
       <button type="button" class="secondary" (click)="selectQuota(item)" [disabled]="paying()||saving()||detailLoading()">Ver pagos{{ item.estado!=='pagada'&&item.estado!=='no_aplica'&&!item.estimado&&!item.pendiente_ajuste?' / pagar':'' }}</button>
     </li>}</ul>
     <div class="actions">
@@ -122,7 +144,7 @@
       <h4>Pagos de la cuota {{ installment.numero }}</h4>
       @if(installment.pendiente_ajuste){<p>Importe provisorio. Podés registrar el pago cuando se complete el ajuste del índice.</p>}
       @if(installment.estimado){<p>Esta cuota tiene un monto estimado. Revisalo en «Montos por confirmar» antes de pagar.</p>}
-      @if(!installment.pendiente_ajuste&&installment.pagado==='0.00'&&installment.estado!=='no_aplica'){
+      @if(installment.capital===undefined&&!installment.pendiente_ajuste&&installment.pagado==='0.00'&&installment.estado!=='no_aplica'){
         <button type="button" class="secondary" (click)="skipInstallment(installment)"
           [disabled]="saving()||paying()||draftDirty">Marcar como «No aplica»</button>
       }

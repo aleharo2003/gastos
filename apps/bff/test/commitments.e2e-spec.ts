@@ -62,6 +62,25 @@ describe('Deudas y pagos HTTP',()=>{
     await request(app.getHttpServer()).post(url).set('Authorization', 'Bearer token')
       .send(body).expect(409).expect({ message: detail });
   });
+  it('conserva la TNA y el desglose de una cuota amortizada', async () => {
+    const input = {...payload,importe:'3000.00',total_cuotas:3,sistema_amortizacion:'aleman',tna:'12.00000000'};
+    const loan = {...row,...input,tna:'12',total:'3060.00',pendiente:'3060.00'};
+    remote.mockImplementation(async()=>new Response(JSON.stringify(loan)));
+    await request(app.getHttpServer()).post(base+'/commitments').set('Authorization','Bearer token')
+      .send(input).expect(200).expect(loan);
+    expect(JSON.parse(remote.mock.calls[0][1].body)).toEqual(input);
+    await request(app.getHttpServer()).post(base+'/commitments').set('Authorization','Bearer token')
+      .send({...input,tna:12}).expect(400);
+    const quota = {...installment,importe:'1030.00',pendiente:'1000.00',
+      capital:'1000.00',interes:'30.00',saldo_capital:'2000.00'};
+    const page = {items:[quota],next_offset:null};
+    const endpoint = base+'/commitments/'+id+'/installments';
+    remote.mockImplementation(async()=>new Response(JSON.stringify(page)));
+    await request(app.getHttpServer()).get(endpoint).set('Authorization','Bearer token').expect(200).expect(page);
+    quota.interes = '20.00';
+    await request(app.getHttpServer()).get(endpoint).set('Authorization','Bearer token').expect(502);
+  });
+
   it('acepta un plan indexado con total generado distinto del importe base', async () => {
     const input = {...payload,indice_ajuste:'CAC'};
     const indexed = {...row,indice_ajuste:'CAC',total:'275.00',pendiente:'275.00'};

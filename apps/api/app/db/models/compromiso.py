@@ -21,6 +21,7 @@ class Compromiso(Base):
             'indice_ajuste = btrim(indice_ajuste) AND char_length(indice_ajuste) BETWEEN 1 AND 80)',
             name='ck_compromisos_indice',
         ),
+        CheckConstraint("(sistema_amortizacion IS NULL AND tna IS NULL) OR (sistema_amortizacion IS NOT NULL AND sistema_amortizacion IN ('frances','aleman') AND tna IS NOT NULL AND tna >= 0 AND tna < 1000000000000000000 AND indice_ajuste IS NULL AND total_cuotas IS NOT NULL AND NOT variable)",name='ck_compromisos_amortizacion'),
         CheckConstraint('NOT variable OR total_cuotas IS NULL',name='ck_compromisos_variable'),
         CheckConstraint("categoria IS NULL OR categoria IN ('alimentos','transporte','vivienda','servicios','salud','educacion','ocio','impuestos','auto','bancario','ropa','otros')",name='ck_compromisos_categoria'),
     )
@@ -34,6 +35,8 @@ class Compromiso(Base):
     categoria:Mapped[str|None]=mapped_column(Text,nullable=True)
     primer_vencimiento:Mapped[date]=mapped_column(Date,nullable=False)
     total_cuotas:Mapped[int|None]=mapped_column(Integer,nullable=True)
+    sistema_amortizacion:Mapped[str|None]=mapped_column(Text,nullable=True)
+    tna:Mapped[Decimal|None]=mapped_column(Numeric(26,8),nullable=True)
     indice_ajuste:Mapped[str|None]=mapped_column(Text,nullable=True)
     variable:Mapped[bool]=mapped_column(Boolean,nullable=False,server_default='false')
     pausado:Mapped[bool]=mapped_column(Boolean,nullable=False,server_default='false')
@@ -50,6 +53,7 @@ class Cuota(Base):
         CheckConstraint('numero BETWEEN 1 AND 119988',name='ck_cuotas_numero'),
         CheckConstraint('version >= 1',name='ck_cuotas_version'),
         CheckConstraint('importe > 0 AND importe < 1000000000000',name='ck_cuotas_importe'),
+        CheckConstraint("(capital IS NULL AND interes IS NULL AND saldo_capital IS NULL) OR (capital IS NOT NULL AND interes IS NOT NULL AND saldo_capital IS NOT NULL AND capital > 0 AND interes >= 0 AND saldo_capital >= 0 AND importe = capital + interes AND NOT no_aplica AND NOT estimado AND NOT pendiente_ajuste)",name='ck_cuotas_amortizacion'),
         Index('ix_cuotas_espacio_vencimiento','espacio_id','vencimiento'),
     )
     id:Mapped[UUID]=mapped_column(Uuid,primary_key=True)
@@ -61,6 +65,9 @@ class Cuota(Base):
     version:Mapped[int]=mapped_column(Integer,nullable=False,server_default='1')
     numero:Mapped[int]=mapped_column(Integer,nullable=False)
     vencimiento:Mapped[date]=mapped_column(Date,nullable=False)
+    capital:Mapped[Decimal|None]=mapped_column(Numeric(14,2),nullable=True)
+    interes:Mapped[Decimal|None]=mapped_column(Numeric(14,2),nullable=True)
+    saldo_capital:Mapped[Decimal|None]=mapped_column(Numeric(14,2),nullable=True)
     periodo:Mapped[date]=mapped_column(Date,Computed("vencimiento - (EXTRACT(day FROM vencimiento)::integer - 1)",persisted=True),nullable=False)
     importe:Mapped[Decimal]=mapped_column(Numeric(14,2),nullable=False)
 

@@ -17,11 +17,19 @@ function validIndexName(value: unknown): value is string {
     [...value].length <= 80 && !/[\x00-\x1f\x7f]/.test(value);
 }
 
-type Create={indice_ajuste?:string|null;variable?:boolean;id:string;cuenta_id:string;nombre:string;moneda:string;importe:string;categoria?:string|null;primer_vencimiento:string;total_cuotas:number|null};
+const annualRate = (value: unknown): value is string =>
+  typeof value === 'string' && /^[0-9]{1,18}(\.[0-9]{1,8})?$/.test(value);
+
+function rateUnits(value: string): bigint {
+  const [whole, fraction = ''] = value.split('.');
+  return BigInt(whole) * 100000000n + BigInt(fraction.padEnd(8, '0'));
+}
+
+type Create={sistema_amortizacion?:'frances'|'aleman'|null;tna?:string|null;indice_ajuste?:string|null;variable?:boolean;id:string;cuenta_id:string;nombre:string;moneda:string;importe:string;categoria?:string|null;primer_vencimiento:string;total_cuotas:number|null};
 type Confirm={items:{id:string;importe:string;version:number}[]};
 type Pay={id:string;cuenta_id:string;fecha:string;importe:string};
 type Commitment=Create & {variable:boolean;pausado:boolean;version:number;espacio_id:string;cuotas_pagadas:number;cuotas_no_aplican:number;total:string;pagado:string;pendiente:string;proximo_vencimiento:string|null};
-type Installment={pendiente_ajuste?:boolean;estimado:boolean;version:number;id:string;espacio_id:string;compromiso_id:string;numero:number;vencimiento:string;importe:string;pagado:string;pendiente:string;estado:string;vencida:boolean};
+type Installment={capital?:string;interes?:string;saldo_capital?:string;pendiente_ajuste?:boolean;estimado:boolean;version:number;id:string;espacio_id:string;compromiso_id:string;numero:number;vencimiento:string;importe:string;pagado:string;pendiente:string;estado:string;vencida:boolean};
 type Payment=Pay & {espacio_id:string;cuota_id:string;moneda:string};
 function validCreate(v:unknown):v is Create{
   const r=v as Create;
@@ -29,7 +37,10 @@ function validCreate(v:unknown):v is Create{
     !/[\x00-\x1f\x7f]/.test(r.nombre)&&currencies.includes(r.moneda)&&amount(r.importe)&&date(r.primer_vencimiento)&&
     (r.total_cuotas===null||(Number.isInteger(r.total_cuotas)&&r.total_cuotas>=1&&r.total_cuotas<=600))&&(r.categoria==null||categories.includes(r.categoria))&&
     (r.variable===undefined||typeof r.variable==='boolean')&&(!r.variable||r.total_cuotas===null)&&
-    (r.indice_ajuste==null||(validIndexName(r.indice_ajuste)&&!r.variable&&r.total_cuotas!==null));
+    (r.indice_ajuste==null||(validIndexName(r.indice_ajuste)&&!r.variable&&r.total_cuotas!==null))&&
+    (r.sistema_amortizacion==null ? r.tna==null :
+      (r.sistema_amortizacion==='frances'||r.sistema_amortizacion==='aleman')&&annualRate(r.tna)&&
+      r.total_cuotas!==null&&!r.variable&&r.indice_ajuste==null);
 }
 function validPay(v:unknown):v is Pay{
   const r=v as Pay;return !!r&&validId(r.id)&&validId(r.cuenta_id)&&date(r.fecha)&&amount(r.importe);
@@ -37,10 +48,12 @@ function validPay(v:unknown):v is Pay{
 function commitment(v:unknown,space:string):Commitment{
   const r=v as Commitment;
   if(!validCreate(r)||r.espacio_id!==space||!Number.isInteger(r.cuotas_pagadas)||r.cuotas_pagadas<0||(r.total_cuotas!==null&&r.cuotas_pagadas+r.cuotas_no_aplican>r.total_cuotas)||!Number.isSafeInteger(r.cuotas_no_aplican)||r.cuotas_no_aplican<0||typeof r.variable!=='boolean'||typeof r.pausado!=='boolean'||!Number.isSafeInteger(r.version)||r.version<1||
-    !sum(r.total)||!sum(r.pagado)||!sum(r.pendiente)||(r.indice_ajuste==null&&r.total_cuotas!==null&&cents(r.total)!==cents(r.importe)*BigInt(r.total_cuotas-r.cuotas_no_aplican))||
+    !sum(r.total)||!sum(r.pagado)||!sum(r.pendiente)||(r.sistema_amortizacion==null&&r.indice_ajuste==null&&r.total_cuotas!==null&&cents(r.total)!==cents(r.importe)*BigInt(r.total_cuotas-r.cuotas_no_aplican))||
+    (r.sistema_amortizacion!=null&&(r.cuotas_no_aplican!==0||cents(r.total)<cents(r.importe)))||
     cents(r.pagado)+cents(r.pendiente)!==cents(r.total)||!(r.proximo_vencimiento===null||date(r.proximo_vencimiento))||
-    (cents(r.pendiente)===0n)!==(r.proximo_vencimiento===null)||(r.indice_ajuste==null&&!r.variable&&BigInt(r.cuotas_pagadas)*cents(r.importe)>cents(r.pagado)))throw new Error();
-  return {...(r.indice_ajuste==null?{}:{indice_ajuste:r.indice_ajuste}),variable:r.variable,id:r.id,espacio_id:space,cuenta_id:r.cuenta_id,nombre:r.nombre,moneda:r.moneda,importe:r.importe,categoria:r.categoria??null,
+    (cents(r.pendiente)===0n)!==(r.proximo_vencimiento===null)||(r.sistema_amortizacion==null&&r.indice_ajuste==null&&!r.variable&&BigInt(r.cuotas_pagadas)*cents(r.importe)>cents(r.pagado)))throw new Error();
+  return {...(r.sistema_amortizacion==null?{}:{sistema_amortizacion:r.sistema_amortizacion,tna:r.tna}),
+    ...(r.indice_ajuste==null?{}:{indice_ajuste:r.indice_ajuste}),variable:r.variable,id:r.id,espacio_id:space,cuenta_id:r.cuenta_id,nombre:r.nombre,moneda:r.moneda,importe:r.importe,categoria:r.categoria??null,
     primer_vencimiento:r.primer_vencimiento,total_cuotas:r.total_cuotas,pausado:r.pausado,version:r.version,cuotas_no_aplican:r.cuotas_no_aplican,cuotas_pagadas:r.cuotas_pagadas,total:r.total,pagado:r.pagado,pendiente:r.pendiente,proximo_vencimiento:r.proximo_vencimiento};
 }
 function installment(v:unknown,space:string,id:string):Installment{
@@ -51,7 +64,11 @@ function installment(v:unknown,space:string,id:string):Installment{
     (r.pendiente_ajuste&&(r.estimado||r.estado!=='pendiente'||r.pagado!=='0.00'))||
     typeof r.estimado!=='boolean'||!Number.isInteger(r.version)||r.version<1||
     (r.estimado&&r.pagado!=='0.00')||(r.estado!=='no_aplica'&&r.estado!==(r.estimado?'borrador':cents(r.pendiente)===0n?'pagada':cents(r.pagado)>0n?'parcial':'pendiente'))||typeof r.vencida!=='boolean'||(r.estado==='pagada'&&r.vencida))throw new Error();
-  return {...(r.pendiente_ajuste?{pendiente_ajuste:true}:{}),estimado:r.estimado,version:r.version,id:r.id,espacio_id:space,compromiso_id:id,numero:r.numero,vencimiento:r.vencimiento,importe:r.importe,pagado:r.pagado,pendiente:r.pendiente,estado:r.estado,vencida:r.vencida};
+  const {capital,interes,saldo_capital}=r;
+  const scheduled=capital!==undefined||interes!==undefined||saldo_capital!==undefined;
+  if(scheduled&&(!amount(capital)||!sum(interes)||!sum(saldo_capital)||
+    cents(capital)+cents(interes)!==cents(r.importe)||r.estimado||r.pendiente_ajuste||r.estado==='no_aplica'))throw new Error();
+  return {...(scheduled?{capital,interes,saldo_capital}:{}),...(r.pendiente_ajuste?{pendiente_ajuste:true}:{}),estimado:r.estimado,version:r.version,id:r.id,espacio_id:space,compromiso_id:id,numero:r.numero,vencimiento:r.vencimiento,importe:r.importe,pagado:r.pagado,pendiente:r.pendiente,estado:r.estado,vencida:r.vencida};
 }
 function payment(v:unknown,space:string,id:string):Payment{
   const r=v as Payment;if(!validPay(r)||r.espacio_id!==space||r.cuota_id!==id||!currencies.includes(r.moneda))throw new Error();
@@ -291,7 +308,7 @@ export class CommitmentsController{
   @HttpCode(200)
   async create(@Param('space') space:string,@Body() body:unknown,@Req() req:Request,@Res({passthrough:true}) res:Response){
     res.setHeader('Cache-Control','no-store');const token=await this.token(req,res);
-    if(!validCreate(body)||Object.keys(body).some(k=>!['id','cuenta_id','nombre','moneda','importe','categoria','primer_vencimiento','total_cuotas','variable','indice_ajuste'].includes(k)))throw new BadRequestException('Compromiso invalido');
+    if(!validCreate(body)||Object.keys(body).some(k=>!['id','cuenta_id','nombre','moneda','importe','categoria','primer_vencimiento','total_cuotas','variable','indice_ajuste','sistema_amortizacion','tna'].includes(k)))throw new BadRequestException('Compromiso invalido');
     return this.forward(token,space,'commitments',undefined,0,{...body,id:body.id.toLowerCase(),cuenta_id:body.cuenta_id.toLowerCase(),nombre:body.nombre.trim()});
   }
   @Post('installments/:id/payments')
@@ -406,6 +423,8 @@ export class CommitmentsController{
           const row=commitment(data,space),input=body as Create;
           if(['id','cuenta_id','nombre','moneda','primer_vencimiento','total_cuotas'].some(k=>row[k as keyof Commitment]!==input[k as keyof Create])||
             (row.indice_ajuste??null)!==(input.indice_ajuste??null)||
+            (row.sistema_amortizacion??null)!==(input.sistema_amortizacion??null)||
+            (input.tna!=null&&(row.tna==null||rateUnits(row.tna)!==rateUnits(input.tna)))||
             row.variable!==(input.variable??false)||cents(row.importe)!==cents(input.importe)||(row.categoria??null)!==(input.categoria??null))throw new Error();
           return row;
         }
