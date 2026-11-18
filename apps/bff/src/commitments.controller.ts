@@ -434,13 +434,13 @@ export class CommitmentsController{
       }
       const page=data as {items:unknown[];next_offset:number|null;totales?:DueTotal[]};
       if(!page||!Array.isArray(page.items)||page.items.length>100||!(page.next_offset===null||page.next_offset===offset+100))throw new Error();
-      const result = {items:page.items.map(row=>kind==='commitments'?commitment(row,space):kind==='installments'?installment(row,space,id!):payment(row,space,id!)),next_offset:page.next_offset};
-      if(kind!=='commitments'||page.totales===undefined)return result;
+      const mappedPage = {items:page.items.map(row=>kind==='commitments'?commitment(row,space):kind==='installments'?installment(row,space,id!):payment(row,space,id!)),next_offset:page.next_offset};
+      if(kind!=='commitments'||page.totales===undefined)return mappedPage;
       const totals=dueTotals(page.totales).map(({moneda,pendiente})=>{
         if(cents(pendiente)<=0n)throw new Error();
         return {moneda,pendiente};
       });
-      return {...result,totales:totals};
+      return {...mappedPage,totales:totals};
     }catch(error){if(error instanceof HttpException)throw error;throw new BadGatewayException('No se pudo consultar FastAPI');}
   }
 }
