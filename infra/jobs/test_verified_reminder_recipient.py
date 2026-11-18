@@ -1,11 +1,12 @@
 import json
+import os
 import unittest
 from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 from deliver_reminder_email import DeliveryOutcome
-from deliver_test_reminder import deliver_test_reminder
+from deliver_test_reminder import deliver_test_reminder, main
 from verified_reminder_recipient import verified_reminder_recipient
 
 
@@ -77,6 +78,29 @@ class VerifiedRecipientTests(unittest.TestCase):
         with patch('verified_reminder_recipient.HTTPSConnection') as connect, self.assertRaises(ValueError):
             verified_reminder_recipient(self.project, 'sb_secret_ficticia', self.token, self.user, self.address)
         connect.assert_not_called()
+
+    def test_default_mode_counts_without_constructing_a_sender(self):
+        env = {
+            'PILOT_DATABASE_URL': 'postgresql://example.test/pilot',
+            'PILOT_USER_ID': str(self.user), 'PILOT_SPACE_ID': str(self.space),
+            'PILOT_SUPABASE_PROJECT_REF': self.project, 'PILOT_SUPABASE_PUBLISHABLE_KEY': self.key,
+            'PILOT_SUPABASE_ACCESS_TOKEN': self.token, 'PILOT_EMAIL': self.address,
+        }
+        with (
+            patch.dict(os.environ, env, clear=True),
+            patch('deliver_test_reminder.connect') as connect,
+            patch('deliver_test_reminder.verified_reminder_recipient', return_value=self.address),
+            patch('deliver_test_reminder.ResendSender') as sender,
+        ):
+            connection = connect.return_value.__enter__.return_value
+            role, preview = MagicMock(), MagicMock()
+            role.fetchone.return_value = ('app_email_jobs', 'app_email_jobs')
+            preview.fetchone.return_value = (3,)
+            connection.execute.side_effect = [role, None, preview]
+            self.assertEqual(main(), 0)
+        sender.assert_not_called()
+        self.assertIn('previsualizar_avisos_email_piloto', connection.execute.call_args.args[0])
+        self.assertEqual(connection.execute.call_count, 3)
 
     def pilot(self, connection=None, instant=None, sender=None):
         return deliver_test_reminder(

@@ -303,7 +303,12 @@ def check_database(fixture):
         check_variable_commitments(urls[RUNTIME],urls[MIGRATOR],jobs_url)
         check_adjustment_indices(urls[RUNTIME], urls[MIGRATOR])
         check_reminder_preferences(urls[RUNTIME], urls[MIGRATOR])
-        check_reminder_candidates(urls[RUNTIME], urls[MIGRATOR], jobs_url)
+        email_password = secrets.token_urlsafe(32)
+        provision_jobs(database, email_password, email_pilot=True)
+        with engines[MIGRATOR].begin() as connection:
+            connection.exec_driver_sql((ROOT/'infra/postgres/grant-email-pilot.sql').read_text(encoding='utf8'))
+        email_jobs_url = urls[RUNTIME].set(username='app_email_jobs', password=email_password)
+        check_reminder_candidates(urls[RUNTIME], urls[MIGRATOR], jobs_url, email_jobs_url)
         check_indexed_commitments(urls[RUNTIME], urls[MIGRATOR], jobs_url)
         check_planning(urls[RUNTIME], urls[MIGRATOR])
         check_receipts(urls[RUNTIME], urls[MIGRATOR])

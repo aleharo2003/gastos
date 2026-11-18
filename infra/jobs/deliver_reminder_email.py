@@ -89,21 +89,21 @@ def deliver_reminder_email(
     recipient = mailbox(recipient)
     with connection.transaction():
         attempt = connection.execute(
-            'SELECT public.reservar_entrega_aviso_email(%s, %s, %s)', (*scope, instant),
+            'SELECT public.reservar_entrega_aviso_email_piloto(%s, %s, %s)', (*scope, instant),
         ).fetchone()[0]
         if attempt is None:
             return None
         messages = prepare_reminder_emails(connection, instant, app_url, ars_per_usd, scope=scope)
         if not messages:
             connection.execute(
-                'SELECT public.resolver_entrega_aviso_email(%s, %s, %s)', (attempt, 'reintento', None),
+                'SELECT public.resolver_entrega_aviso_email_piloto(%s, %s, %s)', (attempt, 'reintento', None),
             )
             return None
         (message,) = messages
 
     outcome = sender.send(attempt, recipient, message)
     recorded = connection.execute(
-        'SELECT public.resolver_entrega_aviso_email(%s, %s, %s)',
+        'SELECT public.resolver_entrega_aviso_email_piloto(%s, %s, %s)',
         (attempt, outcome.estado, outcome.referencia),
     ).fetchone()[0]
     if not recorded:
