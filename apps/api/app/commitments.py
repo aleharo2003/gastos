@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter,HTTPException,Request,Response,Query
 from pydantic import BaseModel,ConfigDict,Field,StrictInt,field_validator,model_validator
 from sqlalchemy import text
+from app.adjustment_indices import IndexValueInput
 from app.accounts import execute,require_member,NO_STORE
 from app.expenses import Category,expense_summary,require_account
 from app.incomes import IncomeInput,account_balance
@@ -30,6 +31,7 @@ class CommitmentInput(BaseModel):
     moneda:Literal['ARS','USD','EUR']
     importe:Decimal
     variable:bool=Field(default=False,strict=True)
+    indice_ajuste: str | None = None
     categoria:Category|None=None
     primer_vencimiento:date
     total_cuotas:StrictInt|None=Field(ge=1,le=600)
@@ -50,8 +52,15 @@ class CommitmentInput(BaseModel):
     @classmethod
     def iso_date(cls,value):return IncomeInput.iso_date(value)
 
+    @field_validator('indice_ajuste')
+    @classmethod
+    def adjust_index(cls, value):
+        return IndexValueInput.validate_index(value) if value is not None else None
+
     @model_validator(mode='after')
     def date_range(self):
+        if self.indice_ajuste is not None and (self.variable or self.total_cuotas is None):
+            raise ValueError('El ajuste por índice requiere un plan con cantidad de cuotas')
         if self.variable and self.total_cuotas is not None:raise ValueError('Un gasto variable debe ser mensual sin fin conocido')
         if self.total_cuotas is not None and self.primer_vencimiento.year*12+self.primer_vencimiento.month-1+self.total_cuotas-1>=10000*12:
             raise ValueError('El calendario supera el rango de fechas')
@@ -87,7 +96,8 @@ def public_commitment(row):
         'total_cuotas':row['total_cuotas'],'cuotas_pagadas':row['cuotas_pagadas'],'cuotas_no_aplican':row.get('cuotas_no_aplican',0),
         'pausado':row['pausado'],'version':row['version'],'variable':row['variable'],
         'total':format(total,'.2f'),'pagado':format(paid,'.2f'),'pendiente':format(total-paid,'.2f'),
-        'proximo_vencimiento':row['proximo_vencimiento'].isoformat() if row['proximo_vencimiento'] else None}
+        'proximo_vencimiento':row['proximo_vencimiento'].isoformat() if row['proximo_vencimiento'] else None} | (
+            {'indice_ajuste': row['indice_ajuste']} if row.get('indice_ajuste') is not None else {})
 
 
 def list_commitments(session,user,space,offset=0,identifier=None):
@@ -110,20 +120,21 @@ def list_commitments(session,user,space,offset=0,identifier=None):
 def create_commitment(session,user,space,body):
     require_account(session,user,space,body.cuenta_id,write=True)
     params={'id':body.id,'s':space,'a':body.cuenta_id,'u':user,'n':body.nombre,'m':body.moneda,
-            'i':body.importe,'c':body.categoria,'f':body.primer_vencimiento,'t':body.total_cuotas,'variable':body.variable}
+            'i':body.importe,'c':body.categoria,'f':body.primer_vencimiento,'t':body.total_cuotas,'variable':body.variable,
+            'indice':body.indice_ajuste}
     inserted=session.execute(text("""INSERT INTO public.compromisos
-        (id,espacio_id,cuenta_id,usuario_id,nombre,moneda,importe,categoria,primer_vencimiento,total_cuotas,variable)
-        VALUES (:id,:s,:a,:u,:n,:m,:i,:c,:f,:t,:variable) ON CONFLICT (id) DO NOTHING RETURNING id"""),params).scalar_one_or_none()
+        (id,espacio_id,cuenta_id,usuario_id,nombre,moneda,importe,categoria,primer_vencimiento,total_cuotas,variable,indice_ajuste)
+        VALUES (:id,:s,:a,:u,:n,:m,:i,:c,:f,:t,:variable,:indice) ON CONFLICT (id) DO NOTHING RETURNING id"""),params).scalar_one_or_none()
     row=session.execute(text('SELECT * FROM public.compromisos WHERE espacio_id=:s AND id=:id'),params).mappings().one_or_none()
     if (row is None or str(row['usuario_id'])!=str(user) or
-        any(row[k]!=getattr(body,k) for k in ('cuenta_id','nombre','moneda','importe','categoria','primer_vencimiento','total_cuotas','variable'))):
+        any(row[k]!=getattr(body,k) for k in ('cuenta_id','nombre','moneda','importe','categoria','primer_vencimiento','total_cuotas','variable','indice_ajuste'))):
         raise HTTPException(409,'Identificador usado para otro compromiso',headers=NO_STORE)
     if inserted is not None and body.total_cuotas is None:
         today=datetime.now(ZoneInfo('America/Argentina/Buenos_Aires')).date()
         if body.primer_vencimiento.replace(day=1)<today.replace(day=1):
             raise HTTPException(422,'El gasto mensual debe comenzar este mes o en uno futuro',headers=NO_STORE)
         seed_current_installment(session,space,row,today)
-    elif inserted is not None:
+    elif inserted is not None and body.indice_ajuste is None:
         session.execute(text("""INSERT INTO public.cuotas(id,espacio_id,compromiso_id,numero,vencimiento,importe)
             VALUES (:id,:s,:c,:n,:v,:i)"""),[
             {'id':uuid5(body.id,str(n)),'s':space,'c':body.id,'n':n,'v':monthly_due(body.primer_vencimiento,n-1),'i':body.importe}
@@ -147,7 +158,8 @@ def public_installment(row,day=None):
         'importe':format(row['importe'],'.2f'),'pagado':format(paid,'.2f'),'pendiente':format(remaining,'.2f'),
         'estimado':row.get('estimado',False),'version':row.get('version',1),
         'estado':'no_aplica' if skipped else 'borrador' if row.get('estimado',False) else 'pagada' if remaining==0 else 'parcial' if paid>0 else 'pendiente',
-        'vencida':remaining>0 and row['vencimiento']<day}
+        'vencida':remaining>0 and row['vencimiento']<day} | (
+            {'pendiente_ajuste': True} if row.get('pendiente_ajuste') else {})
 
 
 def list_installments(session,user,space,identifier,offset=0):
@@ -183,6 +195,8 @@ def pay_installment(session,user,space,identifier,body):
                     {'key':f'cuota:{space}:{identifier}'})
     row=require_installment(session,user,space,identifier,write=True)
     if row['no_aplica']:raise HTTPException(409,'La cuota no aplica',headers=NO_STORE)
+    if row['pendiente_ajuste']:
+        raise HTTPException(409,'Esperá el ajuste del índice antes de pagar',headers=NO_STORE)
     if row['estimado']:raise HTTPException(409,'Confirmar el monto estimado antes de pagar',headers=NO_STORE)
     params={'id':body.id,'s':space,'q':identifier,'a':body.cuenta_id,'u':user,'f':body.fecha,'i':body.importe}
     existing=session.execute(text("""SELECT p.cuota_id,g.* FROM public.pagos_cuota p
@@ -428,6 +442,8 @@ def skip_installment(session, user, space, identifier, version):
     row = require_installment(session, user, space, identifier, write=True)
     if row['no_aplica'] and row['version'] == version + 1:
         return {'id': str(identifier), 'estado': 'no_aplica', 'version': row['version']}
+    if row['pendiente_ajuste']:
+        raise HTTPException(409,'Esperá el ajuste del índice antes de cambiar la cuota',headers=NO_STORE)
     if row['no_aplica'] or row['version'] != version:
         raise HTTPException(409, 'La cuota cambió en otra sesión', headers=NO_STORE)
     saved = session.execute(text("""UPDATE public.cuotas

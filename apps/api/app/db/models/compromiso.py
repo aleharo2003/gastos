@@ -16,6 +16,11 @@ class Compromiso(Base):
         CheckConstraint('char_length(btrim(nombre)) BETWEEN 1 AND 160',name='ck_compromisos_nombre'),
         CheckConstraint('total_cuotas BETWEEN 1 AND 600',name='ck_compromisos_total_cuotas'),
         CheckConstraint('version >= 1',name='ck_compromisos_version'),
+        CheckConstraint(
+            'indice_ajuste IS NULL OR (total_cuotas IS NOT NULL AND NOT variable AND '
+            'indice_ajuste = btrim(indice_ajuste) AND char_length(indice_ajuste) BETWEEN 1 AND 80)',
+            name='ck_compromisos_indice',
+        ),
         CheckConstraint('NOT variable OR total_cuotas IS NULL',name='ck_compromisos_variable'),
         CheckConstraint("categoria IS NULL OR categoria IN ('alimentos','transporte','vivienda','servicios','salud','educacion','ocio','impuestos','auto','bancario','ropa','otros')",name='ck_compromisos_categoria'),
     )
@@ -29,6 +34,7 @@ class Compromiso(Base):
     categoria:Mapped[str|None]=mapped_column(Text,nullable=True)
     primer_vencimiento:Mapped[date]=mapped_column(Date,nullable=False)
     total_cuotas:Mapped[int|None]=mapped_column(Integer,nullable=True)
+    indice_ajuste:Mapped[str|None]=mapped_column(Text,nullable=True)
     variable:Mapped[bool]=mapped_column(Boolean,nullable=False,server_default='false')
     pausado:Mapped[bool]=mapped_column(Boolean,nullable=False,server_default='false')
     version:Mapped[int]=mapped_column(Integer,nullable=False,server_default='1')
@@ -51,6 +57,7 @@ class Cuota(Base):
     compromiso_id:Mapped[UUID]=mapped_column(Uuid,nullable=False)
     no_aplica:Mapped[bool]=mapped_column(Boolean,nullable=False,server_default='false')
     estimado:Mapped[bool]=mapped_column(Boolean,nullable=False,server_default='false')
+    pendiente_ajuste:Mapped[bool]=mapped_column(Boolean,nullable=False,server_default='false')
     version:Mapped[int]=mapped_column(Integer,nullable=False,server_default='1')
     numero:Mapped[int]=mapped_column(Integer,nullable=False)
     vencimiento:Mapped[date]=mapped_column(Date,nullable=False)
