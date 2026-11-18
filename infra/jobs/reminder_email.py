@@ -50,8 +50,8 @@ def prepare_reminder_emails(
         query = 'SELECT * FROM public.avisos_email_para_preparar(%s)'
         parameters: tuple[datetime | UUID, ...] = (instant,)
         if scope is not None:
-            query += ' WHERE usuario_id = %s AND espacio_id = %s'
-            parameters = (instant, *scope)
+            query = 'SELECT * FROM public.preparar_avisos_email_piloto(%s, %s, %s)'
+            parameters = (*scope, instant)
         cursor.execute(query + ' ORDER BY usuario_id, espacio_id, fecha_aviso, vencimiento, cuota_id', parameters)
         rows = cursor.fetchall()
     rates = ars_per_usd or {}

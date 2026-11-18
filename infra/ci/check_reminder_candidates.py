@@ -6,6 +6,7 @@ from decimal import Decimal
 from uuid import uuid4
 
 from sqlalchemy import create_engine, text
+from sqlalchemy.exc import DBAPIError
 
 from app.accounts import AccountInput, create_account
 from app.commitments import CommitmentInput, PaymentInput, create_commitment, list_installments, pay_installment
@@ -14,10 +15,11 @@ from app.db.unit_of_work import runtime_transaction
 from app.reminder_preferences import DEFAULTS, ReminderPreferences, save_preferences
 
 
-def check_reminder_candidates(runtime_url, migration_url, jobs_url):
+def check_reminder_candidates(runtime_url, migration_url, jobs_url, email_jobs_url):
     runtime = create_runtime_engine(runtime_url)
     migrator = create_migration_engine(migration_url)
     jobs = create_engine(jobs_url, hide_parameters=True)
+    pilot = create_engine(email_jobs_url, hide_parameters=True)
     owner, other, spectator, wallet, other_wallet = (uuid4() for _ in range(5))
 
     def run(operation, actor=owner):
@@ -199,7 +201,39 @@ def check_reminder_candidates(runtime_url, migration_url, jobs_url):
                         'public.resolver_entrega_aviso_email(uuid,text,text)', 'EXECUTE')
                     OR has_table_privilege(current_user, 'public.entregas_avisos_email', 'SELECT')
                 """)).scalar_one()
+        with migrator.begin() as connection:
+            connection.execute(text('INSERT INTO public.piloto_avisos_email VALUES (1, :owner, :owner)'),
+                               {'owner': owner})
+        preferences(owner, canal='email', dias_anticipacion=0)
+        args = {'actor': owner, 'space': owner, 'now': datetime(2026, 2, 14, 12, tzinfo=UTC)}
+        preview_sql = text('SELECT public.previsualizar_avisos_email_piloto(:actor,:space,:now)')
+        with pilot.begin() as connection:
+            assert connection.execute(preview_sql, args).scalar_one() == 1
+            assert connection.execute(text("""
+                SELECT has_table_privilege(current_user, 'public.cuotas', 'SELECT') OR
+                    has_function_privilege(current_user, 'public.encolar_avisos_email(timestamptz)', 'EXECUTE')
+            """)).scalar_one() is False
+            connection.execute(text('SELECT public.encolar_avisos_email_piloto(:actor,:space,:now)'), args)
+            assert connection.execute(text("""
+                SELECT nombre FROM public.preparar_avisos_email_piloto(:actor,:space,:now)
+            """), args).scalar_one() == 'Fuera del plazo'
+            reserve_sql = text('SELECT public.reservar_entrega_aviso_email_piloto(:actor,:space,:now)')
+            claim = connection.execute(reserve_sql, args).scalar_one()
+            assert claim is not None
+            assert connection.execute(text("""
+                SELECT public.resolver_entrega_aviso_email_piloto(:claim,'aceptada','piloto-ci')
+            """), {'claim': claim}).scalar_one() is True
+            assert connection.execute(reserve_sql, args).scalar_one() is None
+
+        try:
+            with pilot.begin() as connection:
+                connection.execute(preview_sql, args | {'space': other})
+        except DBAPIError as error:
+            assert error.orig.sqlstate == '42501'
+        else:
+            raise AssertionError('El rol piloto pudo consultar otro espacio')
     finally:
+        pilot.dispose()
         runtime.dispose()
         migrator.dispose()
         jobs.dispose()

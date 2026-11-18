@@ -2,11 +2,12 @@
 from local_roles import SQL_DIR,run,LocalError
 
 
-def provision_jobs(database,password):
+def provision_jobs(database,password, *, email_pilot=False):
     if not isinstance(password,str) or len(password)<16 or any(c in password for c in '\n\r\0'):
         raise LocalError('Contraseña de jobs invalida.')
-    target='/tmp/gastos-provision-jobs.sql'
-    copied=run(['docker','cp',str(SQL_DIR/'provision-jobs.sql'),f'{database.container}:{target}'])
+    script = 'provision-email-pilot.sql' if email_pilot else 'provision-jobs.sql'
+    target = '/tmp/gastos-' + script
+    copied=run(['docker','cp',str(SQL_DIR/script),f'{database.container}:{target}'])
     if copied.returncode:raise LocalError('No se pudo copiar el script de jobs.')
     result=run(['docker','exec','-i',database.container,'psql','-X','--no-password',
         '--set=ON_ERROR_STOP=1','--username','postgres','--dbname','postgres','--file',target],
