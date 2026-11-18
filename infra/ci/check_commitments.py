@@ -212,6 +212,28 @@ def check_commitments(runtime_url,migration_url):
         invalid=body(importe='0.01', sistema_amortizacion='frances', tna='12')
         denied(lambda:create(invalid),422)
         assert str(invalid.id) not in {entry['id'] for entry in listed()}
+        summary_user, summary_account = uuid4(), uuid4()
+        with runtime_transaction(runtime, usuario_id=summary_user) as session:
+            session.execute(text('SELECT public.crear_espacio_personal()'))
+        call(lambda s,u,w:create_account(s,u,w,AccountInput(id=summary_account,nombre='Resumen')),
+             summary_user,summary_user)
+
+        def seed_summary(session, actor, workspace):
+            for _ in range(101):
+                create_commitment(session,actor,workspace,body(cuenta_id=summary_account,total_cuotas=1))
+            return create_commitment(session,actor,workspace,body(
+                cuenta_id=summary_account,moneda='USD',importe='40',total_cuotas=1))
+
+        usd = call(seed_summary,summary_user,summary_user)
+        usd_quota = cuotas(usd['id'],who=summary_user,space=summary_user)['items'][0]['id']
+        pay(usd_quota,payment(cuenta_id=summary_account,importe='10'),summary_user,summary_user)
+        expected = [{'moneda':'ARS','pendiente':'10100.00'},{'moneda':'USD','pendiente':'30.00'}]
+        for offset, size, next_offset in ((0,100,100),(100,2,None),(200,0,None)):
+            page = call(lambda s,u,w:list_commitments(s,u,w,offset),summary_user,summary_user)
+            assert len(page['items'])==size and page['next_offset']==next_offset
+            assert page['totales']==expected
+        other_totals = call(lambda s,u,w:list_commitments(s,u,w),other,other)['totales']
+        assert other_totals==[{'moneda':'ARS','pendiente':'300.00'}]
     finally:
         with migrator.begin() as c:
             for table in ['pagos_cuota','cuotas','compromisos','gastos','ingresos','cuentas']:

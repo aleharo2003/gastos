@@ -108,6 +108,15 @@
   }
   @if(loading()){<p role="status">Cargando deudas…</p>}
   @if(!items().length&&!loading()){<p>Todavía no hay deudas registradas.</p>}
+  @if(outstanding();as totals){
+    <h4>Saldo pendiente de todas las deudas</h4>
+    @if(totals.length){
+      <ul aria-label="Saldo pendiente por moneda">@for(total of totals;track total.moneda){
+        <li>{{ total.moneda }} <strong>{{ hidden()?'••••':showAmount(total.pendiente) }}</strong></li>
+      }</ul>
+      <p>Incluye las cuotas ya generadas, con sus importes provisorios si los hay.</p>
+    }@else{<p>No hay saldo pendiente en las cuotas generadas.</p>}
+  }
   <ul>@for(item of items();track item.id){<li><strong>{{ item.nombre }}</strong>
     @if(item.sistema_amortizacion){<p>Sistema {{ item.sistema_amortizacion==='frances'?'francés':'alemán' }} · TNA {{ item.tna?.replace('.', ',') }} %</p>}@if(item.indice_ajuste){<p>Ajuste por {{ item.indice_ajuste }}</p>}@if(item.variable){<p>Importe variable · Revisá los estimados antes de pagar.</p>}
     @if(item.total_cuotas!==null){<p>{{ item.cuotas_pagadas }} de {{ item.total_cuotas }} cuotas pagadas · {{ item.total_cuotas-item.cuotas_pagadas-(item.cuotas_no_aplican??0) }} por completar</p>}
@@ -122,6 +131,7 @@
   @if(next()!==null){<button type="button" class="secondary" (click)="load(true)" [disabled]="loading()||saving()||paying()">Ver más deudas</button>}
   @if(selected();as debt){
     <h4>Cuotas · {{ debt.nombre }}</h4>
+    <p>{{ debt.moneda }} · Pagado: {{ hidden()?'••••':showAmount(debt.pagado) }} · Pendiente: {{ hidden()?'••••':showAmount(debt.pendiente) }}</p>
     @if(detailLoading()){<p role="status">Cargando cuotas…</p>}
     @if(!detailLoading()&&!installments().length){<p>Todavía no hay cuotas generadas para este plan.</p>}
     <ul>@for(item of installments();track item.id){<li [class.overdue]="item.vencida">
