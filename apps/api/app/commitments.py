@@ -17,6 +17,11 @@ from app.incomes import IncomeInput,account_balance
 from app.planning import get_plan
 
 router=APIRouter()
+ARGENTINA_TIMEZONE = ZoneInfo('America/Argentina/Buenos_Aires')
+
+
+def commitment_local_date(instant: datetime | None = None) -> date:
+    return datetime.now(ARGENTINA_TIMEZONE).date() if instant is None else instant.astimezone(ARGENTINA_TIMEZONE).date()
 
 
 def monthly_due(first,offset):
@@ -171,7 +176,7 @@ def create_commitment(session,user,space,body):
         any(row[k]!=getattr(body,k) for k in ('cuenta_id','nombre','moneda','importe','categoria','primer_vencimiento','total_cuotas','variable','indice_ajuste','sistema_amortizacion','tna'))):
         raise HTTPException(409,'Identificador usado para otro compromiso',headers=NO_STORE)
     if inserted is not None and body.total_cuotas is None:
-        today=datetime.now(ZoneInfo('America/Argentina/Buenos_Aires')).date()
+        today=commitment_local_date()
         if body.primer_vencimiento.replace(day=1)<today.replace(day=1):
             raise HTTPException(422,'El gasto mensual debe comenzar este mes o en uno futuro',headers=NO_STORE)
         seed_current_installment(session,space,row,today)
@@ -212,7 +217,7 @@ def require_commitment(session,user,space,identifier):
 
 
 def public_installment(row,day=None):
-    day=day or datetime.now(ZoneInfo('America/Argentina/Buenos_Aires')).date()
+    day=day or commitment_local_date()
     paid=row['pagado'];skipped=row.get('no_aplica',False)
     remaining=Decimal(0) if skipped else row['importe']-paid
     return {key:str(row[key]) for key in ('id','espacio_id','compromiso_id')}|{
@@ -233,7 +238,8 @@ def list_installments(session,user,space,identifier,offset=0):
         LEFT JOIN public.gastos g ON g.espacio_id=p.espacio_id AND g.id=p.id
         WHERE q.espacio_id=:s AND q.compromiso_id=:id GROUP BY q.id
         ORDER BY q.numero LIMIT 101 OFFSET :offset"""),{'s':space,'id':identifier,'offset':offset}).mappings().all()
-    return {'items':[public_installment(row) for row in rows[:100]],'next_offset':offset+100 if len(rows)>100 else None}
+    day = commitment_local_date()
+    return {'items':[public_installment(row,day) for row in rows[:100]],'next_offset':offset+100 if len(rows)>100 else None}
 
 
 def public_payment(row):
@@ -324,7 +330,7 @@ def monthly_installments(session,user,space,month,offset=0,day=None):
         raise HTTPException(422,'Mes invalido: usar AAAA-MM',headers=NO_STORE)
     year,number=map(int,month.split('-'))
     first=date(year,number,1);last=date(year,number,monthrange(year,number)[1])
-    day=day or datetime.now(ZoneInfo('America/Argentina/Buenos_Aires')).date()
+    day=day or commitment_local_date()
     require_member(session,user,space)
     # Una sola sentencia: resumen y pagina comparten la misma fotografia de pagos.
     rows=session.execute(text("""WITH pagos AS (
@@ -413,7 +419,7 @@ def pause_commitment(session,user,space,identifier,body):
                         {'p':body.pausado,'s':space,'id':identifier})
     if not body.pausado:
         seed_current_installment(session,space,dict(row)|{'pausado':False},
-                                 datetime.now(ZoneInfo('America/Argentina/Buenos_Aires')).date())
+                                 commitment_local_date())
     return list_commitments(session,user,space,identifier=identifier)['items'][0]
 
 
@@ -529,7 +535,7 @@ def post_installment_skip(space: UUID, identifier: UUID, body: SkipInstallmentIn
 
 def due_overview(session, user, space, today=None):
     require_member(session, user, space)
-    today = today or datetime.now(ZoneInfo('America/Argentina/Buenos_Aires')).date()
+    today = today or commitment_local_date()
     week_end = today + timedelta(days=6-today.weekday())
     month_start = today.replace(day=1)
     month_end = today.replace(day=monthrange(today.year,today.month)[1])
@@ -591,7 +597,7 @@ def due_overview(session, user, space, today=None):
 
 
 def today_overview(session, user, space, today=None):
-    today = today or datetime.now(ZoneInfo('America/Argentina/Buenos_Aires')).date()
+    today = today or commitment_local_date()
     result = due_overview(session, user, space, today)
     balance = account_balance(session, user, space)
     plan = get_plan(session, user, space)

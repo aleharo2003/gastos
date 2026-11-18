@@ -37,8 +37,4 @@ export function submitInstallmentPayment(auth: AuthSession, space: string, payme
   return auth.accountRequest<Payment>('POST', path, payment.body);
 }
 
-export function installmentLocalDate(): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/Argentina/Buenos_Aires', year: 'numeric', month: '2-digit', day: '2-digit',
-  }).format(new Date());
-}
+export { installmentLocalDate } from './installment-date';

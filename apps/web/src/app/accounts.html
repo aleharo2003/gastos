@@ -35,7 +35,7 @@
   </form>
 </section>
 
-<app-commitments (draftsChanged)="draftCount.set($event)" [hidden]="tab() !== 'debts'" [space]="space" [accounts]="items()" [moreAccounts]="next() !== null" [accountsLoading]="loading()" (loadAccounts)="load(true)" (changed)="planRevision.update(incrementPlan)" />
+<app-commitments [active]="tab() === 'debts'" (draftsChanged)="draftCount.set($event)" [hidden]="tab() !== 'debts'" [space]="space" [accounts]="items()" [moreAccounts]="next() !== null" [accountsLoading]="loading()" (loadAccounts)="load(true)" (changed)="planRevision.update(incrementPlan)" />
 
 <app-savings-goals [hidden]="tab() !== 'savings'" [space]="space" [accounts]="items()" [moreAccounts]="next() !== null" [accountsLoading]="loading()" [revision]="planRevision()" (loadAccounts)="load(true)" (prepareTransfer)="fundGoal($event)" />
 

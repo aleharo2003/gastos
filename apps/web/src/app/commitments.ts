@@ -2,6 +2,7 @@ import { Component,DestroyRef,EventEmitter,inject,Input,OnChanges,Output,signal,
 import { AdjustmentIndices } from './adjustment-indices';
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
+import { watchInstallmentDay } from './installment-date';
 import { AuthSession } from './auth-session';
 import { installmentLocalDate as today, prepareInstallmentPayment, submitInstallmentPayment, type InstallmentPayment, type Payment } from './installment-payment';
 import { Receipts } from './receipts';
@@ -20,6 +21,7 @@ type Create={sistema_amortizacion?:LoanSystem;tna?:string;indice_ajuste?:string;
 @Component({selector:'app-commitments',imports:[FormsModule,Receipts,AdjustmentIndices],templateUrl:'./commitments.html',styleUrl:'./commitments.css'})
 export class Commitments implements OnChanges{
   @Input({required:true}) space='';
+  @Input() active = true;
   protected readonly indicesOpen = signal(false);
   @Input() accounts:{id:string;nombre:string}[]=[];
   @Input() moreAccounts=false;
@@ -62,10 +64,18 @@ export class Commitments implements OnChanges{
   private draftVersion=0;
   private pending?:Create;private payPending?:InstallmentPayment;
   private readonly privacyListener=(event:Event)=>this.hidden.set((event as CustomEvent).detail===true);
+  private readonly dayWatch: ReturnType<typeof watchInstallmentDay>;
+
   constructor(){
     try{this.hidden.set(localStorage.getItem('gastos.totals.hidden')==='true');}catch{}
     window.addEventListener('gastos-privacy',this.privacyListener);
-    inject(DestroyRef).onDestroy(()=>{this.alive=false;this.context++;this.detailVersion++;this.historyVersion++;window.removeEventListener('gastos-privacy',this.privacyListener);});
+    this.dayWatch = watchInstallmentDay(() => {
+      if (!this.space || !this.active || this.saving() || this.paying() || this.monthLoading() || this.detailLoading()) return false;
+      void this.loadMonth(false, this.appliedMonth() || this.month);
+      void this.loadInstallments();
+      return true;
+    });
+    inject(DestroyRef).onDestroy(()=>{this.dayWatch.stop();this.alive=false;this.context++;this.detailVersion++;this.historyVersion++;window.removeEventListener('gastos-privacy',this.privacyListener);});
   }
   ngOnChanges(changes:SimpleChanges){if(changes['space']){
     this.draftVersion++;this.drafts.set([]);this.draftCount.set(0);this.draftsChanged.emit(0);this.draftNext.set(null);this.draftOffset=0;this.draftValues={};this.draftDirty=false;this.draftLoading.set(false);this.draftError.set('');
@@ -73,7 +83,7 @@ export class Commitments implements OnChanges{
     this.detailLoading.set(false);this.historyLoading.set(false);this.items.set([]);this.outstanding.set(null);this.selected.set(null);this.quota.set(null);
     this.installments.set([]);this.payments.set([]);this.next.set(null);this.nextInstallment.set(null);this.nextPayment.set(null);
     this.receiptPayment.set(null);this.lastPayment.set(null);this.clear();this.payAmount='';this.payPending=undefined;this.payDirty=false;void this.load();void this.loadMonth();void this.loadDrafts();
-  }}
+  }else if(changes['active']&&this.active)this.dayWatch.check();}
   private get path(){return `/api/spaces/${encodeURIComponent(this.space)}`;}
   total(){if(this.indefinite||this.indexed||this.loanSystem)return null;const amount=normalizeAmount(this.amount);return amount&&Number.isInteger(this.count)&&this.count>=1&&this.count<=600?money(cents(amount)*BigInt(this.count)):null;}
   accountName(id:string){return this.accounts.find(row=>row.id===id)?.nombre??id;}
@@ -121,9 +131,9 @@ export class Commitments implements OnChanges{
     }finally{if(this.alive&&context===this.context)this.saving.set(false);}
     if(saved&&this.alive&&context===this.context){await this.load();await this.loadMonth();await this.loadDrafts(0);await this.loadInstallments();}
   }
-  async loadMonth(more=false){
+  async loadMonth(more=false, requestedMonth=this.month){
     if(this.saving()||this.paying())return;
-    const month=more?this.appliedMonth():this.month;
+    const month=more?this.appliedMonth():requestedMonth;
     if(!/^[0-9]{4}-(0[1-9]|1[0-2])$/.test(month)||month.startsWith('0000')){this.monthError.set('Elegí un mes válido.');return;}
     const offset=more?this.monthNext():0;if(offset===null||(more&&this.monthLoading()))return;
     const version=++this.monthVersion,context=this.context;this.monthLoading.set(true);this.monthError.set('');
