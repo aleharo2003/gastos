@@ -24,12 +24,17 @@ describe('Preferencias de recordatorios', () => {
     await fixture.whenStable();
     fixture.detectChanges();
 
+    await fixture.whenStable();
+    fixture.detectChanges();
     const screen = fixture.nativeElement as HTMLElement;
     const channel = screen.querySelector<HTMLSelectElement>('#reminder-channel')!;
+    expect(channel.value).toBe('email');
     channel.value = 'ninguno';
-    channel.dispatchEvent(new Event('change'));
+    channel.dispatchEvent(new Event('change', { bubbles: true }));
+    await fixture.whenStable();
     fixture.detectChanges();
-    screen.querySelector('form')!.dispatchEvent(new Event('submit'));
+    expect(screen.textContent).toContain('Los avisos están desactivados.');
+    screen.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     await fixture.whenStable();
     fixture.detectChanges();
 
