@@ -12,3 +12,11 @@ small { display: block; }
 button { min-height: 44px; padding: 8px 12px; border: 1px solid var(--g-accent); border-radius: 9px; background: var(--g-surface); color: var(--g-accent); font: inherit; cursor: pointer; }
 button:disabled { cursor: default; opacity: .6; }
 button:focus-visible { outline: 3px solid var(--g-focus); outline-offset: 3px; }
+
+.payment { margin: 12px 0; }
+fieldset { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; gap: 6px; }
+label { font-weight: 600; margin-top: 8px; }
+input, select { font: inherit; color: inherit; background: var(--g-surface); border: 1px solid var(--g-border); border-radius: 8px; padding: 8px; min-height: 44px; box-sizing: border-box; width: 100%; }
+.payment-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.payment-actions button[type=submit] { background: var(--g-accent); color: var(--g-on-accent); }
+li button { display: block; margin-top: 6px; }
