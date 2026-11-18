@@ -27,6 +27,7 @@ from check_planning import check_planning
 from check_commitments import check_commitments
 from check_recurrences import check_recurrences
 from check_indexed_commitments import check_indexed_commitments
+from check_reminder_preferences import check_reminder_preferences
 from check_adjustment_indices import check_adjustment_indices
 from check_variable_commitments import check_variable_commitments
 from jobs_role import provision_jobs
@@ -300,6 +301,7 @@ def check_database(fixture):
         check_recurrences(urls[RUNTIME],urls[MIGRATOR],jobs_url)
         check_variable_commitments(urls[RUNTIME],urls[MIGRATOR],jobs_url)
         check_adjustment_indices(urls[RUNTIME], urls[MIGRATOR])
+        check_reminder_preferences(urls[RUNTIME], urls[MIGRATOR])
         check_indexed_commitments(urls[RUNTIME], urls[MIGRATOR], jobs_url)
         check_planning(urls[RUNTIME], urls[MIGRATOR])
         check_receipts(urls[RUNTIME], urls[MIGRATOR])
