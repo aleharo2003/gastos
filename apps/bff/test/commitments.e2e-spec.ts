@@ -62,6 +62,21 @@ describe('Deudas y pagos HTTP',()=>{
     await request(app.getHttpServer()).post(url).set('Authorization', 'Bearer token')
       .send(body).expect(409).expect({ message: detail });
   });
+  it('acepta un plan indexado con total generado distinto del importe base', async () => {
+    const input = {...payload,indice_ajuste:'CAC'};
+    const indexed = {...row,indice_ajuste:'CAC',total:'275.00',pendiente:'275.00'};
+    remote.mockImplementation(async()=>new Response(JSON.stringify(indexed)));
+    await request(app.getHttpServer()).post(base+'/commitments').set('Authorization','Bearer token')
+      .send(input).expect(200).expect(indexed);
+    expect(JSON.parse(remote.mock.calls[0][1].body)).toEqual(input);
+    await request(app.getHttpServer()).post(base+'/commitments').set('Authorization','Bearer token')
+      .send({...input,total_cuotas:null}).expect(400);
+    const provisional = {...installment,estado:'pendiente',pagado:'0.00',pendiente:'250.00',pendiente_ajuste:true};
+    const page = {items:[provisional],next_offset:null};
+    remote.mockImplementation(async()=>new Response(JSON.stringify(page)));
+    await request(app.getHttpServer()).get(base+'/commitments/'+id+'/installments')
+      .set('Authorization','Bearer token').expect(200).expect(page);
+  });
   it('exige token y reenvia el plan sin convertir dinero',async()=>{
     await request(app.getHttpServer()).post(base+'/commitments').send(payload).expect(401);expect(remote).not.toHaveBeenCalled();
     await request(app.getHttpServer()).post(base+'/commitments').set('Authorization','Bearer token').send(payload).expect(200).expect(row).expect('Cache-Control','no-store');
@@ -188,7 +203,7 @@ describe('Deudas y pagos HTTP',()=>{
   it('expone el resumen de vencimientos con autenticación y valida su grupo',async()=>{
     const route=base+'/due-overview';
     const empty={cantidad:0,totales:[],items:[]};
-    const item={id:quota,nombre:'Casa',numero:1,vencimiento:'2026-11-17',moneda:'USD',pendiente:'220.00',estimado:false};
+    const item={id:quota,nombre:'Casa',numero:1,vencimiento:'2026-11-17',moneda:'USD',pendiente:'220.00',estimado:false,pendiente_ajuste:true};
     const data={fecha:'2026-11-17',fin_semana:'2026-11-22',
       grupos:{hoy:{cantidad:1,totales:[{moneda:'USD',pendiente:'220.00'}],items:[item]},semana:empty,vencidas:empty},
       resumen_mes:[{moneda:'USD',pendiente:'220.00',pagado:'30.00'}],

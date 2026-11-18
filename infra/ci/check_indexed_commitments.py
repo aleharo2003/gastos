@@ -9,7 +9,7 @@ from sqlalchemy import create_engine, text
 from app.accounts import AccountInput, create_account
 from app.adjustment_indices import IndexValueInput, import_index_values, save_index_value
 from app.commitments import (
-    CommitmentInput, PaymentInput, create_commitment, list_installments, monthly_due, pay_installment,
+    CommitmentInput, PaymentInput, create_commitment, due_overview, list_installments, monthly_due, pay_installment,
 )
 from app.db.connection import create_migration_engine, create_runtime_engine
 from app.db.unit_of_work import runtime_transaction
@@ -57,6 +57,11 @@ def check_indexed_commitments(runtime_url, migration_url, jobs_url):
         assert amounts(installments()) == [('110.00', False), ('121.00', True), ('133.10', True)]
         assert create(plan, account, older) == response
 
+        def due_items():
+            groups = run(lambda s, u, w: due_overview(s, u, w, today))['grupos']
+            return {row['numero']: row for group in groups.values() for row in group['items']}
+
+        assert due_items()[2]['pendiente_ajuste']
         pending = installments()[1]
         payment = PaymentInput(id=uuid4(), cuenta_id=account, fecha=today.isoformat(), importe='110.00')
         try:
@@ -76,6 +81,7 @@ def check_indexed_commitments(runtime_url, migration_url, jobs_url):
         revised = installments()
         assert revised[0] == paid and revised[0]['estado'] == 'pagada'
         assert amounts(revised) == [('110.00', False), ('132.00', False), ('125.40', False)]
+        assert 'pendiente_ajuste' not in due_items()[2]
         assert revised[1]['id'] == pending['id'] and revised[1]['version'] > pending['version']
 
         create(foreign_plan, foreign, future, other)

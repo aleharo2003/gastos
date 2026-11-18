@@ -60,7 +60,9 @@
                     <div><strong>{{ item.nombre }}</strong><small>Cuota {{ item.numero }} · {{ shortDate(item.vencimiento) }}</small></div>
                     <div>
                       <strong>{{ item.moneda }} {{ amount(item.pendiente) }}</strong>
-                      @if (item.estimado) {
+                      @if (item.pendiente_ajuste) {
+                        <small>Pendiente de ajuste</small>
+                      } @else if (item.estimado) {
                         <small>Estimado</small>
                       } @else if (!hidden()) {
                         <button type="button" (click)="startPayment(item)"
