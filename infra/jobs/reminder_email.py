@@ -35,6 +35,7 @@ def prepare_reminder_emails(
     instant: datetime,
     app_url: str,
     ars_per_usd: Mapping[UUID, Decimal] | None = None,
+    *, scope: tuple[UUID, UUID] | None = None,
 ) -> tuple[ReminderEmail, ...]:
     """Devuelve un mensaje por usuario y espacio para la fecha local consultada."""
     if instant.utcoffset() is None:
@@ -46,10 +47,12 @@ def prepare_reminder_emails(
         raise ValueError('La URL de Piggo debe ser HTTPS y sin credenciales')
 
     with connection.cursor(row_factory=dict_row) as cursor:
-        cursor.execute("""
-            SELECT * FROM public.avisos_email_para_preparar(%s)
-            ORDER BY usuario_id, espacio_id, fecha_aviso, vencimiento, cuota_id
-        """, (instant,))
+        query = 'SELECT * FROM public.avisos_email_para_preparar(%s)'
+        parameters: tuple[datetime | UUID, ...] = (instant,)
+        if scope is not None:
+            query += ' WHERE usuario_id = %s AND espacio_id = %s'
+            parameters = (instant, *scope)
+        cursor.execute(query + ' ORDER BY usuario_id, espacio_id, fecha_aviso, vencimiento, cuota_id', parameters)
         rows = cursor.fetchall()
     rates = ars_per_usd or {}
     messages = []
