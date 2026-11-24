@@ -34,6 +34,13 @@ export class Movements implements OnInit {
   readonly error = signal('');
   readonly exporting = signal(false);
   readonly exportError = signal('');
+  readonly exportedRows = signal(0);
+  private exportVersion = 0;
+
+  cancelExport(): void {
+    this.exportVersion++;
+    this.exporting.set(false);
+  }
   readonly loaded = signal(false);
   readonly categories = EXPENSE_CATEGORIES;
   readonly labels = { gasto: 'Gasto', ingreso: 'Ingreso', transferencia: 'Transferencia' };
@@ -82,6 +89,8 @@ export class Movements implements OnInit {
   async exportCsv(): Promise<void> {
     if (this.exporting() || this.loading() || this.amountsHidden() || !this.loaded()) return;
     const request = this.request;
+    const exportVersion = ++this.exportVersion;
+    this.exportedRows.set(0);
     const params = new URLSearchParams();
     for (const [key, value] of Object.entries(this.applied)) if (value.trim()) params.set(key, value.trim());
     this.exporting.set(true);
@@ -95,8 +104,9 @@ export class Movements implements OnInit {
         const page: Page = await this.auth.accountRequest<Page>(
           'GET', `/api/spaces/${encodeURIComponent(this.space())}/movements?${params}`,
         );
-        if (request !== this.request || this.amountsHidden()) return;
+        if (request !== this.request || exportVersion !== this.exportVersion || this.amountsHidden()) return;
         for (const row of page.items) rows.set(row.tipo + row.id, row);
+        this.exportedRows.set(rows.size);
         cursor = page.next_cursor;
         if (cursor && seen.has(cursor)) throw new Error('Cursor repetido');
         if (cursor) seen.add(cursor);
@@ -111,9 +121,9 @@ export class Movements implements OnInit {
       link.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch {
-      if (request === this.request) this.exportError.set('No pudimos exportar los movimientos.');
+      if (request === this.request && exportVersion === this.exportVersion) this.exportError.set('No pudimos exportar los movimientos.');
     } finally {
-      this.exporting.set(false);
+      if (exportVersion === this.exportVersion) this.exporting.set(false);
     }
   }
 
