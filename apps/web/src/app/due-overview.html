@@ -1,29 +1,29 @@
 <section aria-labelledby="due-overview-title">
   <header>
-    <h3 id="due-overview-title">Qu� tengo que pagar</h3>
+    <h3 id="due-overview-title">Qué tengo que pagar</h3>
     <button type="button" (click)="load()" [disabled]="loading() || saving()">Actualizar</button>
   </header>
   @if (error()) {
-    <p class="error" role="alert">No pudimos actualizar los vencimientos. Volv� a intentar.</p>
+    <p class="error" role="alert">No pudimos actualizar los vencimientos. Volvé a intentar.</p>
   }
-  @if (loading()) { <p role="status">Cargando vencimientos.</p> }
+  @if (loading()) { <p role="status">Cargando vencimientos…</p> }
   @if (notice()) { <p role="status">{{ notice() }}</p> }
   @if (paymentError()) { <p class="error" role="alert">{{ paymentError() }}</p> }
   @if (selected(); as item) {
     @if (!hidden()) {
       <form class="card payment" (ngSubmit)="pay()" aria-labelledby="due-payment-title">
-        <h4 id="due-payment-title">Registrar pago � {{ item.nombre }}</h4>
-        <p>Cuota {{ item.numero }} � Saldo al abrir {{ item.moneda }} {{ amount(item.pendiente) }}</p>
+        <h4 id="due-payment-title">Registrar pago · {{ item.nombre }}</h4>
+        <p>Cuota {{ item.numero }} · Saldo al abrir {{ item.moneda }} {{ amount(item.pendiente) }}</p>
         <fieldset [disabled]="saving() || uncertain()">
           <label for="due-pay-account">Cuenta</label>
           <select id="due-pay-account" name="dueAccount" [(ngModel)]="account" required>
-            <option value="">Eleg� una cuenta</option>
+            <option value="">Elegí una cuenta</option>
             @for (entry of accounts; track entry.id) {
               <option [value]="entry.id">{{ entry.nombre }}</option>
             }
           </select>
           @if (moreAccounts) {
-            <button type="button" (click)="loadAccounts.emit()" [disabled]="accountsLoading">Cargar m�s cuentas</button>
+            <button type="button" (click)="loadAccounts.emit()" [disabled]="accountsLoading">Cargar más cuentas</button>
           }
           <label for="due-pay-date">Fecha de pago</label>
           <input id="due-pay-date" type="date" name="dueDate" [(ngModel)]="paymentDate" required />
@@ -31,7 +31,7 @@
           <input id="due-pay-amount" name="dueAmount" inputmode="decimal" [(ngModel)]="paymentAmount" required />
         </fieldset>
         <div class="payment-actions">
-          <button type="submit" [disabled]="saving()">{{ saving() ? 'Registrando.' : uncertain() ? 'Reintentar pago' : 'Registrar pago' }}</button>
+          <button type="submit" [disabled]="saving()">{{ saving() ? 'Registrando…' : uncertain() ? 'Reintentar pago' : 'Registrar pago' }}</button>
           @if (!uncertain()) {
             <button type="button" (click)="cancelPayment()" [disabled]="saving()">Cancelar</button>
           }
@@ -40,7 +40,7 @@
     }
   }
   @if (overview(); as data) {
-    <p>{{ shortDate(data.fecha) }} � Semana hasta el {{ shortDate(data.fin_semana) }}</p>
+    <p>{{ shortDate(data.fecha) }} · Semana hasta el {{ shortDate(data.fin_semana) }}</p>
     @if (hasPending(data)) {
       <div class="groups">
         @for (section of sections; track section.key) {
@@ -60,7 +60,7 @@
               <ul>
                 @for (item of group.items; track item.id) {
                   <li>
-                    <div><strong>{{ item.nombre }}</strong><small>Cuota {{ item.numero }} � {{ shortDate(item.vencimiento) }}</small></div>
+                    <div><strong>{{ item.nombre }}</strong><small>Cuota {{ item.numero }} · {{ shortDate(item.vencimiento) }}</small></div>
                     <div>
                       <strong>{{ item.moneda }} {{ amount(item.pendiente) }}</strong>
                       @if (item.pendiente_ajuste) {
@@ -77,14 +77,14 @@
                 }
               </ul>
               @if (group.cantidad > group.items.length) {
-                <p>Mostrando {{ group.items.length }} de {{ group.cantidad }} cuotas. Consult� el resto en Deudas.</p>
+                <p>Mostrando {{ group.items.length }} de {{ group.cantidad }} cuotas. Consultá el resto en Deudas.</p>
               }
             } @else { <p>Sin cuotas pendientes.</p> }
           </section>
         }
       </div>
     } @else {
-      <p class="card" role="status">No ten�s cuotas vencidas ni pendientes para hoy o el resto de la semana.</p>
+      <p class="card" role="status">No tenés cuotas vencidas ni pendientes para hoy o el resto de la semana.</p>
     }
     <div class="groups context">
       <section class="card balances" aria-labelledby="due-balances-title">
@@ -105,17 +105,17 @@
                   <strong>{{ period.label }}</strong>
                   @if (usage.spent !== null) {
                     <span>{{ usage.moneda }} {{ formatBudget(usage.spent) }} de {{ formatBudget(usage.amount) }}</span>
-                    @if (!hidden() && usage.progress?.exceeded) { <small class="error">L�mite superado</small> }
+                    @if (!hidden() && usage.progress?.exceeded) { <small class="error">Límite superado</small> }
                   } @else {
-                    <small>Conversi�n no disponible para los gastos de este per�odo.</small>
+                    <small>Conversión no disponible para los gastos de este período.</small>
                   }
                 </li>
               }
             }
           </ul>
-        } @else { <p>Todav�a no configuraste l�mites.</p> }
+        } @else { <p>Todavía no configuraste límites.</p> }
         @if (!hidden() && rate()) {
-          <small>Cotizaci�n de referencia � 1 USD = ARS {{ rate() }}</small>
+          <small>Cotización de referencia · 1 USD = ARS {{ rate() }}</small>
         }
       </section>
     </div>
