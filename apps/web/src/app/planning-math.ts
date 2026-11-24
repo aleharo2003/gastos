@@ -1,7 +1,8 @@
 import { cents,rateUnits,reference,type CurrencyTotal } from './money-reference';
 export type PlanMoney={moneda:'ARS'|'USD';importe:string};
 export type PlanConcept=PlanMoney & {id:string;concepto:string;frecuencia:'semana'|'mes'};
-export type PlanData={limites:{diario:PlanMoney|null;semanal:PlanMoney|null};conceptos:PlanConcept[]};
+export type CategoryLimit = PlanMoney & { categoria: string };
+export type PlanData={limites:{diario:PlanMoney|null;semanal:PlanMoney|null};conceptos:PlanConcept[];limites_categoria?:CategoryLimit[]};
 export type PlanEnvelope={version:number;datos:PlanData};
 export function emptyPlan():PlanData {return {limites:{diario:null,semanal:null},conceptos:[]};}
 export function normalizedAmount(value:string):string|null {
@@ -32,8 +33,12 @@ export function progress(spent:bigint,limit:bigint){
 
 
 export function limitUsage(limit:PlanMoney, rows:CurrencyTotal[]|undefined, period:'diario'|'semanal', rate:string) {
-  const amount=cents(normalizedAmount(limit.importe) ?? limit.importe);
   const spent=rows ? reference(rows,period==='diario'?'dia':'semana',limit.moneda,rateUnits(rate)) : null;
+  return usageAgainstLimit(limit, spent);
+}
+
+export function usageAgainstLimit(limit: PlanMoney, spent: bigint | null) {
+  const amount = cents(normalizedAmount(limit.importe) ?? limit.importe);
   return {
     moneda:limit.moneda, amount, spent,
     progress:spent===null ? null : progress(spent,amount),

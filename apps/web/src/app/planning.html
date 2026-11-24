@@ -30,9 +30,42 @@
         }
       }
     </div>
-    @if(saved() && !saved()!.datos.limites.diario && !saved()!.datos.limites.semanal){<p>No hay límites configurados. Podés empezar con uno semanal.</p>}
+    @if(saved() && !saved()!.datos.limites.diario && !saved()!.datos.limites.semanal){<p>No hay límites globales configurados.</p>}
     @if(summary();as current){<small>Hoy: {{ current.fecha }} · Semana: {{ current.semana_desde }} al {{ current.semana_hasta }} (lunes a domingo, Argentina).</small>}
     @if(!compact && saved()){
+      @if (categoryUsage().length) {
+        <section class="category-limits" aria-labelledby="category-limits-title">
+          <h3 id="category-limits-title">Límites mensuales por categoría</h3>
+          @if (categoryError()) {
+            <p class="error" role="alert">No pudimos actualizar el consumo por categoría.</p>
+            <button type="button" (click)="loadCategoryUsage()">Reintentar</button>
+          }
+          <div class="limit-grid">
+            @for (item of categoryUsage(); track item.categoria) {
+              <article class="limit-card" [class.exceeded]="item.progress?.exceeded"
+                [class.warning]="item.progress?.warning && !item.progress?.exceeded">
+                <h4>{{ categoryLabel(item.categoria) }}</h4>
+                @if (item.spent !== null && item.progress) {
+                  <p class="limit-balance">
+                    <span>{{ item.progress.exceeded ? 'Superaste el límite por' : 'Te quedan' }}</span>
+                    <strong>{{ item.moneda }} {{ money(item.difference!) }}</strong>
+                  </p>
+                  <p class="limit-consumption">{{ item.progress.text }} usado · {{ item.moneda }} {{ money(item.spent) }} de {{ money(item.amount) }}</p>
+                  <div class="bar" role="progressbar" [attr.aria-label]="'Consumo de ' + categoryLabel(item.categoria)"
+                    [attr.aria-valuenow]="item.progress.width" aria-valuemin="0" aria-valuemax="100"
+                    [attr.aria-valuetext]="item.progress.text + ' del límite'">
+                    <span [style.width.%]="item.progress.width"></span>
+                  </div>
+                  @if (item.progress.warning && !item.progress.exceeded) { <p>Estás cerca del límite.</p> }
+                } @else {
+                  <p>Límite: {{ item.moneda }} {{ money(item.amount) }}</p>
+                  <p>{{ categorySpending() ? 'Conversión pendiente: revisá la cotización o las monedas.' : 'Consumo pendiente de actualizar.' }}</p>
+                }
+              </article>
+            }
+          </div>
+        </section>
+      }
       @if(notice()){<p class="notice" role="status">{{ notice() }}</p>}
       <div class="budget-layout">
         <details class="budget-editor">
@@ -43,6 +76,33 @@
               <legend>Límites globales</legend>
               <label for="daily-limit">Límite diario</label><div class="money-input"><input id="daily-limit" name="daily" inputmode="decimal" [(ngModel)]="daily" (ngModelChange)="dirty=true" placeholder="Sin límite"><select name="dailyCurrency" aria-label="Moneda del límite diario" [(ngModel)]="dailyCurrency" (ngModelChange)="dirty=true"><option>USD</option><option>ARS</option></select></div>
               <label for="weekly-limit">Límite semanal</label><div class="money-input"><input id="weekly-limit" name="weekly" inputmode="decimal" [(ngModel)]="weekly" (ngModelChange)="dirty=true" placeholder="Por ejemplo, 200"><select name="weeklyCurrency" aria-label="Moneda del límite semanal" [(ngModel)]="weeklyCurrency" (ngModelChange)="dirty=true"><option>USD</option><option>ARS</option></select></div>
+              <h4>Límites mensuales por categoría</h4>
+              @for (row of draft.limites_categoria ?? []; track row.categoria) {
+                <div class="concept">
+                  <label [for]="'cap-' + row.categoria">{{ categoryLabel(row.categoria) }}</label>
+                  <div class="money-input">
+                    <input [id]="'cap-' + row.categoria" [name]="'cap-' + row.categoria" inputmode="decimal"
+                      [(ngModel)]="row.importe" (ngModelChange)="dirty=true" required>
+                    <select [name]="'currency-cap-' + row.categoria"
+                      [attr.aria-label]="'Moneda del límite de ' + categoryLabel(row.categoria)"
+                      [(ngModel)]="row.moneda" (ngModelChange)="dirty=true">
+                      <option>ARS</option><option>USD</option>
+                    </select>
+                  </div>
+                  <button type="button" (click)="removeCategoryLimit(row.categoria)"
+                    [attr.aria-label]="'Quitar límite de ' + categoryLabel(row.categoria)">Quitar</button>
+                </div>
+              }
+              @if (availableCategories().length) {
+                <label for="budget-category">Categoría del nuevo límite</label>
+                <select id="budget-category" [(ngModel)]="categoryToAdd" [ngModelOptions]="{ standalone: true }">
+                  <option value="">Elegí una categoría</option>
+                  @for (category of availableCategories(); track category.id) {
+                    <option [value]="category.id">{{ category.label }}</option>
+                  }
+                </select>
+                <button type="button" (click)="addCategoryLimit()" [disabled]="!categoryToAdd">Agregar límite</button>
+              }
               <h4>Conceptos proyectados</h4>
               @for(row of draft.conceptos;track row.id;let i=$index){
                 <div class="concept">

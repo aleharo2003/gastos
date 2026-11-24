@@ -1,4 +1,5 @@
 import { Component, computed, DestroyRef, EventEmitter, Output, inject, Input, OnInit, signal, ViewChildren, QueryList } from '@angular/core';
+import { EXPENSE_CATEGORIES } from './expense-categories';
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { AuthSession } from './auth-session';
@@ -54,14 +55,7 @@ export class Expenses implements OnInit {
   readonly error = signal('');
   readonly notice = signal('');
   readonly next = signal<number | null>(null);
-  readonly categories = [
-    {id:'alimentos',label:'Alimentos'}, {id:'transporte',label:'Transporte'},
-    {id:'vivienda',label:'Vivienda'}, {id:'servicios',label:'Servicios'},
-    {id:'salud',label:'Salud'}, {id:'educacion',label:'Educación'},
-    {id:'ocio',label:'Ocio'}, {id:'impuestos',label:'Impuestos'},
-    {id:'auto',label:'Auto'}, {id:'bancario',label:'Bancario'},
-    {id:'ropa',label:'Ropa'}, {id:'otros',label:'Otros'},
-  ];
+  readonly categories = EXPENSE_CATEGORIES;
   category = '';
   readonly suggestion = signal<CategorySuggestion|null>(null);
   readonly suggesting = signal(false);
