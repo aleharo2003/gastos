@@ -1,3 +1,4 @@
+import { Movements } from './movements';
 import { DueOverview } from './due-overview';
 import { Commitments } from './commitments';
 import { SavingsGoals, type GoalTransfer } from './savings-goals';
@@ -18,7 +19,7 @@ type Page = { items: Account[]; next_offset: number | null };
 type AccountBalance = { totales: { moneda: string; saldo: string }[] };
 
 @Component({
-  selector: 'app-accounts', imports: [FormsModule, Expenses, Planning, Incomes, Transfers, SavingsGoals, Commitments, DueOverview, ReminderPreferences],
+  selector: 'app-accounts', imports: [FormsModule, Movements, Expenses, Planning, Incomes, Transfers, SavingsGoals, Commitments, DueOverview, ReminderPreferences],
   templateUrl: './accounts.html', styleUrl: './accounts.css',
 })
 export class Accounts implements OnInit {
@@ -30,7 +31,7 @@ export class Accounts implements OnInit {
   readonly error = signal('');
   readonly notice = signal('');
   readonly next = signal<number | null>(null);
-  readonly tab = signal<'today' | 'expenses' | 'accounts' | 'plan' | 'savings' | 'debts' | 'reminders'>(
+  readonly tab = signal<'today' | 'expenses' | 'movements' | 'accounts' | 'plan' | 'savings' | 'debts' | 'reminders'>(
     inject(DOCUMENT).defaultView?.matchMedia?.('(max-width: 767px)').matches ? 'expenses' : 'today',
   );
   readonly expandedBalance = signal<string | null>(null);
