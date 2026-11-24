@@ -47,7 +47,7 @@ def check_accounts_api(runtime_url, migration_url):
         denied(lambda: rename(other, other, 'Caja', 'Otro'), 404)
         # Colision con ID ajeno no filtra nombre ni permite apropiarse de la cuenta.
         denied(lambda: create(other, other, account), 409)
-        expense = ExpenseInput(id=uuid4(), fecha=date.today(), descripcion='Compra',
+        expense = ExpenseInput(id=uuid4(), fecha=date.today().isoformat(), descripcion='Compra',
                                moneda='ARS', importe='10.00')
         with runtime_transaction(runtime, usuario_id=owner, espacio_id=owner) as s:
             original = create_expense(s, owner, owner, account.id, expense)

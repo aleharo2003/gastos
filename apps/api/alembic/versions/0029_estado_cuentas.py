@@ -38,8 +38,8 @@ def upgrade() -> None:
             END IF;
         END LOOP;
         RETURN NULL;
-    END
-    $$;
+    END;
+    $;
     """)
     for table in TABLES:
         op.execute(f"""
