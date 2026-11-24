@@ -23,3 +23,7 @@ li button { display: block; margin-top: 6px; }
 
 .context { margin-top: 12px; }
 .budget li { flex-direction: column; }
+
+@media (min-width: 1024px) {
+  .payment { max-width: 32rem; }
+}

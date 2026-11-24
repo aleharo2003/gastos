@@ -28,6 +28,15 @@ footer { text-align: center; padding-block: 16px; }
 .workspace .eyebrow { margin: 0; }
 .workspace .email { font-size: 13px; margin: 28px 0 0; }
 .logout { max-width: 180px; }
+@media (min-width: 1024px) {
+  main:has(> .workspace) {
+    max-width: none;
+    padding: 16px clamp(24px, 2vw, 40px);
+  }
+
+  main:has(> .workspace) .brand img { width: 72px; height: 72px; }
+  .workspace { max-width: none; margin: 16px 0; }
+}
 @media (max-width: 520px) {
   main { padding: 16px 12px; }
   .brand img { width: 96px; height: 96px; }
