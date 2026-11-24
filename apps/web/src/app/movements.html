@@ -25,6 +25,12 @@
   </form>
   @if (loading()) { <p role="status">Cargando movimientos…</p> }
   @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
+  @if (loaded() && !amountsHidden()) {
+    <button type="button" class="secondary" (click)="exportCsv()" [disabled]="exporting() || loading()">
+      {{ exporting() ? 'Exportando…' : 'Exportar resultados a CSV' }}
+    </button>
+    @if (exportError()) { <p role="alert">{{ exportError() }}</p> }
+  }
   @if (totals().length) {
     <section aria-labelledby="movement-totals-title">
       <h4 id="movement-totals-title">Totales del filtro</h4>

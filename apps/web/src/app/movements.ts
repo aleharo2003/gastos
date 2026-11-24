@@ -1,6 +1,7 @@
 import { Component, DestroyRef, inject, input, OnInit, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { AuthSession } from './auth-session';
+import { movementCsv } from './movement-csv';
 import { showAmount } from './expenses';
 
 type Movement = {
@@ -29,6 +30,8 @@ export class Movements implements OnInit {
   readonly next = signal<string | null>(null);
   readonly loading = signal(false);
   readonly error = signal('');
+  readonly exporting = signal(false);
+  readonly exportError = signal('');
   readonly loaded = signal(false);
   readonly labels = { gasto: 'Gasto', ingreso: 'Ingreso', transferencia: 'Transferencia' };
   filters = { ...emptyFilters };
@@ -51,6 +54,44 @@ export class Movements implements OnInit {
 
   amount(value: string): string {
     return this.amountsHidden() ? '••••' : showAmount(value);
+  }
+
+  async exportCsv(): Promise<void> {
+    if (this.exporting() || this.loading() || this.amountsHidden() || !this.loaded()) return;
+    const request = this.request;
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(this.applied)) if (value.trim()) params.set(key, value.trim());
+    this.exporting.set(true);
+    this.exportError.set('');
+    try {
+      const rows = new Map<string, Movement>();
+      const seen = new Set<string>();
+      let cursor: string | null = null;
+      do {
+        if (cursor) params.set('cursor', cursor);
+        const page: Page = await this.auth.accountRequest<Page>(
+          'GET', `/api/spaces/${encodeURIComponent(this.space())}/movements?${params}`,
+        );
+        if (request !== this.request || this.amountsHidden()) return;
+        for (const row of page.items) rows.set(row.tipo + row.id, row);
+        cursor = page.next_cursor;
+        if (cursor && seen.has(cursor)) throw new Error('Cursor repetido');
+        if (cursor) seen.add(cursor);
+      } while (cursor);
+
+      const url = URL.createObjectURL(new Blob([movementCsv([...rows.values()])], { type: 'text/csv;charset=utf-8' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'piggo-movimientos.csv';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {
+      if (request === this.request) this.exportError.set('No pudimos exportar los movimientos.');
+    } finally {
+      this.exporting.set(false);
+    }
   }
 
   async load(more = false): Promise<void> {
