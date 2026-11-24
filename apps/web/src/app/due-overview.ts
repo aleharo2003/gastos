@@ -2,6 +2,7 @@ import { Component, DestroyRef, EventEmitter, Input, OnChanges, Output, SimpleCh
 import { HttpErrorResponse } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
 import { installmentLocalDate, prepareInstallmentPayment, submitInstallmentPayment, type InstallmentPayment } from './installment-payment';
+import { watchInstallmentDay } from './installment-date';
 import { AuthSession } from './auth-session';
 import { showAmount } from './expenses';
 import { money, rateUnits, type CurrencyTotal } from './money-reference';
@@ -72,7 +73,13 @@ export class DueOverview implements OnChanges {
     try { this.hidden.set(localStorage.getItem('gastos.totals.hidden') === 'true'); } catch {}
     window.addEventListener('gastos-privacy', this.privacyListener);
     window.addEventListener('gastos-reference', this.rateListener);
+    const dayWatch = watchInstallmentDay(day => {
+      if (!this.space || !this.active || this.loading() || this.saving()) return false;
+      if (this.overview()?.fecha !== day) void this.load();
+      return true;
+    });
     inject(DestroyRef).onDestroy(() => {
+      dayWatch.stop();
       this.requestVersion++;
       this.paymentVersion++;
       window.removeEventListener('gastos-privacy', this.privacyListener);

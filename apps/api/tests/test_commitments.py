@@ -1,17 +1,28 @@
 import unittest
-from datetime import date
+from datetime import UTC,date,datetime
 from decimal import Decimal
 from uuid import uuid4
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
-from app.commitments import CommitmentInput,PaymentInput,monthly_due,public_installment,router
+from app.commitments import CommitmentInput,PaymentInput,commitment_local_date,monthly_due,public_installment,router
 
 
 class CommitmentTests(unittest.TestCase):
     def payload(self,**changes):
         return dict(id=str(uuid4()),cuenta_id=str(uuid4()),nombre='Pagares',moneda='USD',importe='250.00',
                     categoria='vivienda',primer_vencimiento='2026-11-30',total_cuotas=10)|changes
+
+    def test_overdue_starts_at_midnight_in_argentina(self):
+        quota = self.row(paid='30')
+        before = commitment_local_date(datetime(2026, 11, 18, 2, 59, 59, tzinfo=UTC))
+        after = commitment_local_date(datetime(2026, 11, 18, 3, 0, tzinfo=UTC))
+        self.assertEqual(before, date(2026, 11, 17))
+        self.assertEqual(after, date(2026, 11, 18))
+        self.assertFalse(public_installment(quota, before)['vencida'])
+        self.assertTrue(public_installment(quota, after)['vencida'])
+        self.assertFalse(public_installment(self.row(paid='100'), after)['vencida'])
+        self.assertFalse(public_installment(self.row() | {'no_aplica': True}, after)['vencida'])
 
     def test_monthly_calendar_keeps_anchor_and_handles_leap_year(self):
         self.assertEqual([monthly_due(date(2024,1,31),n) for n in range(3)],
