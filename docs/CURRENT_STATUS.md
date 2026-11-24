@@ -1,6 +1,6 @@
 # Estado de Piggo frente a Jira
 
-Revisi�n del c�digo de `main` en `c3464fd`, con corte al 24 de noviembre de 2026. El tablero devolvi� 54 stories en **To Do**. �Implementado� indica que el flujo existe en el c�digo y que la revisi�n encontr� cobertura suficiente para pasar a aceptaci�n. El estado de Jira requiere la comprobaci�n funcional correspondiente.
+Revisión inicial en `c3464fd`, actualizada para las entregas recientes sobre `852965d`. Jira devuelve 54 stories abiertas. La cobertura del código y la aceptación funcional son estados distintos.
 
 ## Acceso y cuentas
 
@@ -11,11 +11,11 @@ Revisi�n del c�digo de `main` en `c3464fd`, con corte al 24 de noviembre de 
 | [CTAS-16](https://aleharo.atlassian.net/browse/CTAS-16) | Pendiente | Recuperaci�n de contrase�a desde la app. |
 | [CTAS-17](https://aleharo.atlassian.net/browse/CTAS-17) | Pendiente | Instalaci�n PWA y recorridos de Android e iOS. |
 | [CTAS-23](https://aleharo.atlassian.net/browse/CTAS-23) | Parcial | Alta por nombre. Faltan tipo, moneda y saldo inicial nativos, adem�s de los datos de tarjeta. |
-| [CTAS-24](https://aleharo.atlassian.net/browse/CTAS-24) | Parcial | Saldos por cuenta y moneda, con total por moneda en Gastos. Falta el consolidado convertido en Cuentas. |
+| [CTAS-24](https://aleharo.atlassian.net/browse/CTAS-24) | Parcial | Los saldos por cuenta están en Cuentas. El [PR #75](https://github.com/aleharo2003/gastos/pull/75) agrega el consolidado convertido. El filtro de inactivas depende de CTAS-25. |
 | [CTAS-25](https://aleharo.atlassian.net/browse/CTAS-25) | Pendiente | Edici�n y desactivaci�n de cuentas desde la app. |
 | [CTAS-26](https://aleharo.atlassian.net/browse/CTAS-26) | Parcial | Categor�as predefinidas de egreso. Falta la cobertura de ingresos y conciliar iconos y colores con el dise�o aprobado. |
 | [CTAS-27](https://aleharo.atlassian.net/browse/CTAS-27) | Pendiente | Gesti�n de categor�as personalizadas. |
-| [CTAS-28](https://aleharo.atlassian.net/browse/CTAS-28) | Parcial | Hay formulario de gasto. Faltan la entrada r�pida y el flujo de dos toques. |
+| [CTAS-28](https://aleharo.atlassian.net/browse/CTAS-28) | Parcial | Registrar gasto es la entrada móvil y se pueden reutilizar los datos de un gasto reciente. Falta validar el recorrido de dos toques con los criterios de Jira. |
 | [CTAS-29](https://aleharo.atlassian.net/browse/CTAS-29) | Parcial | Cuenta, fecha, categor�a, descripci�n, moneda, importe y comprobantes. Faltan nota y estado pendiente en el gasto diario. |
 | [CTAS-30](https://aleharo.atlassian.net/browse/CTAS-30) | Parcial | Ingreso por cuenta y moneda con impacto en saldo. Falta categor�a de ingreso. |
 | [CTAS-31](https://aleharo.atlassian.net/browse/CTAS-31) | Implementado | Transferencia en la misma moneda, saldos de origen y destino, rechazo de la misma cuenta y exclusi�n de ingresos y gastos. |
@@ -67,14 +67,14 @@ Revisi�n del c�digo de `main` en `c3464fd`, con corte al 24 de noviembre de 
 
 | Story | Cobertura en main | Evidencia o diferencia |
 |---|---|---|
-| [CTAS-65](https://aleharo.atlassian.net/browse/CTAS-65) | Parcial | Conceptos proyectados mensuales y l�mites globales diarios/semanales. Faltan topes mensuales globales y por categor�a. |
+| [CTAS-65](https://aleharo.atlassian.net/browse/CTAS-65) | Implementado | Límite mensual global en ARS o USD, más límites por categoría y conceptos proyectados. Ver [PR #69](https://github.com/aleharo2003/gastos/pull/69), [#70](https://github.com/aleharo2003/gastos/pull/70) y [#72](https://github.com/aleharo2003/gastos/pull/72). |
 | [CTAS-66](https://aleharo.atlassian.net/browse/CTAS-66) | Implementado | L�mite semanal en ARS o USD, semana argentina de lunes a domingo, con cotizaci�n manual actual. |
 | [CTAS-67](https://aleharo.atlassian.net/browse/CTAS-67) | Implementado | Consumo, disponible e indicador en Hoy y Presupuesto. |
-| [CTAS-68](https://aleharo.atlassian.net/browse/CTAS-68) | Parcial | Aviso visual por exceso. Falta notificaci�n deduplicada por periodo. |
-| [CTAS-69](https://aleharo.atlassian.net/browse/CTAS-69) | Pendiente | Patrimonio neto consolidado con activos y pasivos. |
-| [CTAS-70](https://aleharo.atlassian.net/browse/CTAS-70) | Parcial | Comparaci�n global de gasto real y proyecci�n mensual. Falta desglose por categor�a y desv�o contra el presupuesto hist�rico. |
+| [CTAS-68](https://aleharo.atlassian.net/browse/CTAS-68) | Parcial | Avisos visuales de proximidad y exceso por categoría en Hoy. Falta la notificación deduplicada por período. |
+| [CTAS-69](https://aleharo.atlassian.net/browse/CTAS-69) | En PR | El [PR #73](https://github.com/aleharo2003/gastos/pull/73) agrega activos, pasivos y patrimonio en Hoy, con conversión estimada. |
+| [CTAS-70](https://aleharo.atlassian.net/browse/CTAS-70) | Parcial | Ya existe comparación global de gasto y proyección. El [PR #74](https://github.com/aleharo2003/gastos/pull/74) compara el mes actual por categoría. Queda el historial de presupuestos mensuales. |
 | [CTAS-71](https://aleharo.atlassian.net/browse/CTAS-71) | Pendiente | Serie temporal filtrable y seguimiento de conceptos. |
-| [CTAS-72](https://aleharo.atlassian.net/browse/CTAS-72) | Pendiente | Distribuci�n de gastos reales por categor�a con acceso a los movimientos. Existe una distribuci�n de conceptos proyectados. |
+| [CTAS-72](https://aleharo.atlassian.net/browse/CTAS-72) | Parcial | Gastos muestra la distribución mensual por categoría, moneda y porcentaje, con acceso a movimientos. Jira ubica el reporte en el dashboard. Ver [PR #67](https://github.com/aleharo2003/gastos/pull/67) y [#68](https://github.com/aleharo2003/gastos/pull/68). |
 
 ## Decisiones para continuar
 
@@ -84,3 +84,18 @@ Revisi�n del c�digo de `main` en `c3464fd`, con corte al 24 de noviembre de 
 4. Retomar el correo por separado. El piloto confirm� una cuota elegible en la [vista previa](https://github.com/aleharo2003/gastos/actions/runs/44427743616). La [ejecuci�n de env�o](https://github.com/aleharo2003/gastos/actions/runs/44429945366) fall�.
 
 Ya est�n en main las [metas de ahorro](metas-ahorro.md) y los [comprobantes](comprobantes-gastos.md). Conviene vincularlos al tablero al actualizarlo. Para contrastar las reglas implementadas, ver [ingresos y saldos](ingresos-saldos.md), [gastos fijos](gastos-mensuales-fijos.md), [estimados variables](gastos-variables-estimados.md), [resumen mensual](resumen-mensual-deudas.md) y [presupuestos](presupuestos-limites.md).
+
+## Entregas pendientes
+
+Los cambios independientes pueden abrirse contra `main` en la misma tanda. Si una entrega depende del esquema o del contrato de otra, la descripción del PR debe indicar cuál se integra primero.
+
+| Frente | Trabajo a preparar |
+|---|---|
+| Acceso e instalación | Registro y recuperación (CTAS-14, CTAS-16), instalación PWA (CTAS-17). La instalación habilita la validación de push en iOS. |
+| Cuentas y categorías | Tipos, saldo inicial, cuentas inactivas y compatibilidad con cuentas multimoneda (CTAS-23 a CTAS-27, CTAS-34, CTAS-50). |
+| Movimientos | Completar datos de gastos e ingresos, historial unificado y edición o anulación (CTAS-28 a CTAS-30, CTAS-32, CTAS-33). |
+| Importación y resguardo | Importación, exportación y resguardo semanal (CTAS-35 a CTAS-37). |
+| Compromisos | Validación de generación por horario y criterio de vencidos del proceso diario (CTAS-46, CTAS-49). |
+| Cambio | Venta de divisas, ofertas, contrapartes, tipo congelado, referencia, resultado y alertas de montos (CTAS-51 a CTAS-58). Los reportes de operaciones dependen primero del registro de cambios. |
+| Avisos | Proceso diario, correo, push, resumen y deduplicación (CTAS-59 a CTAS-64, CTAS-68). El piloto de correo sigue en pausa. |
+| Reportes | Comparación histórica, evolución mensual y acceso a distribución desde Hoy (CTAS-70 a CTAS-72). |
