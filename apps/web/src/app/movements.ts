@@ -44,6 +44,15 @@ export class Movements implements OnInit {
     void this.load();
   }
 
+  datePreset(period: 'today' | 'month'): void {
+    const today = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Argentina/Buenos_Aires', year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(new Date());
+    this.filters.desde = period === 'month' ? today.slice(0, 7) + '-01' : today;
+    this.filters.hasta = today;
+    void this.load();
+  }
+
   reset(): void {
     this.filters = { ...emptyFilters };
     void this.load();

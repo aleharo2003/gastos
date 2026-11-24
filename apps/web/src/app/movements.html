@@ -16,6 +16,8 @@
       @for (account of accounts(); track account.id) { <option [value]="account.id">{{ account.nombre }}</option> }
     </select></label>
     <div class="movement-actions">
+      <button type="button" class="secondary" (click)="datePreset('today')" [disabled]="loading()">Hoy</button>
+      <button type="button" class="secondary" (click)="datePreset('month')" [disabled]="loading()">Mes hasta hoy</button>
       @if (moreAccounts()) {
         <button type="button" class="secondary" (click)="loadAccounts.emit()" [disabled]="accountsLoading()">Más cuentas</button>
       }
