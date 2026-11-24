@@ -124,6 +124,29 @@ describe('Pagos desde Hoy', () => {
     expect([...panels[2].querySelectorAll('dd')].map(value => value.textContent)).toEqual(['••••', '••••']);
   });
 
+  it('consolida activos, saldos negativos y cuotas pendientes', async () => {
+    const { fixture, component, request } = await setup();
+    request.mockResolvedValue({
+      ...overview('100.00'),
+      saldos: [{ moneda: 'ARS', saldo: '-35.50' }, { moneda: 'USD', saldo: '1.00' }],
+      deudas: [{ moneda: 'ARS', pendiente: '100.00' }],
+    });
+    await component.load();
+    expect(component.netWorth()).toMatchObject({ pending: true });
+    component.rate.set('100');
+    expect(component.netWorth()).toMatchObject({
+      currency: 'ARS', assets: 10000n, liabilities: 13550n, net: -3550n, estimated: true,
+    });
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('ARS −35,50');
+    component.netCurrency.set('USD');
+    expect(component.netWorth()).toMatchObject({ currency: 'USD', net: -36n });
+    component.hidden.set(true);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Importes ocultos.');
+    expect(fixture.nativeElement.querySelector('#net-worth-currency')).toBeNull();
+  });
+
   it('muestra saldos, usa la referencia del espacio y respeta la privacidad', async () => {
     const { fixture, component } = await setup();
     expect(fixture.nativeElement.textContent).toContain('-35,50');
