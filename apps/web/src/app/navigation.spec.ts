@@ -6,10 +6,19 @@ import { Accounts } from './accounts';
 import { AuthSession } from './auth-session';
 
 describe('Navegación del espacio', () => {
-  async function setup() {
+  async function setup(withCategoryAlerts = false) {
     const accounts = [{id:'one',espacio_id:'s',nombre:'Efectivo'}, {id:'two',espacio_id:'s',nombre:'Banco'}];
     TestBed.configureTestingModule({imports:[Accounts],providers:[{provide:AuthSession,useValue:{
-      accountRequest: async (_method:string,path:string) => path.endsWith('/due-overview') ? ({fecha:'2026-11-17',fin_semana:'2026-11-22',grupos:{hoy:{cantidad:0,totales:[],items:[]},semana:{cantidad:0,totales:[],items:[]},vencidas:{cantidad:0,totales:[],items:[]}},resumen_mes:[],saldos:[],presupuesto:{limites:{diario:null,semanal:null},gastos:[]}}) : path.includes('/installment-drafts?') ? ({borradores:0,items:[],next_offset:null}) : path.includes('/installments?month=') ? ({mes:new URL('https://local'+path).searchParams.get('month'),totales:[],items:[],next_offset:null}) : ({items:(path.includes('/expenses') || path.includes('/incomes') || path.includes('/transfers') || path.includes('/savings-goals') || path.includes('/commitments')) ? [] : accounts,next_offset:null}),
+      accountRequest: async (_method:string,path:string) => withCategoryAlerts && path.endsWith('/spending-plan') ? ({
+        version: 1, datos: { limites: { diario: null, semanal: null }, conceptos: [],
+          limites_categoria: ['alimentos', 'ocio', 'salud'].map(categoria => ({ categoria, moneda: 'ARS', importe: '100.00' })) },
+      }) : withCategoryAlerts && path.endsWith('/expense-category-summary') ? ({
+        desde: '2026-11-01', hasta: '2026-11-30', items: [
+          { categoria: 'alimentos', moneda: 'ARS', total: '80.00' },
+          { categoria: 'ocio', moneda: 'ARS', total: '125.00' },
+          { categoria: 'salud', moneda: 'ARS', total: '50.00' },
+        ],
+      }) : path.endsWith('/due-overview') ? ({fecha:'2026-11-17',fin_semana:'2026-11-22',grupos:{hoy:{cantidad:0,totales:[],items:[]},semana:{cantidad:0,totales:[],items:[]},vencidas:{cantidad:0,totales:[],items:[]}},resumen_mes:[],saldos:[],presupuesto:{limites:{diario:null,semanal:null},gastos:[]}}) : path.includes('/installment-drafts?') ? ({borradores:0,items:[],next_offset:null}) : path.includes('/installments?month=') ? ({mes:new URL('https://local'+path).searchParams.get('month'),totales:[],items:[],next_offset:null}) : ({items:(path.includes('/expenses') || path.includes('/incomes') || path.includes('/transfers') || path.includes('/savings-goals') || path.includes('/commitments')) ? [] : accounts,next_offset:null}),
     }}]});
     const fixture=TestBed.createComponent(Accounts);
     fixture.componentRef.setInput('space','s'); fixture.detectChanges();
@@ -25,6 +34,24 @@ describe('Navegación del espacio', () => {
     expect(panel.textContent).toContain('Resumen de cuotas del mes');
     panel.querySelector('section > button').click();
     expect(component.tab()).toBe('debts');
+  });
+  it('muestra en Hoy los límites alcanzados, respeta la privacidad y abre el presupuesto', async () => {
+    const { fixture, component } = await setup(true);
+    window.dispatchEvent(new CustomEvent('gastos-privacy', { detail: false }));
+    fixture.detectChanges();
+    const panel: HTMLElement = fixture.nativeElement.querySelector('app-due-overview .budget-alerts');
+    expect(panel.textContent).toContain('Alimentos');
+    expect(panel.textContent).toContain('Cerca del límite · 80,0%');
+    expect(panel.textContent).toContain('Límite superado · 125,0%');
+    expect(panel.textContent).not.toContain('Salud');
+    window.dispatchEvent(new CustomEvent('gastos-privacy', { detail: true }));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.budget-alerts')).toBeNull();
+
+    window.dispatchEvent(new CustomEvent('gastos-privacy', { detail: false }));
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('.budget-alerts button').click();
+    expect(component.tab()).toBe('plan');
   });
   it('conserva instancia, borrador y filtros al visitar Cuentas', async () => {
     const {fixture,component}=await setup();

@@ -10,7 +10,25 @@
 @if(draftCount()>0){<p role="status">Tenés {{ draftCount() }} montos estimados por confirmar. <button type="button" class="secondary" (click)="tab.set('debts')">Revisar estimados</button></p>}
 <app-due-overview [space]="space" [active]="tab() === 'today'" [hidden]="tab() !== 'today'"
   [accounts]="items()" [moreAccounts]="next() !== null" [accountsLoading]="loading()"
-  (loadAccounts)="load(true)" (paymentSaved)="duePaymentSaved()" (openDebts)="tab.set('debts')" />
+  (loadAccounts)="load(true)" (paymentSaved)="duePaymentSaved()" (openDebts)="tab.set('debts')"
+  (refreshRequested)="budget.loadCategoryUsage()">
+  <div category-alerts>
+    @if (tab() === 'today' && budget.categoryAlerts().length) {
+      <section class="budget-alerts" aria-labelledby="today-budget-alerts-title">
+        <h4 id="today-budget-alerts-title">Avisos del presupuesto mensual</h4>
+        <ul>
+          @for (item of budget.categoryAlerts(); track item.categoria) {
+            <li [class.over-limit]="item.progress?.exceeded">
+              <strong>{{ budget.categoryLabel(item.categoria) }}</strong>
+              <span>{{ item.progress?.exceeded ? 'Límite superado' : 'Cerca del límite' }} · {{ item.progress?.text }} usado</span>
+            </li>
+          }
+        </ul>
+        <button type="button" class="secondary" (click)="tab.set('plan')">Ver presupuesto</button>
+      </section>
+    }
+  </div>
+</app-due-overview>
 <app-reminder-preferences class="workspace-panel reminders-panel" [space]="space"
   [active]="tab() === 'reminders'" [hidden]="tab() !== 'reminders'" />
 <section class="workspace-panel accounts-panel" [hidden]="tab() !== 'accounts' && items().length > 0"
@@ -101,5 +119,6 @@
 
 </div>
 
-<app-planning class="workspace-panel planning-panel" [space]="space" [compact]="tab() !== 'plan'"
+<app-planning #budget class="workspace-panel planning-panel" [space]="space" [compact]="tab() !== 'plan'"
+  [showCategoryAlerts]="tab() === 'today'"
   [hidden]="tab() !== 'plan' && tab() !== 'expenses'" [revision]="planRevision()" (configure)="tab.set('plan')" />

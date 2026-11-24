@@ -36,6 +36,7 @@ export class DueOverview implements OnChanges {
   @Output() loadAccounts = new EventEmitter<void>();
   @Output() paymentSaved = new EventEmitter<void>();
   @Output() openDebts = new EventEmitter<void>();
+  @Output() refreshRequested = new EventEmitter<void>();
   readonly overview = signal<Overview | null>(null);
   readonly loading = signal(false);
   readonly error = signal(false);
@@ -179,6 +180,11 @@ export class DueOverview implements OnChanges {
       if (version === this.paymentVersion) this.saving.set(false);
     }
     if (refresh && version === this.paymentVersion) await this.load();
+  }
+
+  refreshOverview(): void {
+    this.refreshRequested.emit();
+    void this.load();
   }
 
   async load(): Promise<void> {
