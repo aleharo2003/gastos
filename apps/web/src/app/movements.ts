@@ -1,5 +1,6 @@
 import { Component, DestroyRef, inject, input, OnInit, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { EXPENSE_CATEGORIES } from './expense-categories';
 import { AuthSession } from './auth-session';
 import { showAmount } from './expenses';
 
@@ -9,7 +10,7 @@ type Movement = {
 };
 type Totals = { moneda: string; ingresos: string; gastos: string; transferencias: string };
 type Page = { items: Movement[]; totales: Totals[]; next_cursor: string | null };
-const emptyFilters = { desde: '', hasta: '', tipo: '', moneda: '', cuenta: '', texto: '' };
+const emptyFilters = { desde: '', hasta: '', tipo: '', moneda: '', cuenta: '', texto: '', categoria: '' };
 
 @Component({
   selector: 'app-movements',
@@ -30,6 +31,7 @@ export class Movements implements OnInit {
   readonly loading = signal(false);
   readonly error = signal('');
   readonly loaded = signal(false);
+  readonly categories = EXPENSE_CATEGORIES;
   readonly labels = { gasto: 'Gasto', ingreso: 'Ingreso', transferencia: 'Transferencia' };
   filters = { ...emptyFilters };
   private applied = { ...emptyFilters };

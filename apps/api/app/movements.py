@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response
 from sqlalchemy import text
 
 from app.accounts import execute, require_member, NO_STORE
+from app.expenses import CATEGORIES
 
 router = APIRouter()
 Kind = Literal['gasto', 'ingreso', 'transferencia']
@@ -16,13 +17,13 @@ PAGE_SIZE = 50
 HISTORY = text("""
     WITH movimientos AS (
         SELECT id, fecha, 'gasto' AS tipo, descripcion, moneda, importe,
-               cuenta_id AS origen_id, NULL::uuid AS destino_id
+               cuenta_id AS origen_id, NULL::uuid AS destino_id, categoria
         FROM public.gastos WHERE espacio_id=:space
         UNION ALL
-        SELECT id, fecha, 'ingreso', descripcion, moneda, importe, NULL::uuid, cuenta_id
+        SELECT id, fecha, 'ingreso', descripcion, moneda, importe, NULL::uuid, cuenta_id, NULL::text
         FROM public.ingresos WHERE espacio_id=:space
         UNION ALL
-        SELECT id, fecha, 'transferencia', descripcion, moneda, importe, origen_id, destino_id
+        SELECT id, fecha, 'transferencia', descripcion, moneda, importe, origen_id, destino_id, NULL::text
         FROM public.transferencias WHERE espacio_id=:space
     ), filtrados AS (
         SELECT * FROM movimientos
@@ -31,6 +32,7 @@ HISTORY = text("""
           AND (CAST(:tipo AS text) IS NULL OR tipo=:tipo)
           AND (CAST(:moneda AS text) IS NULL OR moneda=:moneda)
           AND (CAST(:cuenta AS uuid) IS NULL OR origen_id=:cuenta OR destino_id=:cuenta)
+          AND (CAST(:categoria AS text) IS NULL OR (tipo='gasto' AND COALESCE(categoria,'sin_categoria')=:categoria))
           AND strpos(lower(descripcion), lower(:texto))>0
     ), pagina AS (
         SELECT f.id, f.fecha, f.tipo, f.descripcion, f.moneda, f.importe::text AS importe,
@@ -58,7 +60,7 @@ def list_movements(session, user, space, filters, cursor):
     require_member(session, user, space)
     cursor_date, cursor_kind, cursor_id = cursor or (None, None, None)
     row = session.execute(HISTORY, {
-        **filters, 'space': space, 'limit': PAGE_SIZE + 1,
+        'categoria': None, **filters, 'space': space, 'limit': PAGE_SIZE + 1,
         'cursor_fecha': cursor_date, 'cursor_tipo': cursor_kind, 'cursor_id': cursor_id,
     }).mappings().one()
     items = row['items'][:PAGE_SIZE]
@@ -86,11 +88,14 @@ def movement_history(space: UUID, request: Request, response: Response,
                      desde: date | None = None, hasta: date | None = None,
                      tipo: Kind | None = None, moneda: Currency | None = None,
                      cuenta: UUID | None = None,
+                     categoria: str | None = Query(default=None, max_length=32),
                      texto: str = Query(default='', max_length=160, pattern=r'^[^\x00-\x1f\x7f]*$'),
                      cursor: str | None = Query(default=None, max_length=70)):
     if desde and hasta and desde > hasta:
         raise HTTPException(422, 'El rango de fechas es inválido', headers=NO_STORE)
-    filters = {'desde': desde, 'hasta': hasta, 'tipo': tipo, 'moneda': moneda,
+    if categoria is not None and categoria not in (*CATEGORIES, 'sin_categoria'):
+        raise HTTPException(422, 'Categoría inválida', headers=NO_STORE)
+    filters = {'categoria': categoria, 'desde': desde, 'hasta': hasta, 'tipo': tipo, 'moneda': moneda,
                'cuenta': cuenta, 'texto': texto.strip()}
     after = parse_cursor(cursor)
     return execute(request, response, space, lambda session, user: list_movements(session, user, space, filters, after))

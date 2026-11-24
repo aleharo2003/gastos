@@ -8,6 +8,12 @@
       <option value="">Todos</option><option value="gasto">Gastos</option>
       <option value="ingreso">Ingresos</option><option value="transferencia">Transferencias</option>
     </select></label>
+    <label>Categoría de gasto <select name="categoria" [(ngModel)]="filters.categoria">
+      <option value="">Todas</option><option value="sin_categoria">Sin categoría</option>
+      @for (category of categories; track category.id) {
+        <option [value]="category.id">{{ category.label }}</option>
+      }
+    </select></label>
     <label>Moneda <select name="moneda" [(ngModel)]="filters.moneda">
       <option value="">Todas</option><option>ARS</option><option>USD</option><option>EUR</option>
     </select></label>
