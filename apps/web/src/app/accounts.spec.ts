@@ -76,6 +76,25 @@ describe('Cuentas', () => {
     expect(panel.textContent).not.toContain('1.250,50');
     window.dispatchEvent(new CustomEvent('gastos-privacy', { detail: false }));
   });
+  it('actualiza el nombre conservando el ID y los datos de la cuenta seleccionada', async () => {
+    const { fixture, request, component } = setup();
+    await fixture.whenStable();
+    const current = { id: 'one', espacio_id: 'space-1', nombre: 'Efectivo' };
+    component.items.set([current]);
+    component.selected.set([current]);
+    component.editAccount(current);
+    component.editedName = ' Caja ';
+    const updated = { ...current, nombre: 'Caja' };
+    request.mockResolvedValueOnce(updated);
+    await component.renameAccount();
+
+    expect(request).toHaveBeenCalledWith('PATCH', '/api/spaces/space-1/accounts/one',
+      { nombre: 'Caja', nombre_anterior: 'Efectivo' });
+    expect(component.items()).toEqual([updated]);
+    expect(component.selected()).toEqual([updated]);
+    expect(component.editingAccount()).toBeNull();
+  });
+
   it('conserva ID ante respuesta perdida y evita doble envio', async () => {
     const {fixture,request,component}=setup(); await fixture.whenStable();
     request.mockRejectedValue(new Error()); component.name='Banco';

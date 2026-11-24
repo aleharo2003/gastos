@@ -11,10 +11,21 @@ router = APIRouter()
 NO_STORE = {'Cache-Control': 'no-store'}
 
 
-class AccountInput(BaseModel):
+class AccountName(BaseModel):
     model_config = ConfigDict(extra='forbid')
-    id: UUID
     nombre: str
+
+    @field_validator('nombre')
+    @classmethod
+    def valid_name(cls, value):
+        value = value.strip()
+        if not 1 <= len(value) <= 80 or any(ord(c) < 32 or ord(c) == 127 for c in value):
+            raise ValueError('Usar un nombre de 1 a 80 caracteres sin controles')
+        return value
+
+
+class AccountInput(AccountName):
+    id: UUID
 
     @field_validator('id')
     @classmethod
@@ -23,12 +34,15 @@ class AccountInput(BaseModel):
             raise ValueError('Identificador invalido')
         return value
 
-    @field_validator('nombre')
+
+class AccountRename(AccountName):
+    nombre_anterior: str
+
+    @field_validator('nombre_anterior')
     @classmethod
-    def valid_name(cls, value):
-        value = value.strip()
+    def previous_name(cls, value):
         if not 1 <= len(value) <= 80 or any(ord(c) < 32 or ord(c) == 127 for c in value):
-            raise ValueError('Usar un nombre de 1 a 80 caracteres sin controles')
+            raise ValueError('Nombre anterior invalido')
         return value
 
 
@@ -57,6 +71,26 @@ def create_account(session, user, space, body):
     return dict(row)
 
 
+def rename_account(session, user, space, account, body):
+    require_member(session, user, space, write=True)
+    params = {'id': account, 's': space, 'n': body.nombre}
+    row = session.execute(text("""
+        SELECT id, espacio_id, nombre FROM public.cuentas
+        WHERE id=:id AND espacio_id=:s FOR NO KEY UPDATE
+    """), params).mappings().one_or_none()
+    if row is None:
+        raise HTTPException(404, 'Cuenta no encontrada', headers=NO_STORE)
+    if row['nombre'] == body.nombre:
+        return dict(row)
+    if row['nombre'] != body.nombre_anterior:
+        raise HTTPException(409, 'Otra sesion cambio el nombre de la cuenta', headers=NO_STORE)
+    updated = session.execute(text("""
+        UPDATE public.cuentas SET nombre=:n WHERE id=:id AND espacio_id=:s
+        RETURNING id, espacio_id, nombre
+    """), params).mappings().one()
+    return dict(updated)
+
+
 def execute(request, response, space, operation):
     identity = me(request, response)
     engine = getattr(request.app.state, 'runtime_engine', None)
@@ -77,3 +111,7 @@ def get_accounts(space: UUID, request: Request, response: Response, offset: int 
 @router.post('/spaces/{space}/accounts')
 def post_account(space: UUID, body: AccountInput, request: Request, response: Response):
     return execute(request, response, space, lambda session, user: create_account(session, user, space, body))
+
+@router.patch('/spaces/{space}/accounts/{account}')
+def patch_account(space: UUID, account: UUID, body: AccountRename, request: Request, response: Response):
+    return execute(request, response, space, lambda session, user: rename_account(session, user, space, account, body))

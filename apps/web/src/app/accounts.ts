@@ -91,6 +91,10 @@ export class Accounts implements OnInit {
   readonly planRevision=signal(0);
   readonly incrementPlan=(value:number)=>value+1;
   name = '';
+  readonly editingAccount = signal<Account | null>(null);
+  readonly renameError = signal('');
+  readonly renaming = signal(false);
+  editedName = '';
   private readonly auth = inject(AuthSession);
   private alive = true;
   private pending?: { id: string; nombre: string };
@@ -202,6 +206,49 @@ export class Accounts implements OnInit {
     } catch {
       if (this.alive) this.error.set('No pudimos cargar tus cuentas. Volvé a intentar.');
     } finally { if (this.alive) this.loading.set(false); }
+  }
+
+  editAccount(account: Account): void {
+    if (this.renaming()) return;
+    this.editingAccount.set(account);
+    this.editedName = account.nombre;
+    this.renameError.set('');
+    this.notice.set('');
+  }
+
+  closeAccountEditor(): void {
+    if (this.renaming()) return;
+    this.editingAccount.set(null);
+    this.renameError.set('');
+  }
+
+  async renameAccount(): Promise<void> {
+    const account = this.editingAccount();
+    const nombre = this.editedName.trim();
+    if (!account || this.renaming() || !nombre || [...nombre].length > 80 || nombre === account.nombre) return;
+    this.renaming.set(true);
+    this.renameError.set('');
+    try {
+      const updated = await this.auth.accountRequest<Account>('PATCH', `${this.path}/${encodeURIComponent(account.id)}`,
+        { nombre, nombre_anterior: account.nombre });
+      if (!this.alive) return;
+      this.items.update(rows => rows.map(row => row.id === updated.id ? updated : row));
+      if (this.selected()[0]?.id === updated.id) this.selected.set([updated]);
+      this.editingAccount.set(null);
+      this.notice.set('Nombre de la cuenta actualizado.');
+    } catch (error) {
+      if (!this.alive) return;
+      const status = error instanceof HttpErrorResponse ? error.status : 0;
+      if (status === 409) {
+        this.renameError.set('Otra sesión cambió el nombre. Actualizá la lista, cerrá este formulario y volvé a editar la cuenta.');
+      } else if (status === 403) {
+        this.renameError.set('No tenés permiso para editar esta cuenta.');
+      } else {
+        this.renameError.set('No pudimos confirmar el cambio. Podés reintentar.');
+      }
+    } finally {
+      if (this.alive) this.renaming.set(false);
+    }
   }
 
   async save(): Promise<void> {
