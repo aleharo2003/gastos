@@ -9,6 +9,7 @@ import { Expenses } from './expenses';
 import { Component, DestroyRef, inject, Input, OnInit, signal, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
+import { DOCUMENT } from '@angular/common';
 import { AuthSession } from './auth-session';
 
 type Account = { id: string; espacio_id: string; nombre: string };
@@ -27,7 +28,9 @@ export class Accounts implements OnInit {
   readonly error = signal('');
   readonly notice = signal('');
   readonly next = signal<number | null>(null);
-  readonly tab = signal<'today' | 'expenses' | 'accounts' | 'plan' | 'savings' | 'debts' | 'reminders'>('today');
+  readonly tab = signal<'today' | 'expenses' | 'accounts' | 'plan' | 'savings' | 'debts' | 'reminders'>(
+    inject(DOCUMENT).defaultView?.matchMedia?.('(max-width: 767px)').matches ? 'expenses' : 'today',
+  );
   @ViewChild(Commitments) commitments?: Commitments;
   @ViewChild(Expenses) expenses?: Expenses;
   @ViewChild(Incomes) incomes?: Incomes;

@@ -19,3 +19,20 @@ summary:focus-visible{outline:3px solid var(--g-focus);outline-offset:2px}
 .expense-editor{border:1px solid var(--g-border);background:var(--g-soft);border-radius:14px;padding:12px;margin:16px 0}.expense-editor summary{color:var(--g-accent)}.expense-editor form{padding-top:12px}
 li.expense-item{background:var(--g-soft);border:1px solid transparent;padding:14px;gap:5px}li.expense-item:nth-child(even){background:var(--g-stripe)}li.expense-item strong{font-size:16px}li.expense-item b{font-size:18px}
 .row-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}.row-actions button{width:auto;flex:1 1 auto;padding:8px 10px;font-size:13px;margin:0;min-height:44px}
+
+.expense-layout { display: grid; gap: 20px; }
+.expense-entry, .expense-history { min-width: 0; }
+.expense-editor { margin: 0; background: var(--g-surface); }
+.expense-editor summary { font-size: 1.25rem; }
+.expense-editor .expense-amount { font-size: 1.5rem; font-weight: 800; }
+.expense-date-currency { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 8px; }
+.expense-date-currency label { display: block; margin-bottom: 4px; }
+.expense-editor .save-expense {
+  background: var(--piggo-action-background);
+  color: var(--piggo-action-foreground);
+  border-color: var(--piggo-action-text);
+}
+
+@media (min-width: 1024px) {
+  .expense-layout { grid-template-columns: minmax(0, 36rem) minmax(0, 1fr); align-items: start; }
+}
