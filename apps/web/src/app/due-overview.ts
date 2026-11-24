@@ -6,7 +6,7 @@ import { watchInstallmentDay } from './installment-date';
 import { AuthSession } from './auth-session';
 import { showAmount } from './expenses';
 import { money, rateUnits, type CurrencyTotal } from './money-reference';
-import { limitUsage, type PlanMoney } from './planning-math';
+import { limitUsage, type LimitPeriod, type PlanLimits } from './planning-math';
 
 type DueTotal = { moneda: string; pendiente: string };
 type DueItem = DueTotal & { id: string; nombre: string; numero: number; vencimiento: string; estimado: boolean; pendiente_ajuste?: boolean };
@@ -18,7 +18,7 @@ type Overview = {
   grupos: Record<'hoy' | 'semana' | 'vencidas', Group>;
   resumen_mes: (DueTotal & { pagado: string })[];
   saldos: { moneda: string; saldo: string }[];
-  presupuesto: { limites: Record<'diario' | 'semanal', PlanMoney | null>; gastos: CurrencyTotal[] };
+  presupuesto: { limites: PlanLimits; gastos: CurrencyTotal[] };
 };
 
 @Component({
@@ -42,7 +42,7 @@ export class DueOverview implements OnChanges {
   readonly error = signal(false);
   readonly hidden = signal(false);
   readonly rate = signal('');
-  readonly periods = [{ key: 'diario', label: 'Diario' }, { key: 'semanal', label: 'Semanal' }] as const;
+  readonly periods = [{ key: 'diario', label: 'Diario' }, { key: 'semanal', label: 'Semanal' }, { key: 'mensual', label: 'Mensual' }] as const;
   readonly spendingPeriods = [
     { key: 'dia', label: 'Hoy' },
     { key: 'semana', label: 'Esta semana' },
@@ -204,7 +204,7 @@ export class DueOverview implements OnChanges {
     }
   }
 
-  budgetUsage(period: 'diario' | 'semanal') {
+  budgetUsage(period: LimitPeriod) {
     const budget = this.overview()?.presupuesto;
     const limit = budget?.limites[period];
     return limit ? limitUsage(limit, budget?.gastos, period, this.rate()) : null;

@@ -122,7 +122,7 @@
       </section>
       <section class="card budget-panel" aria-labelledby="due-budget-title">
         <h4 id="due-budget-title">Presupuesto</h4>
-        @if (data.presupuesto.limites.diario || data.presupuesto.limites.semanal) {
+        @if (data.presupuesto.limites.diario || data.presupuesto.limites.semanal || data.presupuesto.limites.mensual) {
           <ul class="budget">
             @for (period of periods; track period.key) {
               @if (budgetUsage(period.key); as usage) {

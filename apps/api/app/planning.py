@@ -38,6 +38,7 @@ class Limits(BaseModel):
     model_config=ConfigDict(extra='forbid')
     diario: Money | None = None
     semanal: Money | None = None
+    mensual: Money | None = None
 
 class CategoryLimit(Money):
     categoria: Category
@@ -73,6 +74,10 @@ def save_plan(session,user,space,body):
     session.execute(text('INSERT INTO public.planes_gasto(espacio_id,version,datos) VALUES (:s,0,CAST(:d AS jsonb)) ON CONFLICT (espacio_id) DO NOTHING'),{'s':space,'d':json.dumps(EMPTY)})
     row=session.execute(text('SELECT version,datos FROM public.planes_gasto WHERE espacio_id=:s FOR UPDATE'),{'s':space}).mappings().one()
     desired=body.datos.model_dump(mode='json')
+    if 'mensual' not in body.datos.limites.model_fields_set:
+        desired['limites']['mensual'] = row['datos']['limites'].get('mensual')
+    if desired['limites']['mensual'] is None:
+        del desired['limites']['mensual']
     # Los clientes anteriores guardan el plan sin enviar este campo.
     if 'limites_categoria' not in body.datos.model_fields_set:
         desired['limites_categoria'] = row['datos'].get('limites_categoria', [])

@@ -11,9 +11,10 @@ const keys=(v:Record<string,unknown>,allowed:string[])=>Object.keys(v).every(k=>
 function money(v:unknown):boolean {
   return record(v) && ['ARS','USD'].includes(v.moneda as string) && typeof v.importe==='string' && /^(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,2})?$/.test(v.importe) && /[1-9]/.test(v.importe);
 }
-export function validLimits(value:unknown):value is Record<'diario'|'semanal', {moneda:'ARS'|'USD';importe:string}|null> {
-  if(!record(value)||!keys(value,['diario','semanal']))return false;
-  for(const key of ['diario','semanal']){
+export function validLimits(value:unknown):value is Record<'diario'|'semanal', {moneda:'ARS'|'USD';importe:string}|null> & { mensual?: { moneda:'ARS'|'USD'; importe:string } | null } {
+  if(!record(value)||!keys(value,['diario','semanal','mensual']))return false;
+  const periods = ['diario', 'semanal', ...('mensual' in value ? ['mensual'] : [])];
+  for(const key of periods){
     const limit=value[key];
     if(limit!==null && (!money(limit)||!record(limit)||!keys(limit,['moneda','importe'])))return false;
   }

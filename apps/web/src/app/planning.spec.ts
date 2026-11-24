@@ -27,6 +27,19 @@ describe('Plan compartido y límites globales',()=>{
     c.weekly='230';c.dirty=true;request.mockRejectedValue(new HttpErrorResponse({status:409}));await c.save();
     expect(c.weekly).toBe('230');expect(c.dirty).toBe(true);expect(c.error()).toContain('Otra sesión');
   });
+  it('guarda y quita el límite mensual global y calcula el consumo del mes', async () => {
+    const { c, request } = await setup();
+    c.monthly = '600,0';
+    c.monthlyCurrency = 'USD';
+    await c.save();
+    const posts = () => request.mock.calls.filter(([method]) => method === 'POST');
+    expect(posts()[0][2].datos.limites.mensual).toEqual({ moneda: 'USD', importe: '600.00' });
+    expect(c.limit('mensual')).toMatchObject({ spent: 50000n, difference: 10000n });
+
+    c.monthly = '';
+    await c.save();
+    expect(posts()[1][2].datos.limites.mensual).toBeNull();
+  });
   it('el ojo oculta montos y gráficos del presupuesto',async()=>{
     const {f}=await setup();window.dispatchEvent(new CustomEvent('gastos-privacy',{detail:true}));f.detectChanges();
     expect(f.nativeElement.textContent).not.toContain('125,0%');expect(f.nativeElement.textContent).not.toContain('200,00');expect(f.nativeElement.querySelector('form')).toBeNull();

@@ -48,6 +48,18 @@ def check_planning(runtime_url,migration_url):
         assert save({'version': 3, 'datos': legacy_data}) == legacy_write
         cleared = save({'version': 4, 'datos': legacy_data | {'limites_categoria': []}})
         assert cleared == {'version': 5, 'datos': legacy_data}
+        monthly_limit = {'moneda': 'ARS', 'importe': '12345.00'}
+        monthly_data = legacy_data | {'limites': legacy_data['limites'] | {'mensual': monthly_limit}}
+        assert save({'version': 5, 'datos': monthly_data}) == {'version': 6, 'datos': monthly_data}
+
+        legacy_limits = legacy_data['limites'] | {'diario': {'moneda': 'ARS', 'importe': '500.00'}}
+        legacy_edit = legacy_data | {'limites': legacy_limits}
+        preserved = legacy_data | {'limites': legacy_limits | {'mensual': monthly_limit}}
+        assert save({'version': 6, 'datos': legacy_edit}) == {'version': 7, 'datos': preserved}
+
+        clear_monthly = legacy_data | {'limites': legacy_limits | {'mensual': None}}
+        assert save({'version': 7, 'datos': clear_monthly}) == {'version': 8, 'datos': legacy_edit}
+
         with runtime_transaction(runtime,usuario_id=other,espacio_id=other) as s:
             assert s.execute(text('SELECT count(*) FROM public.planes_gasto')).scalar_one()==0
             assert s.execute(text('UPDATE public.planes_gasto SET version=99 WHERE espacio_id=:s'),{'s':owner}).rowcount==0
