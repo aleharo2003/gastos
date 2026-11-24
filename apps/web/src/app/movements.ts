@@ -69,6 +69,12 @@ export class Movements implements OnInit {
     void this.load();
   }
 
+  net(ingresos: string, gastos: string): string {
+    const value = BigInt(ingresos.replace('.', '')) - BigInt(gastos.replace('.', ''));
+    const digits = (value < 0n ? -value : value).toString().padStart(3, '0');
+    return this.amount((value < 0n ? '-' : '') + digits.slice(0, -2) + '.' + digits.slice(-2));
+  }
+
   amount(value: string): string {
     return this.amountsHidden() ? '••••' : showAmount(value);
   }

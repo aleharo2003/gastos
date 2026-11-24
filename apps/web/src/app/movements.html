@@ -50,6 +50,7 @@
           <li><strong>{{ total.moneda }}</strong>
             <span>Ingresos {{ amount(total.ingresos) }}</span><span>Gastos {{ amount(total.gastos) }}</span>
             <span>Transferencias {{ amount(total.transferencias) }}</span>
+            <strong>Ingresos menos gastos {{ net(total.ingresos, total.gastos) }}</strong>
           </li>
         }
       </ul>
