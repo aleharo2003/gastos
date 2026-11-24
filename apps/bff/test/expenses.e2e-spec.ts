@@ -23,6 +23,24 @@ describe('Gastos HTTP', () => {
     vi.stubGlobal('fetch', fetchMock);
   });
   afterEach(async () => { await app.close(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
+  it('consulta el desglose del mes por cuenta, con token y sin caché', async () => {
+    const reportPath = `/api/spaces/${space}/expense-category-summary`;
+    const auth = 'Bearer token';
+    const items = [
+      { moneda: 'ARS', categoria: 'alimentos', total: '125.10' },
+      { moneda: 'USD', categoria: null, total: '20.00' },
+    ];
+    const report = { desde: '2024-02-01', hasta: '2024-02-29', items };
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(report)));
+    await request(app.getHttpServer()).get(reportPath).query({ account })
+      .set('Authorization', auth).expect(200).expect('Cache-Control', 'no-store').expect(report);
+    expect(String(fetchMock.mock.calls[0][0])).toBe(`https://api.example/spaces/${space}/expense-category-summary?account=${account}`);
+    expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe(auth);
+    await request(app.getHttpServer()).get(reportPath).query({ account: 'invalida' })
+      .set('Authorization', auth).expect(400);
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ ...report, items: [items[0], items[0]] })));
+    await request(app.getHttpServer()).get(reportPath).set('Authorization', auth).expect(502);
+  });
   it('reenvia filtros codificados y conserva categoria',async()=>{
     const page={items:[{...row,categoria:'alimentos'}],next_offset:null};
     fetchMock.mockResolvedValue(new Response(JSON.stringify(page)));

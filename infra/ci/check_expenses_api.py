@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from app.accounts import AccountInput, create_account
-from app.expenses import expense_summary, list_similar_expenses, category_suggestion, ExpenseFilters, ExpenseInput, ExpenseEdit, edit_expense, create_expense, list_expenses
+from app.expenses import expense_category_summary, expense_summary, list_similar_expenses, category_suggestion, ExpenseFilters, ExpenseInput, ExpenseEdit, edit_expense, create_expense, list_expenses
 from app.db.connection import create_runtime_engine, create_migration_engine
 from app.db.unit_of_work import runtime_transaction
 
@@ -198,6 +198,28 @@ def check_expenses_api(runtime_url, migration_url):
             combined=all_page['items']+more['items']
             assert len(combined)==103 and {r['cuenta_id'] for r in combined}=={str(account),str(second)}
         print('OK: todas las cuentas, sumas completas, mes bisiesto, lector y aislamiento del resumen.',flush=True)
+
+        create(owner, owner, second, body(fecha='2024-02-28', categoria='alimentos', importe='8.50'))
+        create(owner, owner, account, body(fecha='2024-02-28', categoria='alimentos', moneda='USD', importe='2.00'))
+        def category_summary(who=owner, acct=None):
+            with runtime_transaction(runtime, usuario_id=who, espacio_id=owner) as session:
+                return expense_category_summary(session, who, owner, acct, date(2024, 2, 29))
+        report = category_summary()
+        assert report == {
+            'desde': '2024-02-01', 'hasta': '2024-02-29',
+            'items': [
+                {'moneda': 'ARS', 'categoria': None, 'total': '15.10'},
+                {'moneda': 'ARS', 'categoria': 'alimentos', 'total': '8.50'},
+                {'moneda': 'USD', 'categoria': 'alimentos', 'total': '2.00'},
+            ],
+        }
+        assert category_summary(who=reader) == report
+        assert category_summary(acct=account)['items'] == [
+            {'moneda': 'ARS', 'categoria': None, 'total': '10.10'},
+            {'moneda': 'USD', 'categoria': 'alimentos', 'total': '2.00'},
+        ]
+        denied(lambda: category_summary(who=other), 403)
+        denied(lambda: category_summary(acct=foreign), 404)
 
         with migrator.begin() as c: c.execute(text('DELETE FROM public.miembros_espacio WHERE usuario_id=:u AND espacio_id=:s'),{'u':editor,'s':owner})
         denied(lambda:create(editor,owner,account,body()),403)
