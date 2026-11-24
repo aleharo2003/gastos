@@ -45,7 +45,10 @@
       <div class="groups">
         @for (section of sections; track section.key) {
           @let group = data.grupos[section.key];
-          <section class="card" [class.overdue]="section.key === 'vencidas' && group.cantidad"
+          <section class="card"
+            [class.due-today]="section.key === 'hoy' && group.cantidad > 0"
+            [class.due-week]="section.key === 'semana'"
+            [class.overdue]="section.key === 'vencidas' && group.cantidad > 0"
             [attr.aria-labelledby]="'due-group-' + section.key">
             <h4 [id]="'due-group-' + section.key">{{ section.title }}</h4>
             @if (group.cantidad) {
@@ -84,7 +87,7 @@
       <p class="card" role="status">No tenés cuotas vencidas ni pendientes para hoy o el resto de la semana.</p>
     }
     <div class="groups context">
-      <section class="card" aria-labelledby="due-balances-title">
+      <section class="card balances" aria-labelledby="due-balances-title">
         <h4 id="due-balances-title">Saldo de tus cuentas</h4>
         <ul>
           @for (total of data.saldos; track total.moneda) {
@@ -92,7 +95,7 @@
           }
         </ul>
       </section>
-      <section class="card" aria-labelledby="due-budget-title">
+      <section class="card budget-panel" aria-labelledby="due-budget-title">
         <h4 id="due-budget-title">Presupuesto</h4>
         @if (data.presupuesto.limites.diario || data.presupuesto.limites.semanal) {
           <ul class="budget">
@@ -121,7 +124,13 @@
       @if (data.resumen_mes.length) {
         <ul>
           @for (total of data.resumen_mes; track total.moneda) {
-            <li><strong>{{ total.moneda }}</strong><span>Pagado {{ amount(total.pagado) }}</span><span>Pendiente {{ amount(total.pendiente) }}</span></li>
+            <li>
+              <strong>{{ total.moneda }}</strong>
+              <div class="month-amounts">
+                <span class="month-paid">Pagado <strong>{{ amount(total.pagado) }}</strong></span>
+                <span class="month-pending">Pendiente <strong>{{ amount(total.pendiente) }}</strong></span>
+              </div>
+            </li>
           }
         </ul>
       } @else { <p>No hay cuotas aplicables para este mes.</p> }
