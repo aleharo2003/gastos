@@ -24,6 +24,29 @@ export class Movements implements OnInit {
   readonly initialAccount = input<{ id: string; nombre: string } | null>(null);
   readonly accounts = input<readonly { id: string; nombre: string }[]>([]);
   readonly moreAccounts = input(false);
+  readonly inactiveChoices = signal<{ id: string; nombre: string }[]>([]);
+  readonly inactiveLoading = signal(false);
+  readonly inactiveError = signal(false);
+  readonly nextInactive = signal<number | null>(0);
+
+  async loadInactiveChoices(): Promise<void> {
+    const offset = this.nextInactive();
+    if (offset === null || this.inactiveLoading()) return;
+    const space = this.space();
+    this.inactiveLoading.set(true);
+    this.inactiveError.set(false);
+    try {
+      const page = await this.auth.accountRequest<{ items: { id: string; nombre: string }[]; next_offset: number | null }>(
+        'GET', `/api/spaces/${encodeURIComponent(space)}/accounts?offset=${offset}&inactivas=true`,
+      );
+      this.inactiveChoices.update(rows => [...new Map([...rows, ...page.items].map(row => [row.id, row])).values()]);
+      this.nextInactive.set(page.next_offset);
+    } catch {
+      this.inactiveError.set(true);
+    } finally {
+      this.inactiveLoading.set(false);
+    }
+  }
   readonly accountsLoading = input(false);
   readonly loadAccounts = output<void>();
   readonly amountsHidden = input(false);
@@ -47,7 +70,7 @@ export class Movements implements OnInit {
   }
 
   accountAvailable(id: string): boolean {
-    return this.accounts().some(account => account.id === id);
+    return [...this.accounts(), ...this.inactiveChoices()].some(account => account.id === id);
   }
 
   ngOnInit(): void {
