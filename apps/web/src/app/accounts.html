@@ -13,8 +13,6 @@
   (loadAccounts)="load(true)" (paymentSaved)="duePaymentSaved()" (openDebts)="tab.set('debts')" />
 <app-reminder-preferences class="workspace-panel reminders-panel" [space]="space"
   [active]="tab() === 'reminders'" [hidden]="tab() !== 'reminders'" />
-<app-planning class="workspace-panel planning-panel" [space]="space" [compact]="tab() !== 'plan'"
-  [hidden]="tab() !== 'plan' && tab() !== 'expenses'" [revision]="planRevision()" (configure)="tab.set('plan')" />
 <section class="workspace-panel accounts-panel" [hidden]="tab() !== 'accounts' && items().length > 0"
   aria-labelledby="accounts-title">
   <h3 id="accounts-title">Tus cuentas</h3>
@@ -64,10 +62,13 @@
     @if (next() !== null) { <button type="button" class="secondary" (click)="load(true)" [disabled]="loading() || saving()">Cargar más cuentas</button> }
   }
 @for (account of selected(); track account.id) {
-  <app-incomes class="workspace-panel savings-panel" [space]="space" [account]="account" [accounts]="items()"
-    [revision]="planRevision()" (changed)="planRevision.update(incrementPlan)" />
   <app-expenses class="workspace-panel expenses-panel" [space]="space" [account]="account" [accounts]="items()"
     (summaryChanged)="planRevision.update(incrementPlan)" />
+  <app-incomes class="workspace-panel savings-panel" [space]="space" [account]="account" [accounts]="items()"
+    [revision]="planRevision()" (changed)="planRevision.update(incrementPlan)" />
 }
 
 </div>
+
+<app-planning class="workspace-panel planning-panel" [space]="space" [compact]="tab() !== 'plan'"
+  [hidden]="tab() !== 'plan' && tab() !== 'expenses'" [revision]="planRevision()" (configure)="tab.set('plan')" />
