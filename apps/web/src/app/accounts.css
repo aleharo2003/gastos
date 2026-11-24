@@ -5,4 +5,9 @@ section{border-top:1px solid var(--g-border);padding-top:12px;margin-top:20px}h3
 
 .sections button{min-width:0;padding:10px 6px;font-size:14px}
 
+@media (min-width: 1024px) {
+  .sections button { min-height: 44px; }
+  #active-account, section form { max-width: 32rem; }
+}
+
 @media(max-width:480px){.sections{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}}
