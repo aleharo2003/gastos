@@ -56,7 +56,14 @@ describe('Navegación del espacio', () => {
     const {fixture,component}=await setup();
     const transfers=fixture.debugElement.query(By.directive(Transfers)).componentInstance as Transfers;
     component.tab.set('savings');fixture.detectChanges();transfers.origin='one';transfers.destination='two';transfers.amount='100';transfers.description='Ahorro pendiente';
-    component.tab.set('accounts');fixture.detectChanges();component.tab.set('savings');fixture.detectChanges();
+    const savingsPanels: HTMLElement = fixture.nativeElement.querySelector('.savings-panels');
+    expect(savingsPanels.hidden).toBe(false);
+    component.tab.set('accounts');
+    fixture.detectChanges();
+    expect(savingsPanels.hidden).toBe(true);
+    component.tab.set('savings');
+    fixture.detectChanges();
+    expect(savingsPanels.hidden).toBe(false);
     expect(fixture.debugElement.query(By.directive(Transfers)).componentInstance).toBe(transfers);
     expect(transfers.amount).toBe('100');expect(transfers.description).toBe('Ahorro pendiente');
   });
