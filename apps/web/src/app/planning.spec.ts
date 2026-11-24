@@ -8,7 +8,7 @@ describe('Plan compartido y límites globales',()=>{
   async function setup(){
     const value={version:1,datos:{limites:{diario:null,semanal:{moneda:'USD',importe:'200.00'}},conceptos:[]}};
     const summary={fecha:'2026-11-12',mes:'2026-11',semana_desde:'2026-11-09',semana_hasta:'2026-11-15',totales:[{moneda:'USD',dia:'10.00',semana:'250.00',mes:'500.00'}]};
-    const request=vi.fn().mockImplementation(async(method,path,body)=>path.includes('expense-summary')?summary:method==='POST'?{version:2,datos:body.datos}:structuredClone(value));
+    const request=vi.fn().mockImplementation(async(method,path,body)=>path.includes('expense-summary')?summary:path.includes('expense-category-summary')?{desde:'2026-11-01',hasta:'2026-11-30',items:[]}:method==='POST'?{version:2,datos:body.datos}:structuredClone(value));
     TestBed.configureTestingModule({imports:[Planning],providers:[{provide:AuthSession,useValue:{accountRequest:request}}]});
     const f=TestBed.createComponent(Planning);f.componentRef.setInput('space','s');f.componentRef.setInput('compact',false);f.detectChanges();await f.whenStable();f.detectChanges();
     return {f,c:f.componentInstance,request,value};
@@ -91,6 +91,27 @@ describe('Plan compartido y límites globales',()=>{
     expect(writes()[1][2].datos.limites_categoria).toEqual([]);
     expect(c.categoryUsage()).toEqual([]);
   });
+  it('incluye gastos sin límite en el total y muestra el presupuesto sin consumo', async () => {
+    const { f, c, value } = await setup();
+    c.saved.set({
+      ...value,
+      datos: { ...c.saved()!.datos, limites_categoria: [{ categoria: 'alimentos', moneda: 'ARS', importe: '100.00' }] },
+    });
+    c.categorySpending.set({ desde: '2026-11-01', hasta: '2026-11-30', items: [
+      { categoria: 'ocio', moneda: 'ARS', total: '42.00' },
+      { categoria: null, moneda: 'ARS', total: '8.00' },
+      { categoria: 'ocio', moneda: 'USD', total: '2.00' },
+    ] });
+    expect(c.categoryUsage()[0]).toMatchObject({ spent: 0n, difference: 10000n });
+    expect(c.categoryComparison()?.totals).toEqual([['ARS', 5000n], ['USD', 200n]]);
+    f.detectChanges();
+    const comparison = f.nativeElement.querySelector('.category-limits').textContent;
+    expect(comparison).toContain('Gastos sin presupuesto');
+    expect(comparison).toContain('Sin categoría');
+    expect(comparison).toContain('ARS 50,00');
+    expect(comparison).toContain('ARS 100,00');
+  });
+
   it('no descarta cambios al recargar sin confirmación',async()=>{
     const {c,request}=await setup();c.dirty=true;c.weekly='321';const calls=request.mock.calls.length;
     vi.spyOn(window,'confirm').mockReturnValue(false);await c.load();expect(request.mock.calls.length).toBe(calls);expect(c.weekly).toBe('321');
