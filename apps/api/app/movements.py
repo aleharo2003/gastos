@@ -48,11 +48,16 @@ HISTORY = text("""
         SELECT moneda,
                round(COALESCE(sum(importe) FILTER (WHERE tipo='ingreso'),0),2)::text AS ingresos,
                round(COALESCE(sum(importe) FILTER (WHERE tipo='gasto'),0),2)::text AS gastos,
-               round(COALESCE(sum(importe) FILTER (WHERE tipo='transferencia'),0),2)::text AS transferencias
+               round(COALESCE(sum(importe) FILTER (WHERE tipo='transferencia'),0),2)::text AS transferencias,
+               CASE WHEN CAST(:cuenta AS uuid) IS NOT NULL THEN round(COALESCE(sum(
+                   CASE WHEN tipo='ingreso' OR (tipo='transferencia' AND destino_id=:cuenta) THEN importe
+                        WHEN tipo='gasto' OR (tipo='transferencia' AND origen_id=:cuenta) THEN -importe
+                        ELSE 0 END
+               ),0),2)::text END AS variacion_cuenta
         FROM filtrados GROUP BY moneda
     )
     SELECT (SELECT COALESCE(jsonb_agg(p ORDER BY p.fecha DESC,p.tipo DESC,p.id DESC),'[]') FROM pagina p) AS items,
-           (SELECT COALESCE(jsonb_agg(t ORDER BY t.moneda),'[]') FROM totales t) AS totales
+           (SELECT COALESCE(jsonb_agg(jsonb_strip_nulls(to_jsonb(t)) ORDER BY t.moneda),'[]') FROM totales t) AS totales
 """)
 
 

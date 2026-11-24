@@ -119,7 +119,7 @@ def check_transfers(runtime_url,migration_url):
             assert len(movement_page['items']) == len(following['items']) == 50
             assert not {row['id'] for row in movement_page['items']} & {row['id'] for row in following['items']}
             assert movement_page['totales'] == following['totales'] == [
-                {'moneda': 'ARS', 'ingresos': '500.00', 'gastos': '20.00', 'transferencias': '110.30'}]
+                {'moneda': 'ARS', 'ingresos': '500.00', 'gastos': '20.00', 'transferencias': '110.30', 'variacion_cuenta': '369.90'}]
             uncategorized = list_movements(session, reader, owner, filters | {'categoria': 'sin_categoria'}, None)
             assert [row['tipo'] for row in uncategorized['items']] == ['gasto']
             assert uncategorized['totales'][0]['gastos'] == '20.00'

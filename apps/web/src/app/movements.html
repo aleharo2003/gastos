@@ -51,6 +51,9 @@
             <span>Ingresos {{ amount(total.ingresos) }}</span><span>Gastos {{ amount(total.gastos) }}</span>
             <span>Transferencias {{ amount(total.transferencias) }}</span>
             <strong>Ingresos menos gastos {{ net(total.ingresos, total.gastos) }}</strong>
+            @if (total.variacion_cuenta !== undefined) {
+              <strong>Variación de la cuenta con transferencias {{ amount(total.variacion_cuenta) }}</strong>
+            }
           </li>
         }
       </ul>

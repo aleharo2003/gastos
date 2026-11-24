@@ -9,7 +9,7 @@ type Movement = {
   id: string; fecha: string; tipo: 'gasto' | 'ingreso' | 'transferencia'; descripcion: string;
   moneda: string; importe: string; origen: string | null; destino: string | null;
 };
-type Totals = { moneda: string; ingresos: string; gastos: string; transferencias: string };
+type Totals = { moneda: string; ingresos: string; gastos: string; transferencias: string; variacion_cuenta?: string };
 type Page = { items: Movement[]; totales: Totals[]; next_cursor: string | null };
 const emptyFilters = { desde: '', hasta: '', tipo: '', moneda: '', cuenta: '', texto: '', categoria: '' };
 

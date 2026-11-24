@@ -13,7 +13,7 @@ const isName = (value: unknown) => value === null || (typeof value === 'string' 
 
 type Item = { id: string; fecha: string; tipo: string; descripcion: string; moneda: string; importe: string; origen: string | null; destino: string | null };
 type Totals = { moneda: string; ingresos: string; gastos: string; transferencias: string };
-type Page = { items: Item[]; totales: Totals[]; next_cursor: string | null };
+type Page = { items: Item[]; totales: (Totals & { variacion_cuenta?: string })[]; next_cursor: string | null };
 
 @Controller('api/spaces/:space/movements')
 export class MovementsController {
@@ -74,8 +74,11 @@ export class MovementsController {
       const totales = page.totales.map(row => {
         if (!row || !currencies.includes(row.moneda) ||
             ![row.ingresos, row.gastos, row.transferencias].every(value => typeof value === 'string' && amount.test(value))) throw new Error();
-        const { moneda, ingresos, gastos, transferencias } = row;
-        return { moneda, ingresos, gastos, transferencias };
+        const { moneda, ingresos, gastos, transferencias, variacion_cuenta } = row;
+        if (variacion_cuenta !== undefined &&
+            (typeof variacion_cuenta !== 'string' || !/^-?(?:0|[1-9][0-9]*)\.[0-9]{2}$/.test(variacion_cuenta))) throw new Error();
+        return { moneda, ingresos, gastos, transferencias,
+          ...(variacion_cuenta === undefined ? {} : { variacion_cuenta }) };
       });
       return { items, totales, next_cursor: page.next_cursor };
     } catch (error) {
