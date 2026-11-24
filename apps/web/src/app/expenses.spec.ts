@@ -23,6 +23,33 @@ describe('Gastos', () => {
     request.mockResolvedValue({...payload,espacio_id:'space',cuenta_id:'account'});await component.save();
     expect(request.mock.calls[2][2].id).toBe(payload.id);expect(component.items().length).toBe(1);
   });
+  it('repite como gasto nuevo con fecha actual y espera la confirmación de guardado', async () => {
+    const { fixture, request, component } = setup();
+    await fixture.whenStable();
+    const previous = {
+      id: 'original', espacio_id: 'space', cuenta_id: 'account', fecha: '2020-01-01',
+      descripcion: 'Café', moneda: 'USD', importe: '2.50', categoria: 'alimentos',
+    };
+    const today = component.date;
+    request.mockClear().mockResolvedValue({ items: [previous, { ...previous, id: 'duplicate' }], next_offset: null });
+    await component.load();
+    expect(component.recentExpenses()).toEqual([previous]);
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('.recent-actions button').click();
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(component.editing).toBeNull();
+    expect(component.date).toBe(today);
+    expect(component.currency).toBe('USD');
+    expect(component.category).toBe('alimentos');
+
+    request.mockImplementation(async (_method, _path, payload) => ({ ...previous, ...payload }));
+    await component.save();
+    expect(request.mock.calls[1]).toEqual([
+      'POST', '/api/spaces/space/accounts/account/expenses',
+      { id: expect.not.stringMatching(/^original$/), fecha: today, descripcion: 'Café',
+        moneda: 'USD', importe: '2.50', categoria: 'alimentos' },
+    ]);
+  });
   it('no actualiza otra cuenta tras destruir el formulario',async()=>{
     const {fixture,request,component}=setup();await fixture.whenStable();
     let finish!: (value:unknown)=>void;request.mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));
