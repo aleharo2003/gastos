@@ -81,14 +81,6 @@
   <app-expense-totals [space]="space" [account]="account.id" [revision]="summaryRevision()" />
   <h3>{{ account.id ? "Gastos de " + account.nombre : "Gastos · Todas las cuentas" }}</h3>
   <p>Los importes de cada gasto conservan su moneda original. Los totales convertidos son una referencia.</p>
-  @if (!reportAmountsHidden()) {
-    <details class="category-report" #trendPanel>
-      <summary>Evolución mensual de gastos</summary>
-      @defer (on interaction(trendPanel)) {
-        <app-expense-trend [space]="space" [account]="account.id" [revision]="summaryRevision()" />
-      }
-    </details>
-  }
   <details class="category-report" #categoryPanel (toggle)="toggleCategoryReport(categoryPanel.open)">
     <summary>Gastos por categoría y mes</summary>
     <label for="category-report-month">Mes del informe</label>
@@ -126,6 +118,14 @@
       }
     }
   </details>
+  @if (!reportAmountsHidden()) {
+    <details class="category-report" #trendPanel>
+      <summary>Evolución mensual de gastos</summary>
+      @defer (on interaction(trendPanel)) {
+        <app-expense-trend [space]="space" [account]="account.id" [revision]="summaryRevision()" />
+      }
+    </details>
+  }
   <details class="filters" [open]="!!appliedFilters()">
     <summary>Filtrar gastos {{ appliedFilters() ? '· Filtros aplicados' : '' }}</summary>
     <form #filtersForm="ngForm" (ngSubmit)="applyFilters()">
