@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from app.accounts import AccountInput, create_account
-from app.expenses import expense_category_summary, expense_summary, list_similar_expenses, category_suggestion, ExpenseFilters, ExpenseInput, ExpenseEdit, edit_expense, create_expense, list_expenses
+from app.expenses import expense_category_summary, expense_summary, expense_trend, list_similar_expenses, category_suggestion, ExpenseFilters, ExpenseInput, ExpenseEdit, edit_expense, create_expense, list_expenses
 from app.db.connection import create_runtime_engine, create_migration_engine
 from app.db.unit_of_work import runtime_transaction
 
@@ -204,7 +204,13 @@ def check_expenses_api(runtime_url, migration_url):
         def category_summary(who=owner, acct=None):
             with runtime_transaction(runtime, usuario_id=who, espacio_id=owner) as session:
                 return expense_category_summary(session, who, owner, acct, date(2024, 2, 29))
+        with runtime_transaction(runtime, usuario_id=reader, espacio_id=owner) as session:
+            series = expense_trend(session, reader, owner, day=date(2024, 2, 29))
+        assert len(series['meses']) == 12 and series['meses'][0] == '2023-03' and series['meses'][-1] == '2024-02'
         report = category_summary()
+        assert [{key: value for key, value in row.items() if key != 'mes'}
+                for row in series['items'] if row['mes'] == '2024-02'] == sorted(
+                    report['items'], key=lambda row: (row['moneda'], row['categoria'] is None, row['categoria'] or ''))
         assert report == {
             'desde': '2024-02-01', 'hasta': '2024-02-29',
             'items': [

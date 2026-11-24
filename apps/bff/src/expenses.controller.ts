@@ -41,6 +41,19 @@ export class ExpensesController {
     return this.forward(token,space,query.account as string | undefined,undefined,0,undefined,new URLSearchParams(),false,undefined,'expense-summary');
   }
 
+  @Get('expense-trend')
+  async trend(@Param('space') space: string, @Query() query: Record<string, unknown>,
+    @Req() request: Request, @Res({ passthrough: true }) response: Response) {
+    response.setHeader('Cache-Control', 'no-store');
+    const token = await this.token(request, response);
+    if (Object.keys(query).some(key => key !== 'account') ||
+        (query.account !== undefined && (typeof query.account !== 'string' || !UUID.test(query.account)))) {
+      throw new BadRequestException('Cuenta invalida');
+    }
+    return this.forward(token, space, query.account as string | undefined, undefined, 0, undefined,
+      new URLSearchParams(), false, undefined, 'expense-trend');
+  }
+
   @Get('expense-category-summary')
   async categorySummary(@Param('space') space: string, @Query() query: Record<string, unknown>,
     @Req() request: Request, @Res({ passthrough: true }) response: Response) {
@@ -130,7 +143,7 @@ export class ExpensesController {
     return this.forward(token, space, account, body, 0, id.toLowerCase());
   }
 
-  private async forward(token: string, rawSpace: string, rawAccount: string | undefined, body?: ExpenseInput | ExpenseEdit, offset = 0, editId?: string, filters = new URLSearchParams(), suggestion = false, similarId?:string, summary: 'expense-summary' | 'expense-category-summary' | false = false) {
+  private async forward(token: string, rawSpace: string, rawAccount: string | undefined, body?: ExpenseInput | ExpenseEdit, offset = 0, editId?: string, filters = new URLSearchParams(), suggestion = false, similarId?:string, summary: 'expense-summary' | 'expense-category-summary' | 'expense-trend' | false = false) {
     if (!UUID.test(rawSpace) || (rawAccount !== undefined && !UUID.test(rawAccount)) || (rawAccount === undefined && !!(body || editId || suggestion || similarId))) throw new BadRequestException('Espacio invalido');
     const space = rawSpace.toLowerCase();
     const account = rawAccount?.toLowerCase();
@@ -152,6 +165,25 @@ export class ExpensesController {
       if ([400, 401, 403, 404, 409, 422, 503].includes(result.status)) throw new HttpException('No se pudo completar la operacion', result.status);
       if (!result.ok) throw new Error();
       const data = await boundedJson(result, 131072);
+      if (summary === 'expense-trend') {
+        const report = data as { meses: string[]; items: { mes: string; moneda: string; categoria: string | null; total: string }[] };
+        if (!report || !Array.isArray(report.meses) || report.meses.length !== 12 ||
+            report.meses.some((month, i) => typeof month !== 'string' || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month) ||
+              (i > 0 && month <= report.meses[i - 1])) ||
+            !Array.isArray(report.items) || report.items.length > 36 * (CATEGORIES.length + 1)) throw new Error();
+        const seen = new Set<string>();
+        const items = report.items.map(item => {
+          if (!item || !report.meses.includes(item.mes) || !['ARS', 'USD', 'EUR'].includes(item.moneda) ||
+              (item.categoria !== null && !CATEGORIES.includes(item.categoria)) ||
+              typeof item.total !== 'string' || !/^(?:0|[1-9][0-9]{0,30})\.[0-9]{2}$/.test(item.total)) throw new Error();
+          const { mes, moneda, categoria, total } = item;
+          const key = mes + ':' + moneda + ':' + (categoria ?? '');
+          if (seen.has(key)) throw new Error();
+          seen.add(key);
+          return { mes, moneda, categoria, total };
+        });
+        return { meses: report.meses, items };
+      }
       if (summary === 'expense-category-summary') {
         const value = data as { desde: string; hasta: string; items: { moneda: string; categoria: string | null; total: string }[] };
         if (!value || typeof value.desde !== 'string' || !/^\d{4}-(0[1-9]|1[0-2])-01$/.test(value.desde) ||
