@@ -21,7 +21,9 @@ describe('Cuentas', () => {
   });
   it('consolida los saldos del espacio con la referencia y oculta el total', async () => {
     const balance = vi.fn().mockResolvedValue({ totales: [
-      { moneda: 'ARS', saldo: '-50.00' }, { moneda: 'USD', saldo: '1.00' },
+      { moneda: 'ARS', ingresos: '0.00', gastos: '50.00', saldo: '-50.00' },
+      { moneda: 'USD', ingresos: '1.00', gastos: '0.00', saldo: '1.00' },
+      { moneda: 'EUR', ingresos: '0.00', gastos: '0.00', saldo: '0.00' },
     ] });
     const { fixture, component } = setup(balance);
     await fixture.whenStable();
