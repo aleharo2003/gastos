@@ -36,3 +36,10 @@ li.expense-item{background:var(--g-soft);border:1px solid transparent;padding:14
 @media (min-width: 1024px) {
   .expense-layout { grid-template-columns: minmax(0, 36rem) minmax(0, 1fr); align-items: start; }
 }
+
+.recent-expenses { padding: 0; border: 0; min-width: 0; margin: 4px 0; }
+.recent-expenses legend { font-weight: 700; }
+.recent-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.recent-expenses button { width: auto; max-width: 100%; margin-top: 0; padding: 6px 10px; overflow-wrap: anywhere; }
+.recent-expenses small { display: block; color: var(--g-muted); }
+.recent-expenses > button { margin-top: 6px; }

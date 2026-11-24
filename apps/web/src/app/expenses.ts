@@ -1,4 +1,4 @@
-import { Component, DestroyRef, EventEmitter, Output, inject, Input, OnInit, signal, ViewChildren, QueryList } from '@angular/core';
+import { Component, computed, DestroyRef, EventEmitter, Output, inject, Input, OnInit, signal, ViewChildren, QueryList } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { AuthSession } from './auth-session';
@@ -34,6 +34,17 @@ export class Expenses implements OnInit {
   private savedAccount = '';
   readonly summaryRevision = signal(0);
   readonly items = signal<Expense[]>([]);
+  private readonly recentPage = signal<Expense[]>([]);
+  readonly showMoreRecent = signal(false);
+  readonly recentExpenses = computed(() => {
+    const distinct = new Map<string, Expense>();
+    for (const item of this.recentPage()) {
+      const key = JSON.stringify([item.descripcion.trim().toLocaleLowerCase('es-AR'),
+        item.cuenta_id, item.moneda, item.categoria ?? '']);
+      if (!distinct.has(key)) distinct.set(key, item);
+    }
+    return [...distinct.values()];
+  });
   readonly loading = signal(false);
   readonly saving = signal(false);
   readonly error = signal('');
@@ -115,6 +126,25 @@ export class Expenses implements OnInit {
       || !!this.receiptPanels?.some(panel => panel.busy() || !!panel.selected());
   }
   editing: Payload | null = null;
+  repeatExpense(item: Expense): void {
+    if (this.saving() || this.loading() || item.espacio_id !== this.space
+        || (this.account.id && item.cuenta_id !== this.account.id)) return;
+    if (this.hasPendingWork() && !window.confirm('¿Descartar el formulario actual y cargar este gasto como nuevo?')) return;
+
+    this.clearSuggestion();
+    this.pending = undefined;
+    this.editorOpen = true;
+    this.editing = null;
+    this.createAccount = item.cuenta_id;
+    this.date = today();
+    this.description = item.descripcion;
+    this.currency = item.moneda;
+    this.amount = item.importe;
+    this.category = item.categoria ?? '';
+    this.error.set('');
+    this.notice.set('Revisá el importe y guardá para registrar el nuevo gasto.');
+  }
+
   edit(item: Expense): void {
     if (this.saving() || this.loading()) return;
     if ((this.editing || this.description || this.amount) && !window.confirm('¿Descartar el formulario actual y editar este gasto?')) return;
@@ -138,7 +168,12 @@ export class Expenses implements OnInit {
   private get path() { return this.account.id ? this.accountPath(this.account.id) : `/api/spaces/${encodeURIComponent(this.space)}/expenses`; }
   private get writePath() { return this.accountPath(this.editing ? this.editAccount : this.account.id || this.createAccount); }
   private itemPath(id:string) { return this.accountPath(this.items().find(row=>row.id===id)?.cuenta_id ?? (this.lastSaved()===id ? this.savedAccount : this.account.id)); }
-  accountName(id:string) { return this.accounts.find(row=>row.id===id)?.nombre ?? this.items().find(row=>row.cuenta_id===id)?.cuenta_nombre ?? (this.account.id===id ? this.account.nombre : 'Cuenta'); }
+  accountName(id:string) { return this.accounts.find(row=>row.id===id)?.nombre ?? this.recentPage().find(row => row.cuenta_id === id)?.cuenta_nombre ?? this.items().find(row=>row.cuenta_id===id)?.cuenta_nombre ?? (this.account.id===id ? this.account.nombre : 'Cuenta'); }
+  repeatedAccountOption(): { id: string; nombre: string } | undefined {
+    if (!this.createAccount || this.accounts.some(row => row.id === this.createAccount)) return;
+    const item = this.recentPage().find(row => row.cuenta_id === this.createAccount);
+    return item && { id: item.cuenta_id, nombre: item.cuenta_nombre ?? this.accountName(item.cuenta_id) };
+  }
   changeCreateAccount() { this.clearSuggestion(); this.pending=undefined; }
 
   async load(more = false): Promise<void> {
@@ -151,6 +186,7 @@ export class Expenses implements OnInit {
     try {
       const page = await this.auth.accountRequest<{items: Expense[]; next_offset: number|null}>('GET', `${this.path}?offset=${offset}${this.appliedFilters() ? '&' + this.appliedFilters() : ''}`);
       if (!this.alive) return;
+      if (!more && !this.appliedFilters()) this.recentPage.set(page.items);
       const rows = more ? [...this.items(), ...page.items] : page.items;
       this.items.set([...new Map(rows.map(row => [row.id, row])).values()]);
       this.next.set(page.next_offset);
@@ -176,6 +212,8 @@ export class Expenses implements OnInit {
         : await this.auth.accountRequest<Expense>('POST', this.writePath, this.pending);
       if (!this.alive) return;
       this.items.update(items => [row, ...items.filter(item => item.id !== row.id)].sort((a,b) => b.fecha.localeCompare(a.fecha) || b.id.localeCompare(a.id)));
+      this.recentPage.update(items => [row, ...items.filter(item => item.id !== row.id)]
+        .sort((a, b) => b.fecha.localeCompare(a.fecha) || b.id.localeCompare(a.id)));
       this.pending = undefined; this.description = ''; this.amount = '';
       this.clearSuggestion();
       this.editing=null; this.category=''; this.date=today();

@@ -13,12 +13,33 @@
     <label for="expense-amount">Importe</label>
     <input class="expense-amount" id="expense-amount" name="amount" inputmode="decimal" [(ngModel)]="amount" required placeholder="0,00" aria-describedby="amount-help" [disabled]="saving()">
     <small id="amount-help">Sin separador de miles. Podés usar coma o punto para los decimales.</small>
+    @if (!editing && recentExpenses().length) {
+      <fieldset class="recent-expenses">
+        <legend>Repetir un gasto reciente</legend>
+        <div class="recent-actions" id="recent-expense-options">
+          @for (item of recentExpenses().slice(0, showMoreRecent() ? 10 : 3); track item.id) {
+            <button type="button" class="secondary" (click)="repeatExpense(item)" [disabled]="saving() || loading()">
+              {{ item.descripcion }} <small>{{ accountName(item.cuenta_id) }} · {{ item.moneda }}</small>
+            </button>
+          }
+        </div>
+        @if (recentExpenses().length > 3) {
+          <button type="button" class="secondary" (click)="showMoreRecent.set(!showMoreRecent())"
+            [attr.aria-expanded]="showMoreRecent()" aria-controls="recent-expense-options">
+            {{ showMoreRecent() ? 'Ver menos' : 'Ver más recientes' }}
+          </button>
+        }
+      </fieldset>
+    }
     <label for="expense-description">Descripción</label>
     <input id="expense-description" name="description" [(ngModel)]="description" (ngModelChange)="clearSuggestion()" (blur)="requestSuggestion()" maxlength="160" required placeholder="Por ejemplo, supermercado" [disabled]="saving()">
     @if (!account.id && !editing) {
       <label for="expense-account">Cuenta del gasto</label>
       <select id="expense-account" name="expenseAccount" [(ngModel)]="createAccount" (ngModelChange)="changeCreateAccount()" required [disabled]="saving()">
         <option value="">Elegí dónde lo pagaste</option>
+        @if (repeatedAccountOption(); as option) {
+          <option [value]="option.id">{{ option.nombre }}</option>
+        }
         @for (item of accounts; track item.id) { <option [value]="item.id">{{ item.nombre }}</option> }
       </select>
       <small>Si falta una cuenta, cargá más cuentas desde el selector superior o agregala en Cuentas.</small>
