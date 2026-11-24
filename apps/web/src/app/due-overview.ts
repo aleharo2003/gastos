@@ -1,11 +1,11 @@
-import { Component, DestroyRef, EventEmitter, Input, OnChanges, Output, SimpleChanges, inject, signal } from '@angular/core';
+import { Component, computed, DestroyRef, EventEmitter, Input, OnChanges, Output, SimpleChanges, inject, signal } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
 import { installmentLocalDate, prepareInstallmentPayment, submitInstallmentPayment, type InstallmentPayment } from './installment-payment';
 import { watchInstallmentDay } from './installment-date';
 import { AuthSession } from './auth-session';
 import { showAmount } from './expenses';
-import { money, rateUnits, type CurrencyTotal } from './money-reference';
+import { money, rateUnits, reference, type CurrencyTotal } from './money-reference';
 import { limitUsage, type LimitPeriod, type PlanLimits } from './planning-math';
 
 type DueTotal = { moneda: string; pendiente: string };
@@ -18,6 +18,7 @@ type Overview = {
   grupos: Record<'hoy' | 'semana' | 'vencidas', Group>;
   resumen_mes: (DueTotal & { pagado: string })[];
   saldos: { moneda: string; saldo: string }[];
+  deudas?: DueTotal[];
   presupuesto: { limites: PlanLimits; gastos: CurrencyTotal[] };
 };
 
@@ -42,6 +43,28 @@ export class DueOverview implements OnChanges {
   readonly error = signal(false);
   readonly hidden = signal(false);
   readonly rate = signal('');
+  readonly netCurrency = signal<'ARS' | 'USD'>('ARS');
+  readonly netWorth = computed(() => {
+    const overview = this.overview();
+    if (!overview?.deudas) return null;
+
+    const currency = this.netCurrency();
+    const rate = rateUnits(this.rate());
+    const assets = overview.saldos.filter(row => !row.saldo.startsWith('-'))
+      .map(row => ({ moneda: row.moneda, mes: row.saldo }));
+    const liabilities = overview.saldos.filter(row => row.saldo.startsWith('-'))
+      .map(row => ({ moneda: row.moneda, mes: row.saldo.slice(1) }))
+      .concat(overview.deudas.map(row => ({ moneda: row.moneda, mes: row.pendiente })));
+    const assetTotal = reference(assets, 'mes', currency, rate);
+    const liabilityTotal = reference(liabilities, 'mes', currency, rate);
+    if (assetTotal === null || liabilityTotal === null) return { currency, pending: true } as const;
+
+    const net = assetTotal - liabilityTotal;
+    return {
+      currency, pending: false, assets: assetTotal, liabilities: liabilityTotal, net,
+      estimated: [...assets, ...liabilities].some(row => row.moneda !== currency && row.mes !== '0.00'),
+    } as const;
+  });
   readonly periods = [{ key: 'diario', label: 'Diario' }, { key: 'semanal', label: 'Semanal' }, { key: 'mensual', label: 'Mensual' }] as const;
   readonly spendingPeriods = [
     { key: 'dia', label: 'Hoy' },
@@ -211,7 +234,7 @@ export class DueOverview implements OnChanges {
   }
 
   formatBudget(value: bigint): string {
-    return this.hidden() ? '••••' : money(value);
+    return this.hidden() ? '••••' : value < 0n ? '−' + money(-value) : money(value);
   }
 
   hasPending(overview: Overview): boolean {

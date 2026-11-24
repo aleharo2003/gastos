@@ -144,6 +144,31 @@
         }
       </section>
     </div>
+    @if (netWorth(); as worth) {
+      <section class="card month" aria-labelledby="net-worth-title">
+        <h4 id="net-worth-title">Patrimonio neto</h4>
+        @if (hidden()) {
+          <p>Importes ocultos.</p>
+        } @else {
+          <label for="net-worth-currency">Ver en</label>
+          <select id="net-worth-currency" [ngModel]="netCurrency()" (ngModelChange)="netCurrency.set($event)">
+            <option value="ARS">ARS</option>
+            <option value="USD">USD</option>
+          </select>
+          @if (worth.pending) {
+            <p>Hay saldos o deudas que no se pueden convertir con la cotización disponible.</p>
+          } @else {
+            <dl>
+              <div><dt>Activos</dt><dd>{{ worth.currency }} {{ formatBudget(worth.assets) }}</dd></div>
+              <div><dt>Pasivos</dt><dd>{{ worth.currency }} {{ formatBudget(worth.liabilities) }}</dd></div>
+              <div><dt>Patrimonio neto</dt><dd><strong>{{ worth.currency }} {{ formatBudget(worth.net) }}</strong></dd></div>
+            </dl>
+            <p>Incluye los saldos de tus cuentas y las cuotas pendientes ya generadas.</p>
+            @if (worth.estimated) { <p>Conversión estimada · 1 USD = ARS {{ rate() }}</p> }
+          }
+        }
+      </section>
+    }
     <section class="card month" aria-labelledby="due-month-title">
       <h4 id="due-month-title">Resumen de cuotas del mes</h4>
       @if (data.resumen_mes.length) {

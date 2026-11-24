@@ -124,7 +124,7 @@ def public_commitment(row):
             if row.get('sistema_amortizacion') is not None else {})
 
 
-def list_commitments(session,user,space,offset=0,identifier=None):
+def list_commitments(session,user,space,offset=0,identifier=None,*,page_size=101):
     require_member(session,user,space)
     clause=' AND c.id=:id' if identifier is not None else ''
     rows=session.execute(text("""WITH pagos AS (
@@ -147,9 +147,9 @@ def list_commitments(session,user,space,offset=0,identifier=None):
             ) t
         )
         SELECT pagina.*,resumen.totales FROM resumen LEFT JOIN (
-            SELECT * FROM compromisos_resumidos ORDER BY id LIMIT 101 OFFSET :offset
+            SELECT * FROM compromisos_resumidos ORDER BY id LIMIT :page_size OFFSET :offset
         ) pagina ON true ORDER BY pagina.id
-        """),{'s':space,'id':identifier,'offset':offset}).mappings().all()
+        """),{'s':space,'id':identifier,'offset':offset,'page_size':page_size}).mappings().all()
     items = [row for row in rows if row['id'] is not None]
     result = {
         'items': [public_commitment(row) for row in items[:100]],
@@ -605,6 +605,7 @@ def today_overview(session, user, space, today=None):
     return {
         **result,
         'saldos': balance,
+        'deudas': list_commitments(session, user, space, page_size=0)['totales'],
         'presupuesto': {'limites': plan['datos']['limites'], 'gastos': usage['totales']},
     }
 

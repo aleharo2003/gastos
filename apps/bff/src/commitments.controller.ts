@@ -112,6 +112,7 @@ type DueOverview = {
   grupos:Record<DueGroupKey,DueGroup>;
   resumen_mes:(DueTotal & { pagado:string })[];
   saldos:unknown;
+  deudas?:DueTotal[];
   presupuesto:{limites:unknown;gastos:{moneda:string;dia:string;mes:string;semana:string}[]};
 };
 
@@ -157,6 +158,7 @@ function dueOverview(value:unknown){
     return {moneda,pendiente,pagado};
   });
   const saldos=validateBalance(page.saldos).totales.map(({moneda,saldo})=>({moneda,saldo}));
+  const deudas = page.deudas === undefined ? undefined : dueTotals(page.deudas).map(({ moneda, pendiente }) => ({ moneda, pendiente }));
   const budget=page.presupuesto;
   if(!budget||!validLimits(budget.limites)||!Array.isArray(budget.gastos)||budget.gastos.length>3)throw new Error();
   const currenciesSeen=new Set<string>();
@@ -167,7 +169,7 @@ function dueOverview(value:unknown){
     return {moneda:row.moneda,dia:row.dia,mes:row.mes,semana:row.semana};
   });
   return {fecha:page.fecha,fin_semana:page.fin_semana,grupos:Object.fromEntries(groups),resumen_mes:month,
-    saldos,presupuesto:{limites:budget.limites,gastos}};
+    saldos, ...(deudas === undefined ? {} : { deudas }), presupuesto:{limites:budget.limites,gastos}};
 
 }
 
