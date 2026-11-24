@@ -55,7 +55,8 @@ class IncomeInput(BaseModel):
 def public_income(row):
     return {'id':str(row['id']), 'espacio_id':str(row['espacio_id']), 'cuenta_id':str(row['cuenta_id']),
             'fecha':row['fecha'].isoformat(), 'descripcion':row['descripcion'],
-            'moneda':row['moneda'], 'importe':format(row['importe'], '.2f')}
+            'moneda':row['moneda'], 'importe':format(row['importe'], '.2f')} | (
+                {'cuenta_nombre': row['cuenta_nombre']} if 'cuenta_nombre' in row else {})
 
 
 def create_income(session, user, space, account, body):
@@ -75,9 +76,12 @@ def create_income(session, user, space, account, body):
 def list_incomes(session, user, space, account=None, offset=0):
     if account is None: require_member(session, user, space)
     else: require_account(session, user, space, account)
-    clause = ' AND cuenta_id=:a' if account is not None else ''
-    rows = session.execute(text('SELECT * FROM public.ingresos WHERE espacio_id=:s' + clause +
-        ' ORDER BY fecha DESC, id DESC LIMIT 101 OFFSET :offset'),
+    clause = ' AND i.cuenta_id=:a' if account is not None else ''
+    rows = session.execute(text("""
+        SELECT i.*, c.nombre AS cuenta_nombre FROM public.ingresos i
+        JOIN public.cuentas c ON c.espacio_id=i.espacio_id AND c.id=i.cuenta_id
+        WHERE i.espacio_id=:s
+    """ + clause + ' ORDER BY i.fecha DESC, i.id DESC LIMIT 101 OFFSET :offset'),
         {'s':space, 'a':account, 'offset':offset}).mappings().all()
     return {'items':[public_income(row) for row in rows[:100]],
             'next_offset':offset + 100 if len(rows) > 100 else None}
