@@ -3,7 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from uuid import uuid4
 from fastapi import HTTPException
 from sqlalchemy import text
-from app.accounts import AccountInput, create_account, list_accounts
+from app.accounts import AccountInput, AccountRename, create_account, list_accounts, rename_account
 from app.db.connection import create_runtime_engine, create_migration_engine
 from app.db.unit_of_work import runtime_transaction
 
@@ -16,6 +16,10 @@ def check_accounts_api(runtime_url, migration_url):
     def create(who, space, body):
         with runtime_transaction(runtime, usuario_id=who, espacio_id=space) as session:
             return create_account(session, who, space, body)
+    def rename(who, space, previous, new):
+        body = AccountRename(nombre_anterior=previous, nombre=new)
+        with runtime_transaction(runtime, usuario_id=who, espacio_id=space) as session:
+            return rename_account(session, who, space, account.id, body)
     def denied(action, code):
         try: action()
         except HTTPException as e: assert e.status_code == code
@@ -32,6 +36,12 @@ def check_accounts_api(runtime_url, migration_url):
         denied(lambda: create(owner, owner, AccountInput(id=account.id,nombre='Otro')), 409)
         denied(lambda: create(other, owner, AccountInput(id=uuid4(),nombre='Ajeno')), 403)
         denied(lambda: create(reader, owner, AccountInput(id=uuid4(),nombre='Sin permiso')), 403)
+        renamed = rename(owner, owner, 'Efectivo', 'Caja')
+        assert renamed['id'] == account.id and renamed['nombre'] == 'Caja'
+        assert rename(owner, owner, 'Efectivo', 'Caja') == renamed
+        denied(lambda: rename(owner, owner, 'Efectivo', 'Otro'), 409)
+        denied(lambda: rename(reader, owner, 'Caja', 'Otro'), 403)
+        denied(lambda: rename(other, other, 'Caja', 'Otro'), 404)
         # Colision con ID ajeno no filtra nombre ni permite apropiarse de la cuenta.
         denied(lambda: create(other, other, account), 409)
         with runtime_transaction(runtime, usuario_id=reader, espacio_id=owner) as s:

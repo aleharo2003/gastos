@@ -84,7 +84,21 @@
           </button>
           <button type="button" class="secondary" (click)="choose(account.id)"
             [attr.aria-label]="'Ver gastos de ' + account.nombre">Ver gastos</button>
+          <button type="button" class="secondary" (click)="editAccount(account)" [disabled]="renaming()"
+            [attr.aria-label]="'Editar nombre de ' + account.nombre">Editar nombre</button>
         </div>
+        @if (editingAccount()?.id === account.id) {
+          <form (ngSubmit)="renameAccount()" #renameForm="ngForm">
+            <label [for]="'rename-account-' + account.id">Nombre de la cuenta</label>
+            <input [id]="'rename-account-' + account.id" name="editedName" [(ngModel)]="editedName"
+              required maxlength="80" [disabled]="renaming()">
+            @if (renameError()) { <p role="alert">{{ renameError() }}</p> }
+            <button type="submit" [disabled]="renameForm.invalid || !editedName.trim() || editedName.trim() === account.nombre || renaming()">
+              {{ renaming() ? 'Guardando…' : 'Guardar nombre' }}
+            </button>
+            <button type="button" class="secondary" (click)="closeAccountEditor()" [disabled]="renaming()">Cancelar</button>
+          </form>
+        }
         <div class="account-balance" [id]="'account-balance-' + account.id" [hidden]="expandedBalance() !== account.id">
           @if (expandedBalance() === account.id) {
             @if (balance(); as result) {

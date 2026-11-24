@@ -40,6 +40,17 @@ describe('Cuentas HTTP', () => {
     expect(JSON.parse(options.body)).toEqual({ id, nombre:'Efectivo' });
     expect(options.headers.Authorization).toBe('Bearer token');
   });
+  it('reenvía el cambio de nombre a la cuenta y conserva el nombre anterior', async () => {
+    await request(app.getHttpServer()).patch(`${path}/${id}`).set('Authorization', 'Bearer token')
+      .send({ nombre: ' Efectivo ', nombre_anterior: 'Caja' }).expect(200).expect(row);
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe(`https://api.example/spaces/${space}/accounts/${id}`);
+    expect(options.method).toBe('PATCH');
+    expect(JSON.parse(options.body)).toEqual({ nombre: 'Efectivo', nombre_anterior: 'Caja' });
+    await request(app.getHttpServer()).patch(`${path}/${id}`).set('Authorization', 'Bearer token')
+      .send({ nombre: 'Caja', nombre_anterior: 'Efectivo', espacio_id: randomUUID() }).expect(400);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
   it('rechaza identidad suministrada por el cliente', async () => {
     await request(app.getHttpServer()).post(path).set('Authorization','Bearer token')
       .send({ id, nombre:'Efectivo', usuario_id:randomUUID() }).expect(400);

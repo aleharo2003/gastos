@@ -1,4 +1,4 @@
-import { BadGatewayException, BadRequestException, Body, Controller, Get, HttpCode, HttpException, Param, Post, Query, Req, Res, UnauthorizedException } from '@nestjs/common';
+import { BadGatewayException, BadRequestException, Body, Controller, Get, HttpCode, HttpException, Param, Patch, Post, Query, Req, Res, UnauthorizedException } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { AuthService } from './auth.service.js';
 import { boundedJson } from './token-verifier.js';
@@ -37,6 +37,21 @@ export class AccountsController {
     return this.forward(token, space, { id: data.id.toLowerCase(), nombre: data.nombre.trim() });
   }
 
+  @Patch(':account')
+  async rename(@Param('space') space: string, @Param('account') id: string, @Body() body: unknown,
+      @Req() request: Request, @Res({ passthrough: true }) response: Response) {
+    response.setHeader('Cache-Control', 'no-store');
+    const token = await this.token(request, response);
+    const data = body as { nombre?: unknown; nombre_anterior?: unknown };
+    if (!UUID.test(id) || !data || Object.keys(data).some(key => !['nombre', 'nombre_anterior'].includes(key)) ||
+        typeof data.nombre !== 'string' || [...data.nombre.trim()].length < 1 || [...data.nombre.trim()].length > 80 ||
+        typeof data.nombre_anterior !== 'string' || [...data.nombre_anterior].length < 1 ||
+        [...data.nombre_anterior].length > 80 || /[\x00-\x1f\x7f]/.test(data.nombre + data.nombre_anterior)) {
+      throw new BadRequestException('Cuenta invalida');
+    }
+    return this.forward(token, space, { nombre: data.nombre.trim(), nombre_anterior: data.nombre_anterior }, 0, id.toLowerCase());
+  }
+
   private async token(request: Request, response: Response) {
     const count = request.rawHeaders.filter((v, i) => i % 2 === 0 && v.toLowerCase() === 'authorization').length;
     const parts = request.headers.authorization?.trim().split(/\s+/) ?? [];
@@ -50,7 +65,7 @@ export class AccountsController {
     }
   }
 
-  private async forward(token: string, rawSpace: string, body?: { id: string; nombre: string }, offset = 0) {
+  private async forward(token: string, rawSpace: string, body?: { id: string; nombre: string } | { nombre: string; nombre_anterior: string }, offset = 0, accountId?: string) {
     if (!UUID.test(rawSpace)) throw new BadRequestException('Espacio invalido');
     const space = rawSpace.toLowerCase();
     try {
@@ -61,15 +76,20 @@ export class AccountsController {
       const rawTimeout = process.env.API_TIMEOUT_MS ?? '5000';
       const timeout = Number(rawTimeout);
       if (!/^\d+$/.test(rawTimeout) || !Number.isSafeInteger(timeout) || timeout < 1 || timeout > 2147483647) throw new Error();
-      const result = await fetch(new URL(`/spaces/${space}/accounts?offset=${offset}`, base), {
-        method: body ? 'POST' : 'GET', redirect: 'error', signal: AbortSignal.timeout(timeout),
+      const suffix = accountId ? `/${accountId}` : `?offset=${offset}`;
+      const result = await fetch(new URL(`/spaces/${space}/accounts${suffix}`, base), {
+        method: accountId ? 'PATCH' : body ? 'POST' : 'GET', redirect: 'error', signal: AbortSignal.timeout(timeout),
         headers: { Accept: 'application/json', Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
         ...(body ? { body: JSON.stringify(body) } : {}),
       });
-      if ([400, 401, 403, 409, 422, 503].includes(result.status)) throw new HttpException('No se pudo completar la operacion', result.status);
+      if ([400, 401, 403, 404, 409, 422, 503].includes(result.status)) throw new HttpException('No se pudo completar la operacion', result.status);
       if (!result.ok) throw new Error();
       const data = await boundedJson(result, 65536);
-      if (body) return account(data, space);
+      if (body) {
+        const row = account(data, space);
+        if (accountId && row.id !== accountId) throw new Error();
+        return row;
+      }
       const page = data as { items: unknown[]; next_offset: number | null };
       if (!page || !Array.isArray(page.items) || page.items.length > 100 ||
           !(page.next_offset === null || page.next_offset === offset + 100)) throw new Error();
