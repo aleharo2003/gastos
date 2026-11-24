@@ -325,5 +325,8 @@ def expense_category_summary(session, user, space, account=None, day=None):
 
 
 @router.get('/spaces/{space}/expense-category-summary')
-def get_expense_category_summary(space: UUID, request: Request, response: Response, account: UUID | None = None):
-    return execute(request, response, space, lambda session, user: expense_category_summary(session, user, space, account))
+def get_expense_category_summary(space: UUID, request: Request, response: Response, account: UUID | None = None,
+                                 mes: str | None = Query(default=None, pattern=r'^(19[0-9]{2}|20[0-9]{2})-(0[1-9]|1[0-2])
+)):
+    day = date.fromisoformat(mes + '-01') if mes is not None else None
+    return execute(request, response, space, lambda session, user: expense_category_summary(session, user, space, account, day))

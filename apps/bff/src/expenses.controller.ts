@@ -46,12 +46,15 @@ export class ExpensesController {
     @Req() request: Request, @Res({ passthrough: true }) response: Response) {
     response.setHeader('Cache-Control', 'no-store');
     const token = await this.token(request, response);
-    if (Object.keys(query).some(key => key !== 'account') ||
-        (query.account !== undefined && (typeof query.account !== 'string' || !UUID.test(query.account)))) {
-      throw new BadRequestException('Cuenta invalida');
+    if (Object.keys(query).some(key => !['account', 'mes'].includes(key)) ||
+        (query.account !== undefined && (typeof query.account !== 'string' || !UUID.test(query.account))) ||
+        (query.mes !== undefined && (typeof query.mes !== 'string' || !/^(19[0-9]{2}|20[0-9]{2})-(0[1-9]|1[0-2])$/.test(query.mes)))) {
+      throw new BadRequestException('Cuenta o mes inválido');
     }
+    const filters = new URLSearchParams();
+    if (typeof query.mes === 'string') filters.set('mes', query.mes);
     return this.forward(token, space, query.account as string | undefined, undefined, 0, undefined,
-      new URLSearchParams(), false, undefined, 'expense-category-summary');
+      filters, false, undefined, 'expense-category-summary');
   }
 
   @Get('accounts/:account/expenses')
@@ -139,7 +142,9 @@ export class ExpensesController {
       const rawTimeout = process.env.API_TIMEOUT_MS ?? '5000';
       const timeout = Number(rawTimeout);
       if (!/^\d+$/.test(rawTimeout) || !Number.isSafeInteger(timeout) || timeout < 1 || timeout > 2147483647) throw new Error();
-      const result = await fetch(new URL(summary ? `/spaces/${space}/${summary}${account ? '?account='+account : ''}` : `/spaces/${space}${account ? '/accounts/'+account : ''}/expenses${similarId ? '/' + similarId + '/similar' : suggestion ? '/category-suggestion?' + filters.toString() : editId ? '/' + editId : '?offset=' + offset + (filters.size ? '&' + filters.toString() : '')}`, base), {
+      const summaryParams = new URLSearchParams(filters);
+      if (account) summaryParams.set('account', account);
+      const result = await fetch(new URL(summary ? `/spaces/${space}/${summary}${summaryParams.size ? '?' + summaryParams : ''}` : `/spaces/${space}${account ? '/accounts/'+account : ''}/expenses${similarId ? '/' + similarId + '/similar' : suggestion ? '/category-suggestion?' + filters.toString() : editId ? '/' + editId : '?offset=' + offset + (filters.size ? '&' + filters.toString() : '')}`, base), {
         method: editId ? 'PATCH' : body ? 'POST' : 'GET', redirect: 'error', signal: AbortSignal.timeout(timeout),
         headers: { Accept: 'application/json', Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
         ...(body ? { body: JSON.stringify(body) } : {}),
@@ -157,6 +162,8 @@ export class ExpensesController {
               (row.categoria !== null && !CATEGORIES.includes(row.categoria)) ||
               typeof row.total !== 'string' || !/^(?:0|[1-9][0-9]{0,30})\.[0-9]{2}$/.test(row.total)
             )) throw new Error();
+        const requestedMonth = filters.get('mes');
+        if (requestedMonth && value.desde !== requestedMonth + '-01') throw new Error();
         if (new Set(value.items.map(row => `${row.moneda}:${row.categoria ?? ''}`)).size !== value.items.length) throw new Error();
         return { desde: value.desde, hasta: value.hasta,
           items: value.items.map(({ moneda, categoria, total }) => ({ moneda, categoria, total })) };
