@@ -82,7 +82,10 @@
   <h3>{{ account.id ? "Gastos de " + account.nombre : "Gastos · Todas las cuentas" }}</h3>
   <p>Los importes de cada gasto conservan su moneda original. Los totales convertidos son una referencia.</p>
   <details class="category-report" #categoryPanel (toggle)="toggleCategoryReport(categoryPanel.open)">
-    <summary>¿En qué gasté este mes?</summary>
+    <summary>Gastos por categoría y mes</summary>
+    <label for="category-report-month">Mes del informe</label>
+    <input id="category-report-month" type="month" min="1900-01" max="2099-12" [value]="reportMonth" (change)="selectReportMonth($event)">
+    <button type="button" class="secondary" (click)="reportMonth = ''; loadCategoryReport()" [disabled]="!reportMonth">Mes actual</button>
     @if (reportLoading()) { <p role="status">Cargando el reporte…</p> }
     @if (reportError()) {
       <p role="alert">No pudimos cargar el reporte.</p>
