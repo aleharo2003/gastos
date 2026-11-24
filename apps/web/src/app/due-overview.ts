@@ -42,6 +42,11 @@ export class DueOverview implements OnChanges {
   readonly hidden = signal(false);
   readonly rate = signal('');
   readonly periods = [{ key: 'diario', label: 'Diario' }, { key: 'semanal', label: 'Semanal' }] as const;
+  readonly spendingPeriods = [
+    { key: 'dia', label: 'Hoy' },
+    { key: 'semana', label: 'Esta semana' },
+    { key: 'mes', label: 'Este mes' },
+  ] as const;
   readonly sections = [
     { key: 'hoy', title: 'Vencen hoy' },
     { key: 'semana', title: 'Resto de la semana' },

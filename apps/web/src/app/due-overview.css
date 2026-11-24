@@ -64,3 +64,11 @@ li button { display: block; margin-top: 6px; }
 @media (min-width: 1024px) {
   .payment { max-width: 32rem; }
 }
+
+.spending-overview { margin-top: 12px; }
+.spending-periods { margin: 10px 0; align-items: stretch; }
+.spending-period { min-width: 0; padding: 12px; border-radius: var(--piggo-radius-control); background: var(--g-soft); }
+.spending-period h5 { margin: 0; font-size: .9375rem; }
+.spending-period dl { margin-block: 8px 0; }
+.spending-period dl div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; }
+.spending-period dd { margin: 0; font-weight: 800; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }

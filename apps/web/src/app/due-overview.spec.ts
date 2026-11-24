@@ -102,6 +102,28 @@ describe('Pagos desde Hoy', () => {
     expect(request).toHaveBeenCalledTimes(1);
     expect(component.paymentError()).toContain('no supere el saldo');
   });
+  it('muestra los gastos de cada período en su moneda y oculta los importes', async () => {
+    const { fixture, component, request } = await setup();
+    const data = overview('100.00');
+    data.presupuesto.gastos = [
+      { moneda: 'ARS', dia: '12.00', semana: '50.00', mes: '150.00' },
+      { moneda: 'USD', dia: '0.00', semana: '5.00', mes: '10.00' },
+    ];
+    request.mockResolvedValueOnce(data);
+    await component.load();
+    fixture.detectChanges();
+
+    const panels: NodeListOf<HTMLElement> = fixture.nativeElement.querySelectorAll('.spending-period');
+    expect(panels).toHaveLength(3);
+    expect([...panels[0].querySelectorAll('dd')].map(value => value.textContent)).toEqual(['12,00', '0,00']);
+    expect([...panels[1].querySelectorAll('dd')].map(value => value.textContent)).toEqual(['50,00', '5,00']);
+    expect([...panels[2].querySelectorAll('dd')].map(value => value.textContent)).toEqual(['150,00', '10,00']);
+
+    window.dispatchEvent(new CustomEvent('gastos-privacy', { detail: true }));
+    fixture.detectChanges();
+    expect([...panels[2].querySelectorAll('dd')].map(value => value.textContent)).toEqual(['••••', '••••']);
+  });
+
   it('muestra saldos, usa la referencia del espacio y respeta la privacidad', async () => {
     const { fixture, component } = await setup();
     expect(fixture.nativeElement.textContent).toContain('-35,50');

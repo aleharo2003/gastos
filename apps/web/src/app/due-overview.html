@@ -86,6 +86,30 @@
     } @else {
       <p class="card" role="status">No tenés cuotas vencidas ni pendientes para hoy o el resto de la semana.</p>
     }
+    @if (data.presupuesto.gastos; as spending) {
+      <section class="card spending-overview" aria-labelledby="spending-overview-title">
+        <h4 id="spending-overview-title">Gastos registrados</h4>
+        @if (spending.length) {
+          <div class="groups spending-periods">
+            @for (period of spendingPeriods; track period.key) {
+              <section class="spending-period" [attr.aria-labelledby]="'spending-' + period.key">
+                <h5 [id]="'spending-' + period.key">{{ period.label }}</h5>
+                <dl>
+                  @for (total of spending; track total.moneda) {
+                    @if (total[period.key]; as value) {
+                      <div><dt>{{ total.moneda }}</dt><dd>{{ amount(value) }}</dd></div>
+                    }
+                  }
+                </dl>
+              </section>
+            }
+          </div>
+          <small>Todas las cuentas. La semana y el mes incluyen los gastos registrados con fecha futura dentro de cada período.</small>
+        } @else {
+          <p>Todavía no hay gastos registrados en estos períodos.</p>
+        }
+      </section>
+    }
     <div class="groups context">
       <section class="card balances" aria-labelledby="due-balances-title">
         <h4 id="due-balances-title">Saldo de tus cuentas</h4>
