@@ -30,6 +30,14 @@
     }
   </div>
 </app-due-overview>
+@if (tab() === 'today' && !amountsHidden()) {
+  <details class="workspace-panel" #todayCategories>
+    <summary>Gastos del mes por categoría</summary>
+    @defer (on interaction(todayCategories)) {
+      <app-today-category-report [space]="space" [revision]="planRevision()" (openExpenses)="tab.set('expenses')" />
+    }
+  </details>
+}
 <app-reminder-preferences class="workspace-panel reminders-panel" [space]="space"
   [active]="tab() === 'reminders'" [hidden]="tab() !== 'reminders'" />
 <section class="workspace-panel accounts-panel" [hidden]="tab() !== 'accounts' && items().length > 0"

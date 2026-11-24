@@ -1,0 +1,19 @@
+<section class="workspace-panel" aria-labelledby="today-category-title">
+  <h3 id="today-category-title">Distribución del mes</h3>
+  @if (failed()) {
+    <p role="alert">No pudimos cargar los gastos por categoría.</p>
+    <button type="button" class="secondary" (click)="load()">Reintentar</button>
+  } @else if (groups(); as report) {
+    @for (group of report; track group.currency) {
+      <h4>{{ group.currency }} {{ money(group.total) }}</h4>
+      <ul>
+        @for (row of group.items; track row.categoria) {
+          <li>{{ label(row.categoria) }} · {{ money(cents(row.total)) }} · {{ share(row.total, group.total) }}</li>
+        }
+      </ul>
+    } @empty {
+      <p>Todavía no hay gastos este mes.</p>
+    }
+    <button type="button" class="secondary" (click)="openExpenses.emit()">Abrir Gastos</button>
+  } @else { <p role="status">Cargando gastos por categoría…</p> }
+</section>
