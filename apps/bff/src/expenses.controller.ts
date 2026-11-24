@@ -38,7 +38,20 @@ export class ExpensesController {
     response.setHeader('Cache-Control','no-store');
     const token = await this.token(request,response);
     if (Object.keys(query).some(k => k !== 'account') || (query.account !== undefined && (typeof query.account !== 'string' || !UUID.test(query.account)))) throw new BadRequestException('Cuenta invalida');
-    return this.forward(token,space,query.account as string | undefined,undefined,0,undefined,new URLSearchParams(),false,undefined,true);
+    return this.forward(token,space,query.account as string | undefined,undefined,0,undefined,new URLSearchParams(),false,undefined,'expense-summary');
+  }
+
+  @Get('expense-category-summary')
+  async categorySummary(@Param('space') space: string, @Query() query: Record<string, unknown>,
+    @Req() request: Request, @Res({ passthrough: true }) response: Response) {
+    response.setHeader('Cache-Control', 'no-store');
+    const token = await this.token(request, response);
+    if (Object.keys(query).some(key => key !== 'account') ||
+        (query.account !== undefined && (typeof query.account !== 'string' || !UUID.test(query.account)))) {
+      throw new BadRequestException('Cuenta invalida');
+    }
+    return this.forward(token, space, query.account as string | undefined, undefined, 0, undefined,
+      new URLSearchParams(), false, undefined, 'expense-category-summary');
   }
 
   @Get('accounts/:account/expenses')
@@ -114,7 +127,7 @@ export class ExpensesController {
     return this.forward(token, space, account, body, 0, id.toLowerCase());
   }
 
-  private async forward(token: string, rawSpace: string, rawAccount: string | undefined, body?: ExpenseInput | ExpenseEdit, offset = 0, editId?: string, filters = new URLSearchParams(), suggestion = false, similarId?:string, summary = false) {
+  private async forward(token: string, rawSpace: string, rawAccount: string | undefined, body?: ExpenseInput | ExpenseEdit, offset = 0, editId?: string, filters = new URLSearchParams(), suggestion = false, similarId?:string, summary: 'expense-summary' | 'expense-category-summary' | false = false) {
     if (!UUID.test(rawSpace) || (rawAccount !== undefined && !UUID.test(rawAccount)) || (rawAccount === undefined && !!(body || editId || suggestion || similarId))) throw new BadRequestException('Espacio invalido');
     const space = rawSpace.toLowerCase();
     const account = rawAccount?.toLowerCase();
@@ -126,7 +139,7 @@ export class ExpensesController {
       const rawTimeout = process.env.API_TIMEOUT_MS ?? '5000';
       const timeout = Number(rawTimeout);
       if (!/^\d+$/.test(rawTimeout) || !Number.isSafeInteger(timeout) || timeout < 1 || timeout > 2147483647) throw new Error();
-      const result = await fetch(new URL(summary ? `/spaces/${space}/expense-summary${account ? '?account='+account : ''}` : `/spaces/${space}${account ? '/accounts/'+account : ''}/expenses${similarId ? '/' + similarId + '/similar' : suggestion ? '/category-suggestion?' + filters.toString() : editId ? '/' + editId : '?offset=' + offset + (filters.size ? '&' + filters.toString() : '')}`, base), {
+      const result = await fetch(new URL(summary ? `/spaces/${space}/${summary}${account ? '?account='+account : ''}` : `/spaces/${space}${account ? '/accounts/'+account : ''}/expenses${similarId ? '/' + similarId + '/similar' : suggestion ? '/category-suggestion?' + filters.toString() : editId ? '/' + editId : '?offset=' + offset + (filters.size ? '&' + filters.toString() : '')}`, base), {
         method: editId ? 'PATCH' : body ? 'POST' : 'GET', redirect: 'error', signal: AbortSignal.timeout(timeout),
         headers: { Accept: 'application/json', Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
         ...(body ? { body: JSON.stringify(body) } : {}),
@@ -134,7 +147,21 @@ export class ExpensesController {
       if ([400, 401, 403, 404, 409, 422, 503].includes(result.status)) throw new HttpException('No se pudo completar la operacion', result.status);
       if (!result.ok) throw new Error();
       const data = await boundedJson(result, 131072);
-      if(summary) {
+      if (summary === 'expense-category-summary') {
+        const value = data as { desde: string; hasta: string; items: { moneda: string; categoria: string | null; total: string }[] };
+        if (!value || typeof value.desde !== 'string' || !/^\d{4}-(0[1-9]|1[0-2])-01$/.test(value.desde) ||
+            typeof value.hasta !== 'string' || !/^\d{4}-\d{2}-(28|29|30|31)$/.test(value.hasta) ||
+            value.hasta.slice(0, 7) !== value.desde.slice(0, 7) || !Array.isArray(value.items) ||
+            value.items.length > 3 * (CATEGORIES.length + 1) || value.items.some(row =>
+              !row || !['ARS', 'USD', 'EUR'].includes(row.moneda) ||
+              (row.categoria !== null && !CATEGORIES.includes(row.categoria)) ||
+              typeof row.total !== 'string' || !/^(?:0|[1-9][0-9]{0,30})\.[0-9]{2}$/.test(row.total)
+            )) throw new Error();
+        if (new Set(value.items.map(row => `${row.moneda}:${row.categoria ?? ''}`)).size !== value.items.length) throw new Error();
+        return { desde: value.desde, hasta: value.hasta,
+          items: value.items.map(({ moneda, categoria, total }) => ({ moneda, categoria, total })) };
+      }
+      if (summary === 'expense-summary') {
         const value=data as {fecha:unknown;mes:unknown;semana_desde?:unknown;semana_hasta?:unknown;totales:{moneda:string;dia:string;mes:string;semana?:string}[]};
         const amount=(v:unknown)=>typeof v==='string' && /^(?:0|[1-9][0-9]{0,30})\.[0-9]{2}$/.test(v);
         if(!value || typeof value.fecha!=='string' || !/^\d{4}-\d{2}-\d{2}$/.test(value.fecha) || value.mes!==value.fecha.slice(0,7) || !Array.isArray(value.totales) || value.totales.length>3 || new Set(value.totales.map(r=>r?.moneda)).size!==value.totales.length || value.totales.some(r=>!r || !['ARS','USD','EUR'].includes(r.moneda) || !amount(r.dia) || !amount(r.mes) || (r.semana!==undefined && !amount(r.semana)))) throw new Error();

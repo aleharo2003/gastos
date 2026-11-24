@@ -293,3 +293,37 @@ def expense_summary(session, user, space, account=None, day=None):
 @router.get('/spaces/{space}/expense-summary')
 def get_expense_summary(space: UUID, request: Request, response: Response, account: UUID | None = None):
     return execute(request,response,space,lambda session,user: expense_summary(session,user,space,account))
+
+
+def expense_category_summary(session, user, space, account=None, day=None):
+    if account is None:
+        require_member(session, user, space)
+    else:
+        require_account(session, user, space, account)
+
+    day = day or datetime.now(ZoneInfo('America/Argentina/Buenos_Aires')).date()
+    start = day.replace(day=1)
+    end = date(day.year + 1, 1, 1) if day.month == 12 else date(day.year, day.month + 1, 1)
+    account_filter = ' AND cuenta_id=:account' if account is not None else ''
+    rows = session.execute(text("""
+        SELECT moneda, categoria, SUM(importe) AS total
+        FROM public.gastos
+        WHERE espacio_id=:space AND fecha>=:start AND fecha<:end
+    """ + account_filter + """
+        GROUP BY moneda, categoria
+        ORDER BY moneda, total DESC, categoria NULLS LAST
+    """), {'space': space, 'start': start, 'end': end, 'account': account}).mappings().all()
+
+    return {
+        'desde': start.isoformat(),
+        'hasta': (end - timedelta(days=1)).isoformat(),
+        'items': [
+            {'moneda': row['moneda'], 'categoria': row['categoria'], 'total': format(row['total'], '.2f')}
+            for row in rows
+        ],
+    }
+
+
+@router.get('/spaces/{space}/expense-category-summary')
+def get_expense_category_summary(space: UUID, request: Request, response: Response, account: UUID | None = None):
+    return execute(request, response, space, lambda session, user: expense_category_summary(session, user, space, account))
