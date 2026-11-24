@@ -7,6 +7,7 @@ from sqlalchemy.exc import DBAPIError
 from app.accounts import AccountInput,create_account
 from app.transfers import TransferInput,create_transfer,list_transfers
 from app.incomes import IncomeInput,create_income,account_balance
+from app.movements import list_movements, parse_cursor
 from app.expenses import ExpenseInput,create_expense,expense_summary
 from app.db.connection import create_runtime_engine,create_migration_engine
 from app.db.unit_of_work import runtime_transaction
@@ -110,6 +111,18 @@ def check_transfers(runtime_url,migration_url):
         transfer(other,other,body(origen_id=foreign,destino_id=foreign_target,importe='999.00'))
         assert balance()['ARS']['saldo']=='480.00'
         assert len(page()['items'])==100 and page()['next_offset']==100
+        filters = {'desde': None, 'hasta': None, 'tipo': None, 'moneda': 'ARS',
+                   'cuenta': source, 'texto': ''}
+        with runtime_transaction(runtime, usuario_id=reader, espacio_id=owner) as session:
+            movement_page = list_movements(session, reader, owner, filters, None)
+            following = list_movements(session, reader, owner, filters, parse_cursor(movement_page['next_cursor']))
+            assert len(movement_page['items']) == len(following['items']) == 50
+            assert not {row['id'] for row in movement_page['items']} & {row['id'] for row in following['items']}
+            assert movement_page['totales'] == following['totales'] == [
+                {'moneda': 'ARS', 'ingresos': '500.00', 'gastos': '20.00', 'transferencias': '110.30'}]
+            filtered = list_movements(session, reader, owner, filters | {'texto': 'sUeLdO'}, None)
+            assert [row['tipo'] for row in filtered['items']] == ['ingreso']
+            assert filtered['items'][0]['destino'] == 'Cuenta'
         # Datos ajenos al espacio no afectan los agregados.
         with runtime_transaction(runtime,usuario_id=owner,espacio_id=owner) as session:
             assert expense_summary(session,owner,owner)==before

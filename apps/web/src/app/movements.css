@@ -1,0 +1,19 @@
+.movement-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr));
+  gap: .75rem;
+  align-items: end;
+}
+.movement-filters label { display: grid; gap: .35rem; }
+.movement-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.movement-list { display: grid; gap: .5rem; padding: 0; list-style: none; }
+.movement-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem 1rem;
+  border-block-end: 1px solid var(--g-line, currentColor);
+  padding-block: .65rem;
+}
+.movement-list small { display: block; }

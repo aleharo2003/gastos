@@ -6,6 +6,7 @@ from app.reminder_preferences import router as reminder_preferences_router
 from app.db.startup import lifespan
 from app.auth import router as auth_router
 from app.accounts import router as accounts_router
+from app.movements import router as movements_router
 from app.expenses import router as expenses_router
 from app.planning import router as planning_router
 from app.receipts import router as receipts_router
@@ -21,6 +22,7 @@ app = FastAPI(title="Gastos API", lifespan=lifespan)
 app.include_router(auth_router)
 app.include_router(reminder_preferences_router)
 app.include_router(accounts_router)
+app.include_router(movements_router)
 app.include_router(incomes_router)
 app.include_router(transfers_router)
 app.include_router(savings_goals_router)
