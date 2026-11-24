@@ -60,7 +60,7 @@
   <ul class="movement-list">
     @for (row of items(); track row.tipo + row.id) {
       <li>
-        <span><strong>{{ row.descripcion }}</strong><small>{{ row.fecha }} · {{ labels[row.tipo] }}</small></span>
+        <span><strong>{{ row.descripcion }}</strong><small>{{ row.fecha }} · {{ labels[row.tipo] }}@if (row.tipo === 'gasto' && row.categoria !== undefined) { · {{ categoryName(row.categoria) }} }</small></span>
         <span>{{ row.origen }}{{ row.origen && row.destino ? ' → ' : '' }}{{ row.destino }}</span>
         <strong>{{ row.moneda }} {{ amount(row.importe) }}</strong>
       </li>
