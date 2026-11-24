@@ -19,6 +19,29 @@ describe('Cuentas', () => {
     expect(fixture.nativeElement.textContent).toContain('Efectivo');
     expect(component.name).toBe('');
   });
+  it('consolida los saldos del espacio con la referencia y oculta el total', async () => {
+    const balance = vi.fn().mockResolvedValue({ totales: [
+      { moneda: 'ARS', ingresos: '0.00', gastos: '50.00', saldo: '-50.00' },
+      { moneda: 'USD', ingresos: '1.00', gastos: '0.00', saldo: '1.00' },
+      { moneda: 'EUR', ingresos: '0.00', gastos: '0.00', saldo: '0.00' },
+    ] });
+    const { fixture, component } = setup(balance);
+    await fixture.whenStable();
+    component.tab.set('accounts');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(balance).toHaveBeenCalledWith('GET', '/api/spaces/space-1/account-balance');
+    expect(component.consolidatedBalance()?.value).toBeNull();
+
+    component.referenceRate.set('100');
+    expect(component.consolidatedBalance()).toEqual({ value: 5000n, estimated: true });
+    component.balanceCurrency.set('USD');
+    expect(component.consolidatedBalance()?.value).toBe(50n);
+    component.amountsHidden.set(true);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('#account-total-currency')).toBeNull();
+  });
+
   it('consulta solo el saldo de la cuenta abierta y respeta la privacidad', async () => {
     const balance = vi.fn().mockImplementation(async (_method, path: string) => ({
       totales: path.endsWith('?account=one') ? [
@@ -35,6 +58,7 @@ describe('Cuentas', () => {
     await component.load();
     component.tab.set('accounts');
     fixture.detectChanges();
+    await fixture.whenStable();
     balance.mockClear();
 
     fixture.nativeElement.querySelector('button[aria-label="Ver saldo de Banco"]').click();

@@ -6,7 +6,8 @@ import { Incomes } from './incomes';
 import { ReminderPreferences } from './reminder-preferences';
 import { Planning } from './planning';
 import { Expenses, showAmount } from './expenses';
-import { Component, DestroyRef, effect, inject, Input, OnInit, signal, ViewChild } from '@angular/core';
+import { money, rateUnits, reference } from './money-reference';
+import { Component, computed, DestroyRef, effect, inject, Input, OnInit, signal, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { DOCUMENT } from '@angular/common';
@@ -36,6 +37,25 @@ export class Accounts implements OnInit {
   readonly balance = signal<AccountBalance | null>(null);
   readonly balanceError = signal(false);
   readonly amountsHidden = signal(false);
+  readonly balances = signal<AccountBalance | null>(null);
+  readonly balancesError = signal(false);
+  readonly balanceCurrency = signal<'ARS' | 'USD'>('ARS');
+  readonly referenceRate = signal('');
+  readonly consolidatedBalance = computed(() => {
+    const balances = this.balances();
+    if (!balances) return null;
+    const currency = this.balanceCurrency();
+    const rate = rateUnits(this.referenceRate());
+    const positive = balances.totales.filter(row => !row.saldo.startsWith('-'))
+      .map(row => ({ moneda: row.moneda, mes: row.saldo }));
+    const negative = balances.totales.filter(row => row.saldo.startsWith('-'))
+      .map(row => ({ moneda: row.moneda, mes: row.saldo.slice(1) }));
+    const credit = reference(positive, 'mes', currency, rate);
+    const debit = reference(negative, 'mes', currency, rate);
+    if (credit === null || debit === null) return { value: null, estimated: false };
+    return { value: credit - debit, estimated: [...positive, ...negative].some(row =>
+      row.moneda !== currency && row.mes !== '0.00') };
+  });
 
   @ViewChild(Commitments) commitments?: Commitments;
   @ViewChild(Expenses) expenses?: Expenses;
@@ -75,6 +95,11 @@ export class Accounts implements OnInit {
   private alive = true;
   private pending?: { id: string; nombre: string };
   private balanceRequest = 0;
+  private balancesRequest = 0;
+  private readonly rateListener = (event: Event) => {
+    const detail = (event as CustomEvent).detail;
+    if (detail?.space === this.space && typeof detail.rate === 'string') this.referenceRate.set(detail.rate);
+  };
   private readonly privacyListener = (event: Event) => {
     this.amountsHidden.set((event as CustomEvent).detail === true);
   };
@@ -82,12 +107,17 @@ export class Accounts implements OnInit {
   constructor() {
     try { this.amountsHidden.set(localStorage.getItem('gastos.totals.hidden') === 'true'); } catch {}
     window.addEventListener('gastos-privacy', this.privacyListener);
+    window.addEventListener('gastos-reference', this.rateListener);
+    effect(() => {
+      if (this.tab() === 'accounts') void this.loadBalances();
+    });
     effect(() => {
       if (this.tab() !== 'accounts') this.closeBalance();
     });
     inject(DestroyRef).onDestroy(() => {
       this.alive = false;
       window.removeEventListener('gastos-privacy', this.privacyListener);
+      window.removeEventListener('gastos-reference', this.rateListener);
     });
   }
 
@@ -115,6 +145,25 @@ export class Accounts implements OnInit {
     }
   }
 
+  async loadBalances(): Promise<void> {
+    const request = ++this.balancesRequest;
+    this.balances.set(null);
+    this.balancesError.set(false);
+    try {
+      const result = await this.auth.accountRequest<AccountBalance>(
+        'GET', `/api/spaces/${encodeURIComponent(this.space)}/account-balance`,
+      );
+      if (!Array.isArray(result?.totales)) throw new Error('Saldos inválidos');
+      if (this.alive && request === this.balancesRequest) this.balances.set(result);
+    } catch {
+      if (this.alive && request === this.balancesRequest) this.balancesError.set(true);
+    }
+  }
+
+  formattedConsolidatedBalance(value: bigint): string {
+    return value < 0n ? '−' + money(-value) : money(value);
+  }
+
   private closeBalance(): void {
     this.balanceRequest++;
     this.expandedBalance.set(null);
@@ -125,7 +174,13 @@ export class Accounts implements OnInit {
   balanceAmount(value: string): string {
     return this.amountsHidden() ? '••••' : showAmount(value);
   }
-  ngOnInit(): void { void this.load(); }
+  ngOnInit(): void {
+    try {
+      const saved = JSON.parse(localStorage.getItem('gastos.reference.' + this.space) ?? 'null');
+      if (typeof saved?.rate === 'string') this.referenceRate.set(saved.rate);
+    } catch {}
+    void this.load();
+  }
   private get path() { return `/api/spaces/${encodeURIComponent(this.space)}/accounts`; }
 
   async load(more = false): Promise<void> {
