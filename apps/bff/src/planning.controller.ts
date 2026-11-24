@@ -4,6 +4,8 @@ import { AuthService } from './auth.service.js';
 import { boundedJson } from './token-verifier.js';
 
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const CATEGORIES = ['alimentos', 'transporte', 'vivienda', 'servicios', 'salud', 'educacion',
+  'ocio', 'impuestos', 'auto', 'bancario', 'ropa', 'otros'];
 const record=(v:unknown):v is Record<string,unknown>=>!!v && typeof v==='object' && !Array.isArray(v);
 const keys=(v:Record<string,unknown>,allowed:string[])=>Object.keys(v).every(k=>allowed.includes(k));
 function money(v:unknown):boolean {
@@ -21,7 +23,17 @@ export function validLimits(value:unknown):value is Record<'diario'|'semanal', {
 export function validPlan(v:unknown):boolean {
   if(!record(v)||!keys(v,['version','datos'])||!Number.isInteger(v.version)||Number(v.version)<0||Number(v.version)>2147483646||!record(v.datos))return false;
   const d=v.datos;
-  if(!keys(d,['limites','conceptos'])||!validLimits(d.limites)||!Array.isArray(d.conceptos)||d.conceptos.length>40)return false;
+  if(!keys(d,['limites','conceptos','limites_categoria'])||!validLimits(d.limites)||!Array.isArray(d.conceptos)||d.conceptos.length>40)return false;
+  if (d.limites_categoria !== undefined) {
+    if (!Array.isArray(d.limites_categoria) || d.limites_categoria.length > CATEGORIES.length) return false;
+    const categories = new Set<string>();
+    for (const limit of d.limites_categoria) {
+      if (!record(limit) || !keys(limit, ['categoria', 'moneda', 'importe']) || !money(limit) ||
+          typeof limit.categoria !== 'string' || !CATEGORIES.includes(limit.categoria) ||
+          categories.has(limit.categoria)) return false;
+      categories.add(limit.categoria);
+    }
+  }
   const seen=new Set<string>();
   for(const c of d.conceptos){
     if(!record(c)||!keys(c,['id','concepto','frecuencia','moneda','importe'])||!money(c)||typeof c.id!=='string'||!UUID.test(c.id)||seen.has(c.id.toLowerCase())||typeof c.concepto!=='string'||[...c.concepto.trim()].length<1||[...c.concepto.trim()].length>80||/[\x00-\x1f\x7f]/.test(c.concepto)||!['semana','mes'].includes(c.frecuencia as string))return false;

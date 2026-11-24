@@ -17,6 +17,14 @@ class PlanningTests(unittest.TestCase):
         with self.assertRaises(ValidationError):PlanUpdate(version=0,datos=EMPTY|{'cuenta_id':str(uuid4())})
         with self.assertRaises(ValidationError):PlanUpdate(version=True,datos=EMPTY)
         with self.assertRaises(ValidationError):PlanUpdate(version=0,datos=EMPTY|{'conceptos':[row|{'id':str(uuid4())} for _ in range(41)]})
+    def test_category_limits_are_unique_and_use_the_existing_categories(self):
+        limit = {'categoria': 'alimentos', 'moneda': 'ARS', 'importe': '100'}
+        update = PlanUpdate(version=0, datos=EMPTY | {'limites_categoria': [limit]})
+        self.assertEqual(str(update.datos.limites_categoria[0].importe), '100.00')
+        for limits in [[limit, limit], [limit | {'categoria': 'inventada'}], None]:
+            with self.subTest(limits=limits), self.assertRaises(ValidationError):
+                PlanUpdate(version=0, datos=EMPTY | {'limites_categoria': limits})
+
     def test_auth_required(self):
         app=FastAPI();app.include_router(router);client=TestClient(app);path=f'/spaces/{uuid4()}/spending-plan'
         self.assertEqual(client.get(path).status_code,401)
