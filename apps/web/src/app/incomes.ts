@@ -5,7 +5,7 @@ import { AuthSession } from './auth-session';
 import { normalizeAmount, showAmount } from './expenses';
 
 type Payload={id:string;fecha:string;descripcion:string;moneda:string;importe:string};
-type Income=Payload & {espacio_id:string;cuenta_id:string};
+type Income=Payload & {espacio_id:string;cuenta_id:string; cuenta_nombre?: string };
 type Page={items:Income[];next_offset:number|null};
 type Balance={totales:{moneda:string;ingresos:string;gastos:string;saldo:string;transferencias_entrada?:string;transferencias_salida?:string}[]};
 @Component({selector:'app-incomes',imports:[FormsModule],templateUrl:'./incomes.html',styleUrl:'./incomes.css'})
@@ -48,7 +48,7 @@ export class Incomes implements OnChanges {
   }
   hasPendingWork(){return this.saving() || !!(this.description || this.amount);}
   cancel(){if(this.saving())return;this.description='';this.amount='';this.pending=undefined;this.error.set('');}
-  accountName(id:string){return this.accounts.find(row=>row.id===id)?.nombre??id;}
+  accountName(id:string, historicalName?: string){return this.accounts.find(row=>row.id===id)?.nombre??historicalName??'Cuenta';}
   private get path(){return `/api/spaces/${encodeURIComponent(this.space)}`;}
   private get listPath(){return this.path+(this.account.id?'/accounts/'+encodeURIComponent(this.account.id):'')+'/incomes';}
   async loadBalance(){

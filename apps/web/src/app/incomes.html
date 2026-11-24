@@ -49,7 +49,7 @@
     <ul>
       @for(item of items();track item.id){
         <li><strong>{{ item.descripcion }}</strong>
-          @if(!account.id){<span>Cuenta: {{ accountName(item.cuenta_id) }}</span>}
+          @if(!account.id){<span>Cuenta: {{ accountName(item.cuenta_id, item.cuenta_nombre) }}</span>}
           <span>{{ item.fecha.split('-').reverse().join('/') }}</span>
           <b>{{ item.moneda }} {{ hidden() ? '••••' : showAmount(item.importe) }}</b>
         </li>

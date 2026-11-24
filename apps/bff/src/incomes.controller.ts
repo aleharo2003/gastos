@@ -5,7 +5,7 @@ import { boundedJson } from './token-verifier.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 type IncomeInput = { id:string; fecha:string; descripcion:string; moneda:string; importe:string };
-type Income = IncomeInput & {espacio_id:string; cuenta_id:string};
+type Income = IncomeInput & {espacio_id:string; cuenta_id:string; cuenta_nombre?: string };
 function valid(value: unknown): value is IncomeInput {
   const row = value as IncomeInput;
   return !!row && typeof row.id === 'string' && UUID.test(row.id) && !/^0{8}-0{4}-0{4}-0{4}-0{12}$/.test(row.id) &&
@@ -19,8 +19,10 @@ function income(value:unknown, space:string, account?:string):Income {
   const row=value as Income;
   if(!valid(row) || row.espacio_id!==space || !UUID.test(row.cuenta_id) ||
       (account!==undefined && row.cuenta_id!==account)) throw new Error();
+  if (row.cuenta_nombre !== undefined && (typeof row.cuenta_nombre !== 'string' || row.cuenta_nombre.length > 160)) throw new Error();
   return {id:row.id,espacio_id:space,cuenta_id:row.cuenta_id,fecha:row.fecha,
-    descripcion:row.descripcion,moneda:row.moneda,importe:row.importe};
+    descripcion:row.descripcion,moneda:row.moneda,importe:row.importe,
+    ...(row.cuenta_nombre === undefined ? {} : { cuenta_nombre: row.cuenta_nombre })};
 }
 export function validateBalance(value:unknown) {
   const data=value as {totales:{moneda:string;ingresos:string;gastos:string;saldo:string;transferencias_entrada?:string;transferencias_salida?:string}[]};
