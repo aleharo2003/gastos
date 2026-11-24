@@ -137,6 +137,24 @@
         @for (account of inactiveAccounts(); track account.id) {
           <li class="account-card">
             <h5>{{ account.nombre }}</h5>
+            <button type="button" class="secondary" (click)="toggleBalance(account.id)"
+              [attr.aria-expanded]="expandedBalance() === account.id"
+              [attr.aria-controls]="'inactive-account-balance-' + account.id"
+              [attr.aria-label]="'Saldo de ' + account.nombre">Saldo</button>
+            <div [id]="'inactive-account-balance-' + account.id" [hidden]="expandedBalance() !== account.id">
+              @if (expandedBalance() === account.id) {
+                @if (balance(); as result) {
+                  <dl>
+                    @for (row of result.totales; track row.moneda) {
+                      <div><dt>{{ row.moneda }}</dt><dd>{{ balanceAmount(row.saldo) }}</dd></div>
+                    }
+                  </dl>
+                } @else if (balanceError()) {
+                  <p role="alert">No pudimos cargar el saldo.</p>
+                  <button type="button" class="secondary" (click)="loadBalance(account.id)">Reintentar saldo</button>
+                } @else { <p role="status">Cargando saldo…</p> }
+              }
+            </div>
             <button type="button" class="secondary" (click)="setAccountActive(account, true)"
               [disabled]="!!changingState() || loading() || inactiveLoading() || renaming()"
               [attr.aria-label]="'Reactivar ' + account.nombre">Reactivar</button>
