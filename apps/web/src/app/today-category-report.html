@@ -8,7 +8,11 @@
       <h4>{{ group.currency }} {{ money(group.total) }}</h4>
       <ul>
         @for (row of group.items; track row.categoria) {
-          <li>{{ label(row.categoria) }} · {{ money(cents(row.total)) }} · {{ share(row.total, group.total) }}</li>
+          <li>
+            {{ label(row.categoria) }} · {{ money(cents(row.total)) }} · {{ share(row.total, group.total) }}
+            <button type="button" class="secondary" (click)="viewCategory(row)"
+              [attr.aria-label]="'Ver gastos de ' + label(row.categoria) + ' en ' + group.currency">Ver movimientos</button>
+          </li>
         }
       </ul>
     } @empty {

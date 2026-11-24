@@ -27,8 +27,16 @@ export class Accounts implements OnInit {
   @Input({ required: true }) space = '';
   readonly items = signal<Account[]>([]);
   readonly movementAccount = signal<Account | null>(null);
+  readonly movementReport = signal<{ desde: string; hasta: string; categoria: string; moneda: string } | null>(null);
+
+  openCategoryHistory(report: { desde: string; hasta: string; categoria: string; moneda: string }): void {
+    this.movementAccount.set(null);
+    this.movementReport.set(report);
+    this.tab.set('movements');
+  }
 
   openAccountHistory(account: Account | null = null): void {
+    this.movementReport.set(null);
     this.movementAccount.set(account);
     this.tab.set('movements');
   }
