@@ -24,6 +24,10 @@
   --piggo-warning-surface: light-dark(#FFF1CE, #42321C);
   --piggo-danger: light-dark(#A02C29, #FFB6AF);
   --piggo-danger-surface: light-dark(#FFF0ED, #472521);
+  --piggo-info: light-dark(#215C83, #A7D7F6);
+  --piggo-info-surface: light-dark(#EEF7FF, #213442);
+  --piggo-planning: light-dark(#65418E, #DAC3F7);
+  --piggo-planning-surface: light-dark(#F6F0FE, #362843);
   --piggo-font-body: 'Nunito Sans', system-ui, sans-serif;
   --piggo-font-size-body: 1rem;
   --piggo-line-height: 1.5;

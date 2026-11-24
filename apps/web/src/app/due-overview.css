@@ -1,13 +1,50 @@
 header { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; justify-content: space-between; }
 h3, h4 { margin: 0; }
+h3 { font-size: 1.375rem; }
+h4 { font-size: 1rem; }
 p, small { color: var(--g-muted); line-height: 1.45; }
 .groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 245px), 1fr)); gap: 12px; align-items: start; }
-.card { border: 1px solid var(--g-border); border-radius: 12px; background: var(--g-surface); padding: 16px; min-width: 0; }
-.card.overdue h4, .error { color: var(--g-error); }
+.card {
+  --panel-border: color-mix(in srgb, var(--g-border) 45%, var(--panel-background, var(--g-surface)));
+  background: var(--panel-background, var(--g-surface));
+  border: 1px solid var(--panel-border);
+  border-inline-start: 3px solid var(--panel-accent, var(--panel-border));
+  border-radius: var(--piggo-radius-card);
+  padding: 16px;
+  min-width: 0;
+}
+.due-today {
+  --panel-accent: var(--piggo-warning);
+  --panel-background: var(--piggo-warning-surface);
+}
+.due-week {
+  --panel-accent: var(--piggo-info);
+  --panel-background: var(--piggo-info-surface);
+}
+.overdue {
+  --panel-accent: var(--piggo-danger);
+  --panel-background: var(--piggo-danger-surface);
+}
+.balances {
+  --panel-accent: var(--piggo-positive);
+  --panel-background: var(--piggo-positive-surface);
+}
+.budget-panel {
+  --panel-accent: var(--piggo-planning);
+  --panel-background: var(--piggo-planning-surface);
+}
+.card h4, .totals { color: var(--panel-accent, var(--g-ink)); }
+.error { color: var(--g-error); }
 .month { margin: 12px 0; }
-.totals { display: flex; flex-wrap: wrap; gap: 6px 12px; color: inherit; }
+.totals { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 1.125rem; margin: 6px 0 12px; }
+.totals, li strong { font-variant-numeric: tabular-nums; }
 ul { list-style: none; padding: 0; margin-bottom: 0; }
-li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; padding: 10px 0; border-top: 1px solid var(--g-border); overflow-wrap: anywhere; }
+li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; padding: 10px 0; border-top: 1px solid var(--panel-border); overflow-wrap: anywhere; }
+.month li { align-items: center; }
+.month-amounts { display: flex; flex-wrap: wrap; gap: 6px; }
+.month-amounts span { padding: 4px 10px; border-radius: var(--piggo-radius-control); }
+.month-paid { color: var(--piggo-positive); background: var(--piggo-positive-surface); }
+.month-pending { color: var(--piggo-warning); background: var(--piggo-warning-surface); }
 small { display: block; }
 button { min-height: 44px; padding: 8px 12px; border: 1px solid var(--g-accent); border-radius: 9px; background: var(--g-surface); color: var(--g-accent); font: inherit; cursor: pointer; }
 button:disabled { cursor: default; opacity: .6; }

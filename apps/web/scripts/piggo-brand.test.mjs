@@ -35,9 +35,15 @@ const pairs = [
   ['positive', 'positive-surface', 4.5],
   ['warning', 'warning-surface', 4.5],
   ['danger', 'danger-surface', 4.5],
+  ['info', 'info-surface', 4.5],
+  ['planning', 'planning-surface', 4.5],
+  ['danger', 'planning-surface', 4.5],
   ['border', 'surface', 3], ['border', 'background', 3],
   ['focus', 'surface', 3], ['focus', 'background', 3],
 ];
+for (const surface of ['warning-surface', 'info-surface', 'danger-surface', 'positive-surface', 'planning-surface']) {
+  pairs.push(['text', surface, 4.5], ['muted', surface, 4.5], ['focus', surface, 3]);
+}
 for (const theme of ['light', 'dark']) {
   for (const [foreground, background, minimum] of pairs) {
     test(`${theme}: ${foreground} / ${background} >= ${minimum}:1`, () => {
