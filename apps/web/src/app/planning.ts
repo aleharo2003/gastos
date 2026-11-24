@@ -39,6 +39,29 @@ export class Planning implements OnChanges {
       return { categoria: limit.categoria, ...usageAgainstLimit(limit, spent) };
     });
   });
+  readonly categoryComparison = computed(() => {
+    const report = this.categorySpending();
+    if (!report) return null;
+    const budgeted = new Set(this.categoryUsage().map(row => row.categoria));
+    const unbudgeted = new Map<string | null, Map<string, bigint>>();
+    const totals = new Map<string, bigint>();
+    for (const row of report.items) {
+      const amount = cents(row.total);
+      totals.set(row.moneda, (totals.get(row.moneda) ?? 0n) + amount);
+      if (row.categoria !== null && budgeted.has(row.categoria)) continue;
+      const currencies = unbudgeted.get(row.categoria) ?? new Map<string, bigint>();
+      currencies.set(row.moneda, (currencies.get(row.moneda) ?? 0n) + amount);
+      unbudgeted.set(row.categoria, currencies);
+    }
+    return {
+      month: report.desde.slice(0, 7),
+      totals: [...totals],
+      unbudgeted: [...unbudgeted].map(([category, amounts]) => ({
+        category, label: category === null ? 'Sin categoría' : this.categoryLabel(category),
+        amounts: [...amounts],
+      })).sort((a, b) => a.label.localeCompare(b.label, 'es-AR')),
+    };
+  });
   readonly categoryAlerts = computed(() => this.hidden()
     ? []
     : this.categoryUsage().filter(item => item.progress?.warning));
@@ -109,7 +132,8 @@ export class Planning implements OnChanges {
     const request = ++this.categoryRequest;
     this.categorySpending.set(null);
     this.categoryError.set(false);
-    if ((this.compact && !this.showCategoryAlerts) || !this.saved()?.datos.limites_categoria?.length) return;
+    const plan = this.saved();
+    if (!plan || (this.compact && (!this.showCategoryAlerts || !plan.datos.limites_categoria?.length))) return;
     try {
       const report = await this.auth.accountRequest<CategorySpending>(
         'GET', `/api/spaces/${encodeURIComponent(this.space)}/expense-category-summary`,

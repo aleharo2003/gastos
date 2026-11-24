@@ -33,9 +33,21 @@
     @if(saved() && !saved()!.datos.limites.diario && !saved()!.datos.limites.semanal && !saved()!.datos.limites.mensual){<p>No hay límites globales configurados.</p>}
     @if(summary();as current){<small>Hoy: {{ current.fecha }} · Semana: {{ current.semana_desde }} al {{ current.semana_hasta }} (lunes a domingo, Argentina).</small>}
     @if(!compact && saved()){
-      @if (categoryUsage().length) {
-        <section class="category-limits" aria-labelledby="category-limits-title">
-          <h3 id="category-limits-title">Límites mensuales por categoría</h3>
+      <section class="category-limits" aria-labelledby="category-limits-title">
+          <h3 id="category-limits-title">Presupuesto frente a gastos del mes</h3>
+          @if (categoryComparison(); as comparison) {
+            <p>{{ comparison.month }} · Límites vigentes</p>
+            @if (comparison.totals.length) {
+              <p><strong>Total real del mes</strong></p>
+              <ul>
+                @for (total of comparison.totals; track total[0]) {
+                  <li>{{ total[0] }} {{ money(total[1]) }}</li>
+                }
+              </ul>
+            } @else {
+              <p>Todavía no hay gastos registrados este mes.</p>
+            }
+          }
           @if (categoryError()) {
             <p class="error" role="alert">No pudimos actualizar el consumo por categoría.</p>
             <button type="button" (click)="loadCategoryUsage()">Reintentar</button>
@@ -64,8 +76,22 @@
               </article>
             }
           </div>
-        </section>
-      }
+          @if (categoryComparison(); as comparison) {
+            @if (comparison.unbudgeted.length) {
+              <h4>Gastos sin presupuesto</h4>
+              <ul>
+                @for (row of comparison.unbudgeted; track row.category) {
+                  <li>
+                    <strong>{{ row.label }}</strong>
+                    @for (amount of row.amounts; track amount[0]) {
+                      <span> · {{ amount[0] }} {{ money(amount[1]) }}</span>
+                    }
+                  </li>
+                }
+              </ul>
+            }
+          }
+      </section>
       @if(notice()){<p class="notice" role="status">{{ notice() }}</p>}
       <div class="budget-layout">
         <details class="budget-editor">
