@@ -329,3 +329,30 @@ def get_expense_category_summary(space: UUID, request: Request, response: Respon
                                  mes: str | None = Query(default=None, pattern=r'^(19[0-9]{2}|20[0-9]{2})-(0[1-9]|1[0-2])$')):
     day = date.fromisoformat(mes + '-01') if mes is not None else None
     return execute(request, response, space, lambda session, user: expense_category_summary(session, user, space, account, day))
+
+
+def expense_trend(session, user, space, account=None, day=None):
+    if account is None:
+        require_member(session, user, space)
+    else:
+        require_account(session, user, space, account)
+    day = day or datetime.now(ZoneInfo('America/Argentina/Buenos_Aires')).date()
+    latest = day.year * 12 + day.month - 1
+    months = [date(number // 12, number % 12 + 1, 1) for number in range(latest - 11, latest + 2)]
+    rows = session.execute(text("""
+        SELECT to_char(fecha, 'YYYY-MM') AS mes, moneda, categoria, SUM(importe) AS total
+        FROM public.gastos
+        WHERE espacio_id=:space AND fecha>=:start AND fecha<:end
+          AND (CAST(:account AS uuid) IS NULL OR cuenta_id=:account)
+        GROUP BY 1, moneda, categoria ORDER BY 1, moneda, categoria
+    """), {'space': space, 'start': months[0], 'end': months[-1], 'account': account}).mappings().all()
+    return {
+        'meses': [month.isoformat()[:7] for month in months[:-1]],
+        'items': [{'mes': row['mes'], 'moneda': row['moneda'], 'categoria': row['categoria'],
+                   'total': format(row['total'], '.2f')} for row in rows],
+    }
+
+
+@router.get('/spaces/{space}/expense-trend')
+def get_expense_trend(space: UUID, request: Request, response: Response, account: UUID | None = None):
+    return execute(request, response, space, lambda session, user: expense_trend(session, user, space, account))
