@@ -50,6 +50,26 @@ describe('Gastos', () => {
         moneda: 'USD', importe: '2.50', categoria: 'alimentos' },
     ]);
   });
+  it('abre el detalle cuando se pide adjuntar un comprobante al gasto guardado', async () => {
+    const { fixture, request, component } = setup();
+    await fixture.whenStable();
+    component.description = 'Supermercado';
+    component.amount = '12.50';
+    request.mockImplementation(async (method, _path, payload) => method === 'POST'
+      ? { ...payload, espacio_id: 'space', cuenta_id: 'account' }
+      : { items: [], next_offset: null });
+    await component.save();
+    fixture.detectChanges();
+    const details: HTMLDetailsElement = fixture.nativeElement.querySelector('.expense-details');
+    expect(details.open).toBe(false);
+    expect(details.querySelector('summary')?.textContent).toContain('ARS 12,50');
+
+    component.openReceipts(component.lastSaved());
+    fixture.detectChanges();
+    expect(details.open).toBe(true);
+    expect(details.querySelector('app-receipts')).not.toBeNull();
+    fixture.destroy();
+  });
   it('no actualiza otra cuenta tras destruir el formulario',async()=>{
     const {fixture,request,component}=setup();await fixture.whenStable();
     let finish!: (value:unknown)=>void;request.mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));

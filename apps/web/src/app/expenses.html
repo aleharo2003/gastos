@@ -111,15 +111,44 @@
   <p>Buscando en todos los gastos de {{ account.nombre }}. {{ items().length }} resultados cargados{{ next() !== null ? '; hay más disponibles.' : '.' }}</p>
   @if (loading()) { <p role="status">Cargando gastos…</p> }
   @if (!items().length && !loading() && !error()) { <p>{{ appliedFilters() ? 'No hay gastos que coincidan. Probá ampliar las fechas o limpiar los filtros.' : 'Todavía no registraste gastos en esta cuenta.' }}</p> }
-  <ul>@for (item of items(); track item.id) {
-    <li class="expense-item"><strong>{{ item.descripcion }}</strong>@if (!account.id) { <span>Cuenta: {{ accountName(item.cuenta_id) }}</span> }@if(item.coincidencia_aproximada){<span class="approximate">Coincidencia aproximada</span>}<span>{{ categoryName(item.categoria) }}</span><span>{{ item.fecha.split('-').reverse().join('/') }}</span><b>{{ item.moneda }} {{ showAmount(item.importe) }}</b><div class="row-actions"><button type="button" class="secondary" (click)="edit(item)" [disabled]="saving() || loading()" [attr.aria-label]="'Editar ' + item.descripcion">Editar</button>
-      <button type="button" class="secondary" (click)="openReceipts(receiptExpense()===item.id?null:item.id)" [attr.aria-expanded]="receiptExpense()===item.id">Comprobantes</button>
-      <button type="button" class="secondary" (click)="toggleSimilar(item.id)" [disabled]="saving() || loading()" [attr.aria-expanded]="similarExpense()===item.id" [attr.aria-controls]="'similar-'+item.id">{{ similarExpense()===item.id ? 'Ocultar similares' : 'Ver gastos similares' }}</button>
-      </div>
-      @if(similarExpense()===item.id){<app-similar-expenses [id]="'similar-'+item.id" [path]="similarPath(item.id)" [categories]="categories" />}
-      @if(receiptExpense()===item.id){<app-receipts [id]="'receipts-'+item.id" [path]="receiptPath(item.id)" />}
-    </li>
-  }</ul>
+  <ul class="expense-list">
+    @for (item of items(); track item.id) {
+      <li class="expense-item">
+        <details class="expense-details" [id]="'expense-details-' + item.id">
+          <summary class="expense-summary">
+            <span class="expense-label">
+              <strong>{{ item.descripcion }}</strong>
+              <span class="expense-meta">
+                <time [attr.datetime]="item.fecha">{{ item.fecha.split('-').reverse().join('/') }}</time>
+                <span>{{ categoryName(item.categoria) }}</span>
+                @if (item.coincidencia_aproximada) { <span class="approximate">Coincidencia aproximada</span> }
+              </span>
+            </span>
+            <b class="expense-value">{{ item.moneda }} {{ showAmount(item.importe) }}</b>
+          </summary>
+          <div class="expense-detail-content">
+            <p><strong>Cuenta</strong> {{ accountName(item.cuenta_id) }}</p>
+            <div class="row-actions">
+              <button type="button" class="secondary" (click)="edit(item)" [disabled]="saving() || loading()"
+                [attr.aria-label]="'Editar ' + item.descripcion">Editar</button>
+              <button type="button" class="secondary" (click)="openReceipts(receiptExpense() === item.id ? null : item.id)"
+                [attr.aria-expanded]="receiptExpense() === item.id">Comprobantes</button>
+              <button type="button" class="secondary" (click)="toggleSimilar(item.id)" [disabled]="saving() || loading()"
+                [attr.aria-expanded]="similarExpense() === item.id" [attr.aria-controls]="'similar-' + item.id">
+                {{ similarExpense() === item.id ? 'Ocultar similares' : 'Ver gastos similares' }}
+              </button>
+            </div>
+            @if (similarExpense() === item.id) {
+              <app-similar-expenses [id]="'similar-' + item.id" [path]="similarPath(item.id)" [categories]="categories" />
+            }
+            @if (receiptExpense() === item.id) {
+              <app-receipts [id]="'receipts-' + item.id" [path]="receiptPath(item.id)" />
+            }
+          </div>
+        </details>
+      </li>
+    }
+  </ul>
   <button type="button" class="secondary" (click)="load()" [disabled]="loading() || saving()">Actualizar gastos</button>
   @if (next() !== null) { <button type="button" class="secondary" (click)="load(true)" [disabled]="loading() || saving()">Ver más gastos</button> }
   </div>

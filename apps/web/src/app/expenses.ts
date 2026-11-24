@@ -117,7 +117,12 @@ export class Expenses implements OnInit {
   receiptPath(id:string){return `${this.itemPath(id)}/${id}/receipts`;}
   openReceipts(id:string|null){
     this.receiptExpense.set(id);
-    if(id)setTimeout(()=>{if(this.alive)document.getElementById('receipts-'+id)?.scrollIntoView({block:'nearest'});});
+    if (!id) return;
+    const details = document.getElementById('expense-details-' + id);
+    if (details instanceof HTMLDetailsElement) details.open = true;
+    setTimeout(() => {
+      if (this.alive) document.getElementById('receipts-' + id)?.scrollIntoView?.({ block: 'nearest' });
+    });
   }
   @ViewChildren(Receipts) receiptPanels!: QueryList<Receipts>;
   editorOpen = true;
