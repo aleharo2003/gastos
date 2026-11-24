@@ -8,7 +8,7 @@ from sqlalchemy import text
 from app.db.connection import create_migration_engine
 
 
-PRIVATE_TABLES = frozenset({'espacios', 'miembros_espacio', 'perfiles', 'cuentas', 'gastos', 'comprobantes', 'planes_gasto', 'ingresos', 'transferencias', 'metas_ahorro', 'compromisos', 'cuotas', 'pagos_cuota', 'variaciones_indice'})
+PRIVATE_TABLES = frozenset({'espacios', 'miembros_espacio', 'perfiles', 'cuentas', 'gastos', 'comprobantes', 'planes_gasto', 'ingresos', 'transferencias', 'metas_ahorro', 'compromisos', 'cuotas', 'pagos_cuota', 'variaciones_indice', 'preferencias_avisos', 'avisos_email', 'entregas_avisos_email', 'piloto_avisos_email'})
 TECHNICAL_TABLES = frozenset({'alembic_version'})
 
 

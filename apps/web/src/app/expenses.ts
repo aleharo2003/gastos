@@ -109,7 +109,7 @@ export class Expenses implements OnInit {
     if(id)setTimeout(()=>{if(this.alive)document.getElementById('receipts-'+id)?.scrollIntoView({block:'nearest'});});
   }
   @ViewChildren(Receipts) receiptPanels!: QueryList<Receipts>;
-  editorOpen = false;
+  editorOpen = true;
   hasPendingWork(): boolean {
     return this.saving() || !!(this.editing || this.description || this.amount || this.category)
       || !!this.receiptPanels?.some(panel => panel.busy() || !!panel.selected());

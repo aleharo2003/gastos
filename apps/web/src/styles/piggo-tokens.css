@@ -24,6 +24,14 @@
   --piggo-warning-surface: light-dark(#FFF1CE, #42321C);
   --piggo-danger: light-dark(#A02C29, #FFB6AF);
   --piggo-danger-surface: light-dark(#FFF0ED, #472521);
+  --piggo-info: light-dark(#215C83, #A7D7F6);
+  --piggo-info-surface: light-dark(#EEF7FF, #213442);
+  --piggo-planning: light-dark(#65418E, #DAC3F7);
+  --piggo-planning-surface: light-dark(#F6F0FE, #362843);
+  --piggo-debt: light-dark(#8A3B61, #F7B8D7);
+  --piggo-debt-surface: light-dark(#FDF0F6, #402635);
+  --piggo-reminder: light-dark(#175D59, #A3E0D8);
+  --piggo-reminder-surface: light-dark(#EAF7F5, #203A38);
   --piggo-font-body: 'Nunito Sans', system-ui, sans-serif;
   --piggo-font-size-body: 1rem;
   --piggo-line-height: 1.5;

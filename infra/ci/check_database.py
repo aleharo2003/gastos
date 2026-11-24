@@ -27,6 +27,8 @@ from check_planning import check_planning
 from check_commitments import check_commitments
 from check_recurrences import check_recurrences
 from check_indexed_commitments import check_indexed_commitments
+from check_reminder_candidates import check_reminder_candidates
+from check_reminder_preferences import check_reminder_preferences
 from check_adjustment_indices import check_adjustment_indices
 from check_variable_commitments import check_variable_commitments
 from jobs_role import provision_jobs
@@ -300,6 +302,13 @@ def check_database(fixture):
         check_recurrences(urls[RUNTIME],urls[MIGRATOR],jobs_url)
         check_variable_commitments(urls[RUNTIME],urls[MIGRATOR],jobs_url)
         check_adjustment_indices(urls[RUNTIME], urls[MIGRATOR])
+        check_reminder_preferences(urls[RUNTIME], urls[MIGRATOR])
+        email_password = secrets.token_urlsafe(32)
+        provision_jobs(database, email_password, email_pilot=True)
+        with engines[MIGRATOR].begin() as connection:
+            connection.exec_driver_sql((ROOT/'infra/postgres/grant-email-pilot.sql').read_text(encoding='utf8'))
+        email_jobs_url = urls[RUNTIME].set(username='app_email_jobs', password=email_password)
+        check_reminder_candidates(urls[RUNTIME], urls[MIGRATOR], jobs_url, email_jobs_url)
         check_indexed_commitments(urls[RUNTIME], urls[MIGRATOR], jobs_url)
         check_planning(urls[RUNTIME], urls[MIGRATOR])
         check_receipts(urls[RUNTIME], urls[MIGRATOR])

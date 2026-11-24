@@ -1,7 +1,5 @@
-<section aria-labelledby="expenses-title">
-  <app-expense-totals [space]="space" [account]="account.id" [revision]="summaryRevision()" />
-  <h3 id="expenses-title">{{ account.id ? "Gastos de " + account.nombre : "Gastos · Todas las cuentas" }}</h3>
-  <p>Los importes de cada gasto conservan su moneda original. Los totales convertidos son una referencia.</p>
+<section class="expense-layout" aria-labelledby="expense-entry-title">
+  <div class="expense-entry">
   @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
   @if (notice()) { <p class="notice" role="status">{{ notice() }}</p> }
   @if(lastSaved()){<button type="button" class="secondary" (click)="openReceipts(lastSaved())">Adjuntar comprobante al gasto guardado</button>}
@@ -9,9 +7,14 @@
     @for(id of [receiptExpense()!]; track id){<app-receipts [id]="'receipts-'+id" [path]="receiptPath(id)" />}
   }
   <details class="expense-editor" [open]="editorOpen" (toggle)="editorOpen = editorPanel.open" #editorPanel>
-    <summary>{{ editing ? 'Editar gasto' : '+ Agregar gasto' }}</summary>
+    <summary id="expense-entry-title">{{ editing ? 'Editar gasto' : 'Registrar gasto' }}</summary>
   <form #expenseForm="ngForm" (ngSubmit)="save()">
     @if (editing) { <h4>Editar gasto · {{ accountName(editAccount) }}</h4> }
+    <label for="expense-amount">Importe</label>
+    <input class="expense-amount" id="expense-amount" name="amount" inputmode="decimal" [(ngModel)]="amount" required placeholder="0,00" aria-describedby="amount-help" [disabled]="saving()">
+    <small id="amount-help">Sin separador de miles. Podés usar coma o punto para los decimales.</small>
+    <label for="expense-description">Descripción</label>
+    <input id="expense-description" name="description" [(ngModel)]="description" (ngModelChange)="clearSuggestion()" (blur)="requestSuggestion()" maxlength="160" required placeholder="Por ejemplo, supermercado" [disabled]="saving()">
     @if (!account.id && !editing) {
       <label for="expense-account">Cuenta del gasto</label>
       <select id="expense-account" name="expenseAccount" [(ngModel)]="createAccount" (ngModelChange)="changeCreateAccount()" required [disabled]="saving()">
@@ -20,10 +23,6 @@
       </select>
       <small>Si falta una cuenta, cargá más cuentas desde el selector superior o agregala en Cuentas.</small>
     }
-    <label for="expense-date">Fecha</label>
-    <input id="expense-date" name="date" type="date" [(ngModel)]="date" required [disabled]="saving()">
-    <label for="expense-description">Descripción</label>
-    <input id="expense-description" name="description" [(ngModel)]="description" (ngModelChange)="clearSuggestion()" (blur)="requestSuggestion()" maxlength="160" required placeholder="Por ejemplo, supermercado" [disabled]="saving()">
     <label for="expense-category">Categoría <small>(opcional)</small></label>
     <select id="expense-category" name="category" [(ngModel)]="category" (ngModelChange)="clearSuggestion()" [disabled]="saving()">
       <option value="">Sin categoría</option>
@@ -40,18 +39,27 @@
       }
       @if(suggestionNote()){<small role="status">{{ suggestionNote() }}</small>}
     }
-    <label for="expense-currency">Moneda</label>
-    <select id="expense-currency" name="currency" [(ngModel)]="currency" [disabled]="saving()">
-      <option value="ARS">ARS · Peso argentino</option><option value="USD">USD · Dólar estadounidense</option><option value="EUR">EUR · Euro</option>
-    </select>
-    <label for="expense-amount">Importe</label>
-    <input id="expense-amount" name="amount" inputmode="decimal" [(ngModel)]="amount" required placeholder="1234,56" aria-describedby="amount-help" [disabled]="saving()">
-    <small id="amount-help">Sin separador de miles. Podés usar coma o punto para los decimales.</small>
-    <button type="submit" [disabled]="expenseForm.invalid || saving() || loading()">{{ saving() ? 'Guardando…' : editing ? 'Guardar cambios' : 'Registrar gasto' }}</button>
+    <div class="expense-date-currency">
+      <div>
+        <label for="expense-date">Fecha</label>
+        <input id="expense-date" name="date" type="date" [(ngModel)]="date" required [disabled]="saving()">
+      </div>
+      <div>
+        <label for="expense-currency">Moneda</label>
+        <select id="expense-currency" name="currency" [(ngModel)]="currency" [disabled]="saving()">
+          <option value="ARS">ARS</option><option value="USD">USD</option><option value="EUR">EUR</option>
+        </select>
+      </div>
+    </div>
+    <button class="save-expense" type="submit" [disabled]="expenseForm.invalid || saving() || loading()">{{ saving() ? 'Guardando…' : editing ? 'Guardar cambios' : 'Guardar gasto' }}</button>
     @if (editing) { <button type="button" class="secondary" (click)="cancelEdit()" [disabled]="saving()">Cancelar edición</button> }
   </form>
   </details>
-  <h4>Gastos registrados</h4>
+  </div>
+  <div class="expense-history">
+  <app-expense-totals [space]="space" [account]="account.id" [revision]="summaryRevision()" />
+  <h3>{{ account.id ? "Gastos de " + account.nombre : "Gastos · Todas las cuentas" }}</h3>
+  <p>Los importes de cada gasto conservan su moneda original. Los totales convertidos son una referencia.</p>
   <details class="filters" [open]="!!appliedFilters()">
     <summary>Filtrar gastos {{ appliedFilters() ? '· Filtros aplicados' : '' }}</summary>
     <form #filtersForm="ngForm" (ngSubmit)="applyFilters()">
@@ -93,4 +101,5 @@
   }</ul>
   <button type="button" class="secondary" (click)="load()" [disabled]="loading() || saving()">Actualizar gastos</button>
   @if (next() !== null) { <button type="button" class="secondary" (click)="load(true)" [disabled]="loading() || saving()">Ver más gastos</button> }
+  </div>
 </section>

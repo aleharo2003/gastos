@@ -13,6 +13,26 @@ describe('Presupuestos HTTP',()=>{
     app=module.createNestApplication();await app.init();vi.stubEnv('API_BASE_URL','https://api.example');fetchMock=vi.fn().mockImplementation(async()=>new Response(JSON.stringify(value)));vi.stubGlobal('fetch',fetchMock);
   });
   afterEach(async()=>{await app.close();vi.unstubAllEnvs();vi.unstubAllGlobals();});
+  it('solo usa el token y el espacio para consultar o guardar los avisos propios', async () => {
+    const route = `/api/spaces/${space}/reminder-preferences`;
+    const preferences = {
+      canal:'ninguno', dias_anticipacion:5, hora_local:'18:45',
+      vencimientos:true, vencidas:false, resumen_semanal:false,
+    };
+    fetchMock.mockImplementation(async () => new Response(JSON.stringify(preferences)));
+    await request(app.getHttpServer()).get(route).expect(401);
+    await request(app.getHttpServer()).post(route).set('Authorization','Bearer token')
+      .send({...preferences,usuario_id:randomUUID()}).expect(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+    await request(app.getHttpServer()).get(route).set('Authorization','Bearer token')
+      .expect(200).expect(preferences).expect('Cache-Control','no-store');
+    await request(app.getHttpServer()).post(route).set('Authorization','Bearer token')
+      .send(preferences).expect(200).expect(preferences);
+    expect(fetchMock.mock.calls[1][0].pathname).toBe(`/spaces/${space}/reminder-preferences`);
+    expect(fetchMock.mock.calls[1][1]).toMatchObject({ method:'PUT', body:JSON.stringify(preferences) });
+    fetchMock.mockImplementation(async () => new Response(JSON.stringify({...preferences,hora_local:'24:00'})));
+    await request(app.getHttpServer()).get(route).set('Authorization','Bearer token').expect(502);
+  });
   it('requiere token y reenvia lectura y guardado sin cache',async()=>{
     await request(app.getHttpServer()).get(path).expect(401);expect(fetchMock).not.toHaveBeenCalled();
     await request(app.getHttpServer()).get(path).set('Authorization','Bearer token').expect(200).expect(value).expect('Cache-Control','no-store');

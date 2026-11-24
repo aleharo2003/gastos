@@ -30,15 +30,48 @@ export function validPlan(v:unknown):boolean {
   return true;
 }
 
-@Controller('api/spaces/:space/spending-plan')
+type PlanningResource = 'spending-plan' | 'reminder-preferences';
+
+function validReminderPreferences(value: unknown): boolean {
+  if (!record(value) || !keys(value, [
+    'canal', 'dias_anticipacion', 'hora_local', 'vencimientos', 'vencidas', 'resumen_semanal',
+  ])) return false;
+  return (value.canal === 'ninguno' || value.canal === 'email' || value.canal === 'push') &&
+    typeof value.dias_anticipacion === 'number' && Number.isInteger(value.dias_anticipacion) &&
+    value.dias_anticipacion >= 0 && value.dias_anticipacion <= 30 &&
+    typeof value.hora_local === 'string' && /^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(value.hora_local) &&
+    typeof value.vencimientos === 'boolean' && typeof value.vencidas === 'boolean' &&
+    typeof value.resumen_semanal === 'boolean';
+}
+
+@Controller('api/spaces/:space')
 export class PlanningController {
   constructor(private readonly auth:AuthService){}
-  @Get()
+  @Get('spending-plan')
   read(@Param('space') space:string,@Req() request:Request,@Res({passthrough:true}) response:Response){return this.forward(space,request,response);}
-  @Post()
+  @Post('spending-plan')
   @HttpCode(200)
   save(@Param('space') space:string,@Body() body:unknown,@Req() request:Request,@Res({passthrough:true}) response:Response){return this.forward(space,request,response,body,true);}
-  private async forward(space:string,request:Request,response:Response,body?:unknown,writing=false){
+  @Get('reminder-preferences')
+  readReminderPreferences(
+    @Param('space') space: string, @Req() request: Request, @Res({ passthrough: true }) response: Response,
+  ) {
+    return this.forward(space, request, response, undefined, false, 'reminder-preferences');
+  }
+
+  @Post('reminder-preferences')
+  @HttpCode(200)
+  saveReminderPreferences(
+    @Param('space') space: string, @Body() body: unknown,
+    @Req() request: Request, @Res({ passthrough: true }) response: Response,
+  ) {
+    return this.forward(space, request, response, body, true, 'reminder-preferences');
+  }
+
+  private async forward(
+    space: string, request: Request, response: Response, body?: unknown,
+    writing = false, resource: PlanningResource = 'spending-plan',
+  ) {
     response.setHeader('Cache-Control','no-store');
     const count=request.rawHeaders.filter((v,i)=>i%2===0&&v.toLowerCase()==='authorization').length;
     const parts=request.headers.authorization?.trim().split(/\s+/)??[];
@@ -46,22 +79,25 @@ export class PlanningController {
       if(count!==1||parts.length!==2||parts[0].toLowerCase()!=='bearer')throw new UnauthorizedException('No autenticado');
       await this.auth.verifyIdentity(parts[1]);
     } catch(error){if(error instanceof UnauthorizedException)response.setHeader('WWW-Authenticate','Bearer');throw error;}
-    if(!UUID.test(space)||(writing&&!validPlan(body)))throw new BadRequestException('Presupuesto invalido');
+    const validate = resource === 'spending-plan' ? validPlan : validReminderPreferences;
+    if (!UUID.test(space) || (writing && !validate(body))) {
+      throw new BadRequestException(resource === 'spending-plan' ? 'Presupuesto invalido' : 'Preferencias invalidas');
+    }
     try {
       const base=new URL(process.env.API_BASE_URL??'http://127.0.0.1:8000');
       const local=['localhost','127.0.0.1','[::1]','api'].includes(base.hostname);
       if(base.username||base.password||base.search||base.hash||base.pathname!=='/'||(base.protocol!=='https:'&&!(base.protocol==='http:'&&local)))throw new Error();
       const raw=process.env.API_TIMEOUT_MS??'5000',timeout=Number(raw);
       if(!/^\d+$/.test(raw)||!Number.isSafeInteger(timeout)||timeout<1||timeout>2147483647)throw new Error();
-      const result=await fetch(new URL(`/spaces/${space.toLowerCase()}/spending-plan`,base),{
-        method:writing?'POST':'GET',redirect:'error',signal:AbortSignal.timeout(timeout),
+      const result=await fetch(new URL(`/spaces/${space.toLowerCase()}/${resource}`,base),{
+        method:writing?(resource==='spending-plan'?'POST':'PUT'):'GET',redirect:'error',signal:AbortSignal.timeout(timeout),
         headers:{Accept:'application/json',Authorization:`Bearer ${parts[1]}`,...(writing?{'Content-Type':'application/json'}:{})},
         ...(writing?{body:JSON.stringify(body)}:{}),
       });
       if([400,401,403,409,422,503].includes(result.status))throw new HttpException('No se pudo completar la operacion',result.status);
       if(!result.ok)throw new Error();
       const data=await boundedJson(result,65536);
-      if(!validPlan(data))throw new Error();
+      if(!validate(data))throw new Error();
       return data;
     } catch(error){if(error instanceof HttpException)throw error;throw new BadGatewayException('No se pudo consultar FastAPI');}
   }

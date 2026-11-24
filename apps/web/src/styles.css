@@ -21,6 +21,59 @@ body {
 button, input, select, summary { touch-action: manipulation; }
 button, select, input:not([type=checkbox]) { min-height: var(--piggo-touch-target); }
 input, select { font-size: 16px; }
+
+.workspace .workspace-panel {
+  display: block;
+  min-inline-size: 0;
+  margin-block: 16px;
+  padding: clamp(12px, 2vw, 24px);
+  background: var(--workspace-panel-surface);
+  border: 1px solid color-mix(in srgb, var(--g-border) 45%, var(--workspace-panel-surface));
+  border-inline-start: 3px solid var(--workspace-panel-accent);
+  border-radius: var(--piggo-radius-card);
+}
+
+.workspace .workspace-panel > section {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.workspace .workspace-panel h3 {
+  margin-block-start: 0;
+  color: var(--workspace-panel-accent);
+}
+
+.expenses-panel {
+  --workspace-panel-accent: var(--piggo-warning);
+  --workspace-panel-surface: var(--piggo-warning-surface);
+}
+.accounts-panel {
+  --workspace-panel-accent: var(--piggo-info);
+  --workspace-panel-surface: var(--piggo-info-surface);
+}
+.planning-panel {
+  --workspace-panel-accent: var(--piggo-planning);
+  --workspace-panel-surface: var(--piggo-planning-surface);
+}
+.savings-panel {
+  --workspace-panel-accent: var(--piggo-positive);
+  --workspace-panel-surface: var(--piggo-positive-surface);
+}
+.debts-panel {
+  --workspace-panel-accent: var(--piggo-debt);
+  --workspace-panel-surface: var(--piggo-debt-surface);
+}
+.reminders-panel {
+  --workspace-panel-accent: var(--piggo-reminder);
+  --workspace-panel-surface: var(--piggo-reminder-surface);
+}
+
+@media (min-width: 1024px) {
+  .workspace button { max-inline-size: max-content; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
