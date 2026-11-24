@@ -1,0 +1,26 @@
+<div class="trend-filters">
+  <label>Moneda <select [ngModel]="currency()" (ngModelChange)="currency.set($event)">
+    <option>ARS</option><option>USD</option><option>EUR</option>
+  </select></label>
+  <label>Categoría <select [ngModel]="category()" (ngModelChange)="category.set($event)">
+    <option value="">Todas</option><option value="sin_categoria">Sin categoría</option>
+    @for (item of categories; track item.id) { <option [value]="item.id">{{ item.label }}</option> }
+  </select></label>
+  <label>Período <select [ngModel]="span()" (ngModelChange)="span.set($event)">
+    <option [ngValue]="6">6 meses</option><option [ngValue]="12">12 meses</option>
+  </select></label>
+</div>
+@if (failed()) {
+  <p role="alert">No pudimos cargar la evolución mensual.</p>
+  <button type="button" class="secondary" (click)="load()">Reintentar</button>
+} @else if (data()) {
+  <ul class="trend-chart" aria-label="Gasto por mes">
+    @for (row of chart(); track row.month) {
+      <li>
+        <span>{{ row.month }}</span>
+        <span class="trend-track" aria-hidden="true"><span [style.width.%]="row.width"></span></span>
+        <strong>{{ currency() }} {{ money(row.amount) }}</strong>
+      </li>
+    }
+  </ul>
+} @else { <p role="status">Cargando evolución mensual…</p> }
