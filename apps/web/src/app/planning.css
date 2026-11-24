@@ -23,3 +23,6 @@
 @media (min-width: 1024px) {
   .budget-layout { grid-template-columns: minmax(0, 32rem) minmax(0, 1fr); }
 }
+
+.category-limits { margin-block: 16px; }
+#budget-category { max-width: 100%; margin-inline-end: 8px; }

@@ -1,9 +1,12 @@
-import { Component, DestroyRef, EventEmitter, inject, Input, OnChanges, Output, signal, SimpleChanges } from '@angular/core';
+import { Component, computed, DestroyRef, EventEmitter, inject, Input, OnChanges, Output, signal, SimpleChanges } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { AuthSession } from './auth-session';
 import { CurrencyTotal,cents,money,rateUnits,reference } from './money-reference';
-import { emptyPlan,normalizedAmount,PlanData,PlanEnvelope,projected,progress,limitUsage } from './planning-math';
+import { emptyPlan,normalizedAmount,PlanData,PlanEnvelope,projected,progress,limitUsage,usageAgainstLimit } from './planning-math';
+import { EXPENSE_CATEGORIES } from './expense-categories';
+
+type CategorySpending = { desde: string; hasta: string; items: { categoria: string | null; moneda: string; total: string }[] };
 type Summary={fecha:string;mes:string;semana_desde:string;semana_hasta:string;totales:CurrencyTotal[]};
 @Component({selector:'app-planning',imports:[FormsModule],templateUrl:'./planning.html',styleUrl:'./planning.css'})
 export class Planning implements OnChanges {
@@ -20,6 +23,21 @@ export class Planning implements OnChanges {
   readonly notice=signal('');
   readonly hidden=signal(false);
   readonly rate=signal('');
+  readonly categorySpending = signal<CategorySpending | null>(null);
+  readonly categoryError = signal(false);
+  categoryToAdd = '';
+  private categoryRequest = 0;
+
+  readonly categoryUsage = computed(() => {
+    const spending = this.categorySpending();
+    const rate = rateUnits(this.rate());
+    return (this.saved()?.datos.limites_categoria ?? []).map(limit => {
+      const totals = spending?.items.filter(row => row.categoria === limit.categoria)
+        .map(row => ({ moneda: row.moneda, mes: row.total }));
+      const spent = totals ? reference(totals, 'mes', limit.moneda, rate) : null;
+      return { categoria: limit.categoria, ...usageAgainstLimit(limit, spent) };
+    });
+  });
   currency:'ARS'|'USD'='USD';
   draft:PlanData=emptyPlan();
   daily='';weekly='';dailyCurrency:'ARS'|'USD'='USD';weeklyCurrency:'ARS'|'USD'='USD';
@@ -31,21 +49,33 @@ export class Planning implements OnChanges {
   constructor(){
     try{this.hidden.set(localStorage.getItem('gastos.totals.hidden')==='true');}catch{}
     window.addEventListener('gastos-reference',this.rateListener);window.addEventListener('gastos-privacy',this.privacyListener);
-    const timer=setInterval(()=>{if(!document.hidden && this.summary() && this.summary()!.fecha!==new Intl.DateTimeFormat('en-CA',{timeZone:'America/Argentina/Buenos_Aires',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()))void this.loadUsage();},60000);
-    inject(DestroyRef).onDestroy(()=>{this.alive=false;this.generation++;this.usageGeneration++;clearInterval(timer);window.removeEventListener('gastos-reference',this.rateListener);window.removeEventListener('gastos-privacy',this.privacyListener);});
+    const timer=setInterval(()=>{
+      if(!document.hidden && this.summary() && this.summary()!.fecha!==new Intl.DateTimeFormat('en-CA',{timeZone:'America/Argentina/Buenos_Aires',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())) {
+        void this.loadUsage();
+        void this.loadCategoryUsage();
+      }
+    },60000);
+    inject(DestroyRef).onDestroy(()=>{this.alive=false;this.generation++;this.usageGeneration++;this.categoryRequest++;clearInterval(timer);window.removeEventListener('gastos-reference',this.rateListener);window.removeEventListener('gastos-privacy',this.privacyListener);});
   }
   ngOnChanges(changes:SimpleChanges){
     if(changes['space']){
       this.generation++;this.loading.set(false);this.saving.set(false);this.notice.set('');
       this.saved.set(null);this.draft=emptyPlan();this.dirty=false;this.rate.set('');
+      this.categoryRequest++;
+      this.categorySpending.set(null);
+      this.categoryError.set(false);
+      this.categoryToAdd = '';
       try{const value=JSON.parse(localStorage.getItem('gastos.reference.'+this.space)??'null');if(typeof value?.rate==='string'&&rateUnits(value.rate))this.rate.set(value.rate);}catch{}
       void this.load();
     }
     if(changes['space']||changes['revision'])void this.loadUsage();
+    if (!changes['space'] && (changes['compact'] || changes['revision'])) void this.loadCategoryUsage();
   }
   private get path(){return `/api/spaces/${encodeURIComponent(this.space)}/spending-plan`;}
   private accept(value:PlanEnvelope){
     this.saved.set(value);this.draft=structuredClone(value.datos);
+    this.categoryToAdd = '';
+    void this.loadCategoryUsage();
     this.daily=value.datos.limites.diario?.importe??'';this.weekly=value.datos.limites.semanal?.importe??'';
     this.dailyCurrency=value.datos.limites.diario?.moneda??'USD';this.weeklyCurrency=value.datos.limites.semanal?.moneda??'USD';this.dirty=false;
   }
@@ -66,6 +96,44 @@ export class Planning implements OnChanges {
       if(this.alive&&generation===this.usageGeneration)this.summary.set(value);
     }catch{if(this.alive&&generation===this.usageGeneration)this.usageError.set('No pudimos actualizar el consumo global.');}
   }
+  async loadCategoryUsage(): Promise<void> {
+    const request = ++this.categoryRequest;
+    this.categorySpending.set(null);
+    this.categoryError.set(false);
+    if (this.compact || !this.saved()?.datos.limites_categoria?.length) return;
+    try {
+      const report = await this.auth.accountRequest<CategorySpending>(
+        'GET', `/api/spaces/${encodeURIComponent(this.space)}/expense-category-summary`,
+      );
+      if (!Array.isArray(report?.items)) throw new Error('Reporte inválido');
+      for (const row of report.items) cents(row.total);
+      if (this.alive && request === this.categoryRequest) this.categorySpending.set(report);
+    } catch {
+      if (this.alive && request === this.categoryRequest) this.categoryError.set(true);
+    }
+  }
+
+  availableCategories() {
+    return EXPENSE_CATEGORIES.filter(category =>
+      !this.draft.limites_categoria?.some(row => row.categoria === category.id));
+  }
+
+  categoryLabel(id: string): string {
+    return EXPENSE_CATEGORIES.find(category => category.id === id)?.label ?? id;
+  }
+
+  addCategoryLimit(): void {
+    if (!this.availableCategories().some(category => category.id === this.categoryToAdd)) return;
+    (this.draft.limites_categoria ??= []).push({ categoria: this.categoryToAdd, moneda: 'ARS', importe: '' });
+    this.categoryToAdd = '';
+    this.dirty = true;
+  }
+
+  removeCategoryLimit(id: string): void {
+    this.draft.limites_categoria = (this.draft.limites_categoria ?? []).filter(limit => limit.categoria !== id);
+    this.dirty = true;
+  }
+
   async save(){
     if(this.saving()||this.loading()||!this.saved())return;
     const diario=this.daily.trim()?normalizedAmount(this.daily):null,semanal=this.weekly.trim()?normalizedAmount(this.weekly):null;
@@ -74,6 +142,13 @@ export class Planning implements OnChanges {
       this.error.set('Revisá los conceptos y los importes: usá valores positivos con hasta dos decimales.');return;
     }
     const datos:PlanData={limites:{diario:diario?{moneda:this.dailyCurrency,importe:diario}:null,semanal:semanal?{moneda:this.weeklyCurrency,importe:semanal}:null},conceptos};
+    const categoryLimits = (this.draft.limites_categoria ?? [])
+      .map(limit => ({ ...limit, importe: normalizedAmount(limit.importe) ?? '' }));
+    if (categoryLimits.some(limit => !limit.importe)) {
+      this.error.set('Ingresá un importe positivo para cada límite por categoría, con hasta dos decimales.');
+      return;
+    }
+    if (categoryLimits.length || this.saved()!.datos.limites_categoria?.length) datos.limites_categoria = categoryLimits;
     const version=this.saved()!.version;const generation=this.generation;
     this.saving.set(true);this.error.set('');this.notice.set('');
     try{const result=await this.auth.accountRequest<PlanEnvelope>('POST',this.path,{version,datos});if(this.alive&&generation===this.generation){this.accept(result);this.notice.set('Presupuesto guardado. No se crearon gastos.');}}

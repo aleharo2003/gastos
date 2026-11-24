@@ -47,6 +47,37 @@ describe('Plan compartido y límites globales',()=>{
     expect(c.dirty).toBe(true);
     expect(input.value).toBe('240');
   });
+  it('guarda, calcula y quita un límite mensual por categoría', async () => {
+    const { f, c, request } = await setup();
+    const report = { desde: '2026-11-01', hasta: '2026-11-30', items: [
+      { categoria: 'alimentos', moneda: 'ARS', total: '75.00' },
+      { categoria: 'alimentos', moneda: 'USD', total: '0.10' },
+      { categoria: 'ocio', moneda: 'ARS', total: '500.00' },
+    ] };
+    request.mockImplementation(async (method, url, payload) =>
+      method === 'POST' ? { version: 2, datos: payload.datos } : report);
+    c.categoryToAdd = 'alimentos';
+    c.addCategoryLimit();
+    c.draft.limites_categoria![0].importe = '100,0';
+    await c.save();
+    await f.whenStable();
+
+    const writes = () => request.mock.calls.filter(call => call[0] === 'POST');
+    expect(writes()[0][2].datos.limites_categoria).toEqual([
+      { categoria: 'alimentos', moneda: 'ARS', importe: '100.00' },
+    ]);
+    expect(c.categoryUsage()[0].spent).toBeNull();
+    c.rate.set('100');
+    f.detectChanges();
+    expect(c.categoryUsage()[0].spent).toBe(8500n);
+    expect(f.nativeElement.querySelector('.category-limits').textContent).toContain('15,00');
+    expect(f.nativeElement.querySelector('.category-limits').textContent).toContain('Estás cerca del límite');
+
+    c.removeCategoryLimit('alimentos');
+    await c.save();
+    expect(writes()[1][2].datos.limites_categoria).toEqual([]);
+    expect(c.categoryUsage()).toEqual([]);
+  });
   it('no descarta cambios al recargar sin confirmación',async()=>{
     const {c,request}=await setup();c.dirty=true;c.weekly='321';const calls=request.mock.calls.length;
     vi.spyOn(window,'confirm').mockReturnValue(false);await c.load();expect(request.mock.calls.length).toBe(calls);expect(c.weekly).toBe('321');

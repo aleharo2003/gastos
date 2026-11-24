@@ -13,7 +13,7 @@ export function cents(value:string):bigint {
 export function money(value:bigint):string {
   return (value/100n).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'.')+','+(value%100n).toString().padStart(2,'0');
 }
-export function reference(rows:CurrencyTotal[],period:'dia'|'mes'|'semana',currency:'ARS'|'USD',rate:bigint|null):bigint|null {
+export function reference(rows:(Pick<CurrencyTotal, 'moneda'> & Partial<CurrencyTotal>)[],period:'dia'|'mes'|'semana',currency:'ARS'|'USD',rate:bigint|null):bigint|null {
   let native=0n,other=0n;
   for(const row of rows) {
     const amount=cents(row[period] ?? 'invalid');
