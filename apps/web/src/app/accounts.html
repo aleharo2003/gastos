@@ -21,8 +21,37 @@
   @if (notice()) { <p class="notice" role="status">{{ notice() }}</p> }
   @if (loading()) { <p role="status">Cargando cuentas…</p> }
   @if (!items().length && !loading() && !error()) { <p>Todavía no tenés cuentas. Agregá la primera.</p> }
-  <ul>
-    @for (account of items(); track account.id) { <li>{{ account.nombre }}<button type="button" class="secondary" (click)="choose(account.id)">Ver gastos de {{ account.nombre }}</button></li> }
+  <ul class="account-grid">
+    @for (account of items(); track account.id) {
+      <li class="account-card">
+        <h4>{{ account.nombre }}</h4>
+        <div class="account-actions">
+          <button type="button" class="secondary" (click)="toggleBalance(account.id)"
+            [attr.aria-label]="(expandedBalance() === account.id ? 'Ocultar saldo de ' : 'Ver saldo de ') + account.nombre"
+            [attr.aria-expanded]="expandedBalance() === account.id" [attr.aria-controls]="'account-balance-' + account.id">
+            {{ expandedBalance() === account.id ? 'Ocultar saldo' : 'Ver saldo' }}
+          </button>
+          <button type="button" class="secondary" (click)="choose(account.id)"
+            [attr.aria-label]="'Ver gastos de ' + account.nombre">Ver gastos</button>
+        </div>
+        <div class="account-balance" [id]="'account-balance-' + account.id" [hidden]="expandedBalance() !== account.id">
+          @if (expandedBalance() === account.id) {
+            @if (balance(); as result) {
+              @if (result.totales.length) {
+                <dl>
+                  @for (total of result.totales; track total.moneda) {
+                    <div><dt>{{ total.moneda }}</dt><dd>{{ balanceAmount(total.saldo) }}</dd></div>
+                  }
+                </dl>
+              } @else { <p>No hay saldos disponibles.</p> }
+            } @else if (balanceError()) {
+              <p role="alert">No pudimos cargar el saldo.</p>
+              <button type="button" class="secondary" (click)="loadBalance(account.id)">Reintentar</button>
+            } @else { <p role="status">Cargando saldo…</p> }
+          }
+        </div>
+      </li>
+    }
   </ul>
   <button type="button" class="secondary" (click)="load()" [disabled]="loading() || saving()">Actualizar lista</button>
   @if (next() !== null) {

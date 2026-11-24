@@ -5,8 +5,8 @@ import { Transfers } from './transfers';
 import { Incomes } from './incomes';
 import { ReminderPreferences } from './reminder-preferences';
 import { Planning } from './planning';
-import { Expenses } from './expenses';
-import { Component, DestroyRef, inject, Input, OnInit, signal, ViewChild } from '@angular/core';
+import { Expenses, showAmount } from './expenses';
+import { Component, DestroyRef, effect, inject, Input, OnInit, signal, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { DOCUMENT } from '@angular/common';
@@ -14,6 +14,7 @@ import { AuthSession } from './auth-session';
 
 type Account = { id: string; espacio_id: string; nombre: string };
 type Page = { items: Account[]; next_offset: number | null };
+type AccountBalance = { totales: { moneda: string; saldo: string }[] };
 
 @Component({
   selector: 'app-accounts', imports: [FormsModule, Expenses, Planning, Incomes, Transfers, SavingsGoals, Commitments, DueOverview, ReminderPreferences],
@@ -31,6 +32,11 @@ export class Accounts implements OnInit {
   readonly tab = signal<'today' | 'expenses' | 'accounts' | 'plan' | 'savings' | 'debts' | 'reminders'>(
     inject(DOCUMENT).defaultView?.matchMedia?.('(max-width: 767px)').matches ? 'expenses' : 'today',
   );
+  readonly expandedBalance = signal<string | null>(null);
+  readonly balance = signal<AccountBalance | null>(null);
+  readonly balanceError = signal(false);
+  readonly amountsHidden = signal(false);
+
   @ViewChild(Commitments) commitments?: Commitments;
   @ViewChild(Expenses) expenses?: Expenses;
   @ViewChild(Incomes) incomes?: Incomes;
@@ -68,7 +74,57 @@ export class Accounts implements OnInit {
   private readonly auth = inject(AuthSession);
   private alive = true;
   private pending?: { id: string; nombre: string };
-  constructor() { inject(DestroyRef).onDestroy(() => { this.alive = false; }); }
+  private balanceRequest = 0;
+  private readonly privacyListener = (event: Event) => {
+    this.amountsHidden.set((event as CustomEvent).detail === true);
+  };
+
+  constructor() {
+    try { this.amountsHidden.set(localStorage.getItem('gastos.totals.hidden') === 'true'); } catch {}
+    window.addEventListener('gastos-privacy', this.privacyListener);
+    effect(() => {
+      if (this.tab() !== 'accounts') this.closeBalance();
+    });
+    inject(DestroyRef).onDestroy(() => {
+      this.alive = false;
+      window.removeEventListener('gastos-privacy', this.privacyListener);
+    });
+  }
+
+  toggleBalance(id: string): void {
+    if (this.expandedBalance() === id) {
+      this.closeBalance();
+      return;
+    }
+    this.expandedBalance.set(id);
+    void this.loadBalance(id);
+  }
+
+  async loadBalance(id: string): Promise<void> {
+    const request = ++this.balanceRequest;
+    this.balance.set(null);
+    this.balanceError.set(false);
+    try {
+      const result = await this.auth.accountRequest<AccountBalance>(
+        'GET', `/api/spaces/${encodeURIComponent(this.space)}/account-balance?account=${encodeURIComponent(id)}`,
+      );
+      if (!Array.isArray(result?.totales)) throw new Error('Saldo inválido');
+      if (this.alive && request === this.balanceRequest) this.balance.set(result);
+    } catch {
+      if (this.alive && request === this.balanceRequest) this.balanceError.set(true);
+    }
+  }
+
+  private closeBalance(): void {
+    this.balanceRequest++;
+    this.expandedBalance.set(null);
+    this.balance.set(null);
+    this.balanceError.set(false);
+  }
+
+  balanceAmount(value: string): string {
+    return this.amountsHidden() ? '••••' : showAmount(value);
+  }
   ngOnInit(): void { void this.load(); }
   private get path() { return `/api/spaces/${encodeURIComponent(this.space)}/accounts`; }
 
@@ -83,7 +139,11 @@ export class Accounts implements OnInit {
       const rows = more ? [...this.items(), ...page.items] : page.items;
       this.items.set([...new Map(rows.map(row => [row.id, row])).values()]);
       this.next.set(page.next_offset);
-
+      const expanded = this.expandedBalance();
+      if (!more && expanded) {
+        if (rows.some(account => account.id === expanded)) void this.loadBalance(expanded);
+        else this.closeBalance();
+      }
     } catch {
       if (this.alive) this.error.set('No pudimos cargar tus cuentas. Volvé a intentar.');
     } finally { if (this.alive) this.loading.set(false); }
