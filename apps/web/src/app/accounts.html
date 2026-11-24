@@ -87,6 +87,9 @@
             [attr.aria-label]="'Ver gastos de ' + account.nombre">Ver gastos</button>
           <button type="button" class="secondary" (click)="editAccount(account)" [disabled]="renaming()"
             [attr.aria-label]="'Editar nombre de ' + account.nombre">Editar nombre</button>
+          <button type="button" class="secondary" (click)="setAccountActive(account, false)"
+            [disabled]="!!changingState() || loading() || inactiveLoading() || renaming()"
+            [attr.aria-label]="'Desactivar ' + account.nombre">Desactivar</button>
         </div>
         @if (editingAccount()?.id === account.id) {
           <form (ngSubmit)="renameAccount()" #renameForm="ngForm">
@@ -122,6 +125,30 @@
   <button type="button" class="secondary" (click)="load()" [disabled]="loading() || saving()">Actualizar lista</button>
   @if (next() !== null) {
     <button type="button" class="secondary" (click)="load(true)" [disabled]="loading() || saving()">Ver más</button>
+  }
+  <button type="button" class="secondary" (click)="toggleInactive()" [attr.aria-expanded]="showInactive()">
+    {{ showInactive() ? 'Ocultar cuentas inactivas' : 'Ver cuentas inactivas' }}
+  </button>
+  @if (showInactive()) {
+    <section aria-labelledby="inactive-accounts-title">
+      <h4 id="inactive-accounts-title">Cuentas inactivas</h4>
+      @if (inactiveLoading()) { <p role="status">Cargando cuentas inactivas…</p> }
+      <ul class="account-grid">
+        @for (account of inactiveAccounts(); track account.id) {
+          <li class="account-card">
+            <h5>{{ account.nombre }}</h5>
+            <button type="button" class="secondary" (click)="setAccountActive(account, true)"
+              [disabled]="!!changingState() || loading() || inactiveLoading() || renaming()"
+              [attr.aria-label]="'Reactivar ' + account.nombre">Reactivar</button>
+          </li>
+        } @empty {
+          @if (!inactiveLoading() && !error()) { <li>No hay cuentas inactivas.</li> }
+        }
+      </ul>
+      @if (inactiveOffset() !== null && inactiveAccounts().length > 0) {
+        <button type="button" class="secondary" (click)="loadInactive(true)" [disabled]="inactiveLoading()">Ver más inactivas</button>
+      }
+    </section>
   }
   <form #accountForm="ngForm" (ngSubmit)="save()">
     <label for="account-name">Nombre de la nueva cuenta</label>
