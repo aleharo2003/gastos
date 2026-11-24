@@ -19,6 +19,7 @@ describe('Plan compartido y límites globales',()=>{
     expect(c.limit('semanal')!.spent).toBe(25000n);
     expect(f.nativeElement.textContent).toContain('Superaste el límite por');
     expect(f.nativeElement.textContent).toContain('125,0%');
+    expect(f.nativeElement.querySelector('.limit-balance strong')?.textContent).toContain('USD 50,00');
   });
   it('guarda solo configuración versionada, normaliza el importe y conserva borrador ante conflicto',async()=>{
     const {c,request}=await setup();c.weekly='220,50';c.dirty=true;
@@ -29,6 +30,22 @@ describe('Plan compartido y límites globales',()=>{
   it('el ojo oculta montos y gráficos del presupuesto',async()=>{
     const {f}=await setup();window.dispatchEvent(new CustomEvent('gastos-privacy',{detail:true}));f.detectChanges();
     expect(f.nativeElement.textContent).not.toContain('125,0%');expect(f.nativeElement.textContent).not.toContain('200,00');expect(f.nativeElement.querySelector('form')).toBeNull();
+  });
+  it('conserva el borrador al cerrar y abrir el editor', async () => {
+    const { f, c } = await setup();
+    const editor: HTMLDetailsElement = f.nativeElement.querySelector('.budget-editor');
+    const input = editor.querySelector<HTMLInputElement>('#weekly-limit')!;
+    expect(editor.open).toBe(false);
+    editor.open = true;
+    input.value = '240';
+    input.dispatchEvent(new Event('input'));
+    editor.open = false;
+    f.detectChanges();
+    editor.open = true;
+    f.detectChanges();
+    expect(c.weekly).toBe('240');
+    expect(c.dirty).toBe(true);
+    expect(input.value).toBe('240');
   });
   it('no descarta cambios al recargar sin confirmación',async()=>{
     const {c,request}=await setup();c.dirty=true;c.weekly='321';const calls=request.mock.calls.length;
