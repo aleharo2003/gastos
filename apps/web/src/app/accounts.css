@@ -36,3 +36,23 @@ section{border-top:1px solid var(--g-border);padding-top:12px;margin-top:20px}h3
 }
 
 @media(max-width:480px){.sections{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+.account-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+  align-items: start;
+  gap: 12px;
+}
+.account-card {
+  margin: 0;
+  padding: 16px;
+  border: 1px solid var(--g-border);
+  border-radius: var(--piggo-radius-card);
+  background: var(--g-surface);
+}
+.account-card h4 { margin: 0; font-size: 1.125rem; }
+.account-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.account-actions button { width: auto; margin: 0; }
+.account-balance dl { margin-block: 12px 0; }
+.account-balance dl div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 8px; }
+.account-balance dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }

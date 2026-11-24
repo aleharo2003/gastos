@@ -4,9 +4,9 @@ import { Accounts } from './accounts';
 import { AuthSession } from './auth-session';
 
 describe('Cuentas', () => {
-  function setup() {
+  function setup(balance = vi.fn().mockResolvedValue({ totales: [] })) {
     const request = vi.fn().mockResolvedValue({ items: [], next_offset: null });
-    TestBed.configureTestingModule({ imports:[Accounts], providers:[{provide:AuthSession,useValue:{accountRequest:(...args:unknown[]) => String(args[1]).endsWith('/due-overview') ? Promise.resolve({fecha:'2026-11-17',fin_semana:'2026-11-22',grupos:{hoy:{cantidad:0,totales:[],items:[]},semana:{cantidad:0,totales:[],items:[]},vencidas:{cantidad:0,totales:[],items:[]}},resumen_mes:[],saldos:[],presupuesto:{limites:{diario:null,semanal:null},gastos:[]}}) : String(args[1]).includes('/installment-drafts?') ? Promise.resolve({borradores:0,items:[],next_offset:null}) : String(args[1]).includes('/installments?month=') ? Promise.resolve({mes:new URL('https://local'+String(args[1])).searchParams.get('month'),totales:[],items:[],next_offset:null}) : String(args[1]).includes('account-balance') ? Promise.resolve({totales:[]}) : (String(args[1]).includes('/incomes') || String(args[1]).includes('/transfers') || String(args[1]).includes('/savings-goals') || String(args[1]).includes('/commitments')) ? Promise.resolve({items:[],next_offset:null}) : String(args[1]).includes('spending-plan') ? Promise.resolve({version:0,datos:{limites:{diario:null,semanal:null},conceptos:[]}}) : String(args[1]).includes('expense-summary') ? Promise.resolve({fecha:'2026-11-11',mes:'2026-11',totales:[]}) : String(args[1]).includes('/expenses') ? Promise.resolve({items:[],next_offset:null}) : request(...args)}}] });
+    TestBed.configureTestingModule({ imports:[Accounts], providers:[{provide:AuthSession,useValue:{accountRequest:(...args:unknown[]) => String(args[1]).endsWith('/due-overview') ? Promise.resolve({fecha:'2026-11-17',fin_semana:'2026-11-22',grupos:{hoy:{cantidad:0,totales:[],items:[]},semana:{cantidad:0,totales:[],items:[]},vencidas:{cantidad:0,totales:[],items:[]}},resumen_mes:[],saldos:[],presupuesto:{limites:{diario:null,semanal:null},gastos:[]}}) : String(args[1]).includes('/installment-drafts?') ? Promise.resolve({borradores:0,items:[],next_offset:null}) : String(args[1]).includes('/installments?month=') ? Promise.resolve({mes:new URL('https://local'+String(args[1])).searchParams.get('month'),totales:[],items:[],next_offset:null}) : String(args[1]).includes('account-balance') ? balance(...args) : (String(args[1]).includes('/incomes') || String(args[1]).includes('/transfers') || String(args[1]).includes('/savings-goals') || String(args[1]).includes('/commitments')) ? Promise.resolve({items:[],next_offset:null}) : String(args[1]).includes('spending-plan') ? Promise.resolve({version:0,datos:{limites:{diario:null,semanal:null},conceptos:[]}}) : String(args[1]).includes('expense-summary') ? Promise.resolve({fecha:'2026-11-11',mes:'2026-11',totales:[]}) : String(args[1]).includes('/expenses') ? Promise.resolve({items:[],next_offset:null}) : request(...args)}}] });
     const fixture = TestBed.createComponent(Accounts);
     fixture.componentRef.setInput('space','space-1'); fixture.detectChanges();
     return { fixture, request, component:fixture.componentInstance };
@@ -18,6 +18,39 @@ describe('Cuentas', () => {
     component.name='Efectivo'; await component.save(); fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('Efectivo');
     expect(component.name).toBe('');
+  });
+  it('consulta solo el saldo de la cuenta abierta y respeta la privacidad', async () => {
+    const balance = vi.fn().mockImplementation(async (_method, path: string) => ({
+      totales: path.endsWith('?account=one') ? [
+        { moneda: 'ARS', ingresos: '1250.50', gastos: '0.00', saldo: '1250.50' },
+        { moneda: 'USD', ingresos: '20.00', gastos: '0.00', saldo: '20.00' },
+      ] : [],
+    }));
+    const { fixture, component, request } = setup(balance);
+    await fixture.whenStable();
+    request.mockResolvedValue({ items: [
+      { id: 'one', espacio_id: 'space-1', nombre: 'Banco' },
+      { id: 'two', espacio_id: 'space-1', nombre: 'Efectivo' },
+    ], next_offset: null });
+    await component.load();
+    component.tab.set('accounts');
+    fixture.detectChanges();
+    balance.mockClear();
+
+    fixture.nativeElement.querySelector('button[aria-label="Ver saldo de Banco"]').click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(balance.mock.calls).toEqual([['GET', '/api/spaces/space-1/account-balance?account=one']]);
+    const panel: HTMLElement = fixture.nativeElement.querySelector('#account-balance-one');
+    expect(panel.textContent).toContain('1.250,50');
+    expect(panel.textContent).toContain('20,00');
+    expect(fixture.nativeElement.querySelector('#account-balance-two').hidden).toBe(true);
+
+    window.dispatchEvent(new CustomEvent('gastos-privacy', { detail: true }));
+    fixture.detectChanges();
+    expect(panel.textContent).toContain('••••');
+    expect(panel.textContent).not.toContain('1.250,50');
+    window.dispatchEvent(new CustomEvent('gastos-privacy', { detail: false }));
   });
   it('conserva ID ante respuesta perdida y evita doble envio', async () => {
     const {fixture,request,component}=setup(); await fixture.whenStable();
