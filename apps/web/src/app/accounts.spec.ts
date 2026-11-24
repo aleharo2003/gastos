@@ -20,9 +20,12 @@ describe('Cuentas', () => {
     expect(component.name).toBe('');
   });
   it('consulta solo el saldo de la cuenta abierta y respeta la privacidad', async () => {
-    const balance = vi.fn().mockResolvedValue({ totales: [
-      { moneda: 'ARS', saldo: '1250.50' }, { moneda: 'USD', saldo: '20.00' },
-    ] });
+    const balance = vi.fn().mockImplementation(async (_method, path: string) => ({
+      totales: path.endsWith('?account=one') ? [
+        { moneda: 'ARS', ingresos: '1250.50', gastos: '0.00', saldo: '1250.50' },
+        { moneda: 'USD', ingresos: '20.00', gastos: '0.00', saldo: '20.00' },
+      ] : [],
+    }));
     const { fixture, component, request } = setup(balance);
     await fixture.whenStable();
     request.mockResolvedValue({ items: [
