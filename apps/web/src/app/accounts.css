@@ -56,3 +56,23 @@ section{border-top:1px solid var(--g-border);padding-top:12px;margin-top:20px}h3
 .account-balance dl { margin-block: 12px 0; }
 .account-balance dl div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 8px; }
 .account-balance dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.budget-alerts {
+  margin-block: 12px;
+  padding: 12px;
+  border: 1px solid var(--g-border);
+  border-radius: var(--piggo-radius-card);
+  background: var(--g-surface);
+}
+.budget-alerts h4 { margin: 0; }
+.budget-alerts ul { margin: 8px 0 0; }
+.budget-alerts li {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  background: var(--piggo-warning-surface);
+  color: var(--piggo-warning);
+}
+.budget-alerts li.over-limit { background: var(--piggo-danger-surface); color: var(--piggo-danger); }
+.budget-alerts button { width: fit-content; margin-top: 8px; }

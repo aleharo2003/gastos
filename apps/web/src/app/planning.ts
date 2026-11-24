@@ -12,6 +12,7 @@ type Summary={fecha:string;mes:string;semana_desde:string;semana_hasta:string;to
 export class Planning implements OnChanges {
   @Input({required:true}) space='';
   @Input() compact=true;
+  @Input() showCategoryAlerts = false;
   @Input() revision=0;
   @Output() configure=new EventEmitter<void>();
   readonly saved=signal<PlanEnvelope|null>(null);
@@ -38,6 +39,10 @@ export class Planning implements OnChanges {
       return { categoria: limit.categoria, ...usageAgainstLimit(limit, spent) };
     });
   });
+  readonly categoryAlerts = computed(() => this.hidden()
+    ? []
+    : this.categoryUsage().filter(item => item.progress?.warning));
+
   currency:'ARS'|'USD'='USD';
   draft:PlanData=emptyPlan();
   daily='';weekly='';dailyCurrency:'ARS'|'USD'='USD';weeklyCurrency:'ARS'|'USD'='USD';
@@ -69,7 +74,7 @@ export class Planning implements OnChanges {
       void this.load();
     }
     if(changes['space']||changes['revision'])void this.loadUsage();
-    if (!changes['space'] && (changes['compact'] || changes['revision'])) void this.loadCategoryUsage();
+    if (!changes['space'] && (changes['compact'] || changes['revision'] || changes['showCategoryAlerts'])) void this.loadCategoryUsage();
   }
   private get path(){return `/api/spaces/${encodeURIComponent(this.space)}/spending-plan`;}
   private accept(value:PlanEnvelope){
@@ -100,7 +105,7 @@ export class Planning implements OnChanges {
     const request = ++this.categoryRequest;
     this.categorySpending.set(null);
     this.categoryError.set(false);
-    if (this.compact || !this.saved()?.datos.limites_categoria?.length) return;
+    if ((this.compact && !this.showCategoryAlerts) || !this.saved()?.datos.limites_categoria?.length) return;
     try {
       const report = await this.auth.accountRequest<CategorySpending>(
         'GET', `/api/spaces/${encodeURIComponent(this.space)}/expense-category-summary`,
