@@ -47,6 +47,19 @@ describe('Presupuestos HTTP',()=>{
     }
     expect(fetchMock).not.toHaveBeenCalled();
   });
+  it('reenvía límites por categoría y rechaza categorías inválidas o duplicadas', async () => {
+    const limit = { categoria: 'alimentos', moneda: 'ARS', importe: '30000.00' };
+    const withLimits = { ...value, datos: { ...value.datos, limites_categoria: [limit] } };
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(withLimits)));
+    await request(app.getHttpServer()).post(path).set('Authorization', 'Bearer token')
+      .send(withLimits).expect(200).expect(withLimits);
+    expect(fetchMock.mock.calls[0][1].body).toBe(JSON.stringify(withLimits));
+    for (const limits of [[limit, limit], [{ ...limit, categoria: 'inventada' }], null]) {
+      await request(app.getHttpServer()).post(path).set('Authorization', 'Bearer token')
+        .send({ ...value, datos: { ...value.datos, limites_categoria: limits } }).expect(400);
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
   it('conserva conflicto y rechaza respuestas remotas invalidas',async()=>{
     fetchMock.mockResolvedValue(new Response('{}',{status:409}));await request(app.getHttpServer()).post(path).set('Authorization','Bearer token').send(value).expect(409);
     fetchMock.mockResolvedValue(new Response('{"version":0,"datos":{}}'));await request(app.getHttpServer()).get(path).set('Authorization','Bearer token').expect(502);

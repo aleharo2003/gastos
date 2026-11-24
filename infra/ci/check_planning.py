@@ -36,6 +36,18 @@ def check_planning(runtime_url,migration_url):
             except HTTPException as e:return e.status_code
         with ThreadPoolExecutor(max_workers=2) as pool:outcomes=list(pool.map(concurrent,['210.00','220.00']))
         assert sorted(outcomes)==[2,409]
+        current = read()
+        category_limits = [{'categoria': 'alimentos', 'moneda': 'ARS', 'importe': '30000.00'}]
+        with_limit = save({'version': 2, 'datos': current['datos'] | {'limites_categoria': category_limits}}, editor)
+        assert with_limit['version'] == 3 and read(reader)['datos']['limites_categoria'] == category_limits
+        denied(lambda: save({'version': 3, 'datos': current['datos']}, reader), 403)
+
+        legacy_data = current['datos'] | {'limites': {'diario': None, 'semanal': None}}
+        legacy_write = save({'version': 3, 'datos': legacy_data})
+        assert legacy_write == {'version': 4, 'datos': legacy_data | {'limites_categoria': category_limits}}
+        assert save({'version': 3, 'datos': legacy_data}) == legacy_write
+        cleared = save({'version': 4, 'datos': legacy_data | {'limites_categoria': []}})
+        assert cleared == {'version': 5, 'datos': legacy_data}
         with runtime_transaction(runtime,usuario_id=other,espacio_id=other) as s:
             assert s.execute(text('SELECT count(*) FROM public.planes_gasto')).scalar_one()==0
             assert s.execute(text('UPDATE public.planes_gasto SET version=99 WHERE espacio_id=:s'),{'s':owner}).rowcount==0

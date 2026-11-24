@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import text
 from app.accounts import execute, require_member, NO_STORE
-from app.expenses import AMOUNT
+from app.expenses import AMOUNT, CATEGORIES, Category
 
 router=APIRouter()
 
@@ -39,13 +39,19 @@ class Limits(BaseModel):
     diario: Money | None = None
     semanal: Money | None = None
 
+class CategoryLimit(Money):
+    categoria: Category
+
 class Plan(BaseModel):
     model_config=ConfigDict(extra='forbid')
     limites: Limits
     conceptos: list[Concept]=Field(max_length=40)
+    limites_categoria: list[CategoryLimit] = Field(default_factory=list, max_length=len(CATEGORIES))
     @model_validator(mode='after')
     def unique(self):
         if len({row.id for row in self.conceptos})!=len(self.conceptos):raise ValueError('Conceptos duplicados')
+        if len({row.categoria for row in self.limites_categoria}) != len(self.limites_categoria):
+            raise ValueError('Límites duplicados por categoría')
         return self
 
 class PlanUpdate(BaseModel):
@@ -67,6 +73,11 @@ def save_plan(session,user,space,body):
     session.execute(text('INSERT INTO public.planes_gasto(espacio_id,version,datos) VALUES (:s,0,CAST(:d AS jsonb)) ON CONFLICT (espacio_id) DO NOTHING'),{'s':space,'d':json.dumps(EMPTY)})
     row=session.execute(text('SELECT version,datos FROM public.planes_gasto WHERE espacio_id=:s FOR UPDATE'),{'s':space}).mappings().one()
     desired=body.datos.model_dump(mode='json')
+    # Los clientes anteriores guardan el plan sin enviar este campo.
+    if 'limites_categoria' not in body.datos.model_fields_set:
+        desired['limites_categoria'] = row['datos'].get('limites_categoria', [])
+    if not desired['limites_categoria']:
+        del desired['limites_categoria']
     if row['datos']==desired:return dict(row)
     if row['version']!=body.version:raise HTTPException(409,'El presupuesto cambió en otra sesión',headers=NO_STORE)
     result=session.execute(text('UPDATE public.planes_gasto SET datos=CAST(:d AS jsonb),version=version+1 WHERE espacio_id=:s RETURNING version,datos'),{'s':space,'d':json.dumps(desired)}).mappings().one()
