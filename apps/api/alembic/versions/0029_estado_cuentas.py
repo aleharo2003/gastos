@@ -17,7 +17,7 @@ def upgrade() -> None:
     op.execute("""
     CREATE FUNCTION public.verificar_cuentas_activas() RETURNS trigger
     LANGUAGE plpgsql SET search_path TO pg_catalog, public
-    AS $$
+    AS $cuentas$
     DECLARE
         ids uuid[];
         estado boolean;
@@ -39,8 +39,9 @@ def upgrade() -> None:
         END LOOP;
         RETURN NULL;
     END;
-    $;
+    $cuentas$;
     """)
+    op.execute('REVOKE ALL ON FUNCTION public.verificar_cuentas_activas() FROM PUBLIC, anon, authenticated, service_role')
     for table in TABLES:
         op.execute(f"""
             CREATE TRIGGER verificar_cuentas_activas
