@@ -25,6 +25,13 @@ type AccountBalance = { totales: { moneda: string; saldo: string }[] };
 export class Accounts implements OnInit {
   @Input({ required: true }) space = '';
   readonly items = signal<Account[]>([]);
+  readonly movementAccount = signal<Account | null>(null);
+
+  openAccountHistory(account: Account | null = null): void {
+    this.movementAccount.set(account);
+    this.tab.set('movements');
+  }
+
   readonly selected = signal<Account[]>([{id:'',espacio_id:'',nombre:'Todas las cuentas'}]);
   readonly loading = signal(false);
   readonly saving = signal(false);

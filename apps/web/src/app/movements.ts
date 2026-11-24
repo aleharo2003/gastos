@@ -19,6 +19,7 @@ const emptyFilters = { desde: '', hasta: '', tipo: '', moneda: '', cuenta: '', t
 })
 export class Movements implements OnInit {
   readonly space = input.required<string>();
+  readonly initialAccount = input<{ id: string; nombre: string } | null>(null);
   readonly accounts = input<readonly { id: string; nombre: string }[]>([]);
   readonly moreAccounts = input(false);
   readonly accountsLoading = input(false);
@@ -40,7 +41,12 @@ export class Movements implements OnInit {
     inject(DestroyRef).onDestroy(() => { this.request++; });
   }
 
+  accountAvailable(id: string): boolean {
+    return this.accounts().some(account => account.id === id);
+  }
+
   ngOnInit(): void {
+    this.filters.cuenta = this.initialAccount()?.id ?? '';
     void this.load();
   }
 

@@ -1,7 +1,7 @@
 <nav class="sections" aria-label="Secciones del espacio">
   <button type="button" (click)="tab.set('today')" [attr.aria-current]="tab() === 'today' ? 'page' : null">Hoy</button>
   <button type="button" (click)="tab.set('expenses')" [attr.aria-current]="tab() === 'expenses' ? 'page' : null">Gastos</button>
-  <button type="button" (click)="tab.set('movements')" [attr.aria-current]="tab() === 'movements' ? 'page' : null">Movimientos</button>
+  <button type="button" (click)="openAccountHistory()" [attr.aria-current]="tab() === 'movements' ? 'page' : null">Movimientos</button>
   <button type="button" (click)="tab.set('accounts')" [attr.aria-current]="tab() === 'accounts' ? 'page' : null">Cuentas</button>
   <button type="button" (click)="tab.set('plan')" [attr.aria-current]="tab() === 'plan' ? 'page' : null">Presupuesto</button>
   <button type="button" (click)="tab.set('savings')" [attr.aria-current]="tab() === 'savings' ? 'page' : null">Ahorros</button>
@@ -85,6 +85,8 @@
           </button>
           <button type="button" class="secondary" (click)="choose(account.id)"
             [attr.aria-label]="'Ver gastos de ' + account.nombre">Ver gastos</button>
+          <button type="button" class="secondary" (click)="openAccountHistory(account)"
+            [attr.aria-label]="'Ver movimientos de ' + account.nombre">Ver movimientos</button>
           <button type="button" class="secondary" (click)="editAccount(account)" [disabled]="renaming()"
             [attr.aria-label]="'Editar nombre de ' + account.nombre">Editar nombre</button>
           <button type="button" class="secondary" (click)="setAccountActive(account, false)"
@@ -140,6 +142,8 @@
             <button type="button" class="secondary" (click)="setAccountActive(account, true)"
               [disabled]="!!changingState() || loading() || inactiveLoading() || renaming()"
               [attr.aria-label]="'Reactivar ' + account.nombre">Reactivar</button>
+            <button type="button" class="secondary" (click)="openAccountHistory(account)"
+              [attr.aria-label]="'Ver movimientos de ' + account.nombre">Ver movimientos</button>
           </li>
         } @empty {
           @if (!inactiveLoading() && !error()) { <li>No hay cuentas inactivas.</li> }
@@ -199,6 +203,6 @@
   [hidden]="tab() !== 'plan' && tab() !== 'expenses'" [revision]="planRevision()" (configure)="tab.set('plan')" />
 
 @if (tab() === 'movements') {
-  <app-movements [space]="space" [accounts]="items()" [amountsHidden]="amountsHidden()"
+  <app-movements [space]="space" [accounts]="items()" [initialAccount]="movementAccount()" [amountsHidden]="amountsHidden()"
     [moreAccounts]="next() !== null" [accountsLoading]="loading()" (loadAccounts)="load(true)" />
 }
