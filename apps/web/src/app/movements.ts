@@ -21,6 +21,7 @@ const emptyFilters = { desde: '', hasta: '', tipo: '', moneda: '', cuenta: '', t
 })
 export class Movements implements OnInit {
   readonly space = input.required<string>();
+  readonly initialReport = input<{ desde: string; hasta: string; categoria: string; moneda: string } | null>(null);
   readonly initialAccount = input<{ id: string; nombre: string } | null>(null);
   readonly accounts = input<readonly { id: string; nombre: string }[]>([]);
   readonly moreAccounts = input(false);
@@ -56,6 +57,8 @@ export class Movements implements OnInit {
 
   ngOnInit(): void {
     this.filters.cuenta = this.initialAccount()?.id ?? '';
+    const report = this.initialReport();
+    if (report) Object.assign(this.filters, report, { tipo: 'gasto' });
     void this.load();
   }
 
