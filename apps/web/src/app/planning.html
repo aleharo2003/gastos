@@ -30,7 +30,7 @@
         }
       }
     </div>
-    @if(saved() && !saved()!.datos.limites.diario && !saved()!.datos.limites.semanal){<p>No hay límites globales configurados.</p>}
+    @if(saved() && !saved()!.datos.limites.diario && !saved()!.datos.limites.semanal && !saved()!.datos.limites.mensual){<p>No hay límites globales configurados.</p>}
     @if(summary();as current){<small>Hoy: {{ current.fecha }} · Semana: {{ current.semana_desde }} al {{ current.semana_hasta }} (lunes a domingo, Argentina).</small>}
     @if(!compact && saved()){
       @if (categoryUsage().length) {
@@ -76,6 +76,13 @@
               <legend>Límites globales</legend>
               <label for="daily-limit">Límite diario</label><div class="money-input"><input id="daily-limit" name="daily" inputmode="decimal" [(ngModel)]="daily" (ngModelChange)="dirty=true" placeholder="Sin límite"><select name="dailyCurrency" aria-label="Moneda del límite diario" [(ngModel)]="dailyCurrency" (ngModelChange)="dirty=true"><option>USD</option><option>ARS</option></select></div>
               <label for="weekly-limit">Límite semanal</label><div class="money-input"><input id="weekly-limit" name="weekly" inputmode="decimal" [(ngModel)]="weekly" (ngModelChange)="dirty=true" placeholder="Por ejemplo, 200"><select name="weeklyCurrency" aria-label="Moneda del límite semanal" [(ngModel)]="weeklyCurrency" (ngModelChange)="dirty=true"><option>USD</option><option>ARS</option></select></div>
+              <label for="monthly-limit">Límite mensual global</label>
+              <div class="money-input">
+                <input id="monthly-limit" name="monthly" inputmode="decimal" [(ngModel)]="monthly"
+                  (ngModelChange)="dirty=true" placeholder="Sin límite">
+                <select name="monthlyCurrency" aria-label="Moneda del límite mensual global"
+                  [(ngModel)]="monthlyCurrency" (ngModelChange)="dirty=true"><option>ARS</option><option>USD</option></select>
+              </div>
               <h4>Límites mensuales por categoría</h4>
               @for (row of draft.limites_categoria ?? []; track row.categoria) {
                 <div class="concept">

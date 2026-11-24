@@ -3,7 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { AuthSession } from './auth-session';
 import { CurrencyTotal,cents,money,rateUnits,reference } from './money-reference';
-import { emptyPlan,normalizedAmount,PlanData,PlanEnvelope,projected,progress,limitUsage,usageAgainstLimit } from './planning-math';
+import { emptyPlan,normalizedAmount,PlanData,PlanEnvelope,LimitPeriod,projected,progress,limitUsage,usageAgainstLimit } from './planning-math';
 import { EXPENSE_CATEGORIES } from './expense-categories';
 
 type CategorySpending = { desde: string; hasta: string; items: { categoria: string | null; moneda: string; total: string }[] };
@@ -46,6 +46,8 @@ export class Planning implements OnChanges {
   currency:'ARS'|'USD'='USD';
   draft:PlanData=emptyPlan();
   daily='';weekly='';dailyCurrency:'ARS'|'USD'='USD';weeklyCurrency:'ARS'|'USD'='USD';
+  monthly = '';
+  monthlyCurrency: 'ARS' | 'USD' = 'ARS';
   dirty=false;
   private alive=true;private generation=0;private usageGeneration=0;
   private readonly auth=inject(AuthSession);
@@ -82,6 +84,8 @@ export class Planning implements OnChanges {
     this.categoryToAdd = '';
     void this.loadCategoryUsage();
     this.daily=value.datos.limites.diario?.importe??'';this.weekly=value.datos.limites.semanal?.importe??'';
+    this.monthly = value.datos.limites.mensual?.importe ?? '';
+    this.monthlyCurrency = value.datos.limites.mensual?.moneda ?? 'ARS';
     this.dailyCurrency=value.datos.limites.diario?.moneda??'USD';this.weeklyCurrency=value.datos.limites.semanal?.moneda??'USD';this.dirty=false;
   }
   async load(){
@@ -142,11 +146,15 @@ export class Planning implements OnChanges {
   async save(){
     if(this.saving()||this.loading()||!this.saved())return;
     const diario=this.daily.trim()?normalizedAmount(this.daily):null,semanal=this.weekly.trim()?normalizedAmount(this.weekly):null;
+    const monthly = this.monthly.trim() ? normalizedAmount(this.monthly) : null;
     const conceptos=this.draft.conceptos.map(row=>({...row,concepto:row.concepto.trim(),importe:normalizedAmount(row.importe)??''}));
-    if((this.daily.trim()&&!diario)||(this.weekly.trim()&&!semanal)||conceptos.some(row=>!row.importe||!row.concepto||[...row.concepto].length>80)){
+    if((this.daily.trim()&&!diario)||(this.weekly.trim()&&!semanal)||(this.monthly.trim()&&!monthly)||conceptos.some(row=>!row.importe||!row.concepto||[...row.concepto].length>80)){
       this.error.set('Revisá los conceptos y los importes: usá valores positivos con hasta dos decimales.');return;
     }
     const datos:PlanData={limites:{diario:diario?{moneda:this.dailyCurrency,importe:diario}:null,semanal:semanal?{moneda:this.weeklyCurrency,importe:semanal}:null},conceptos};
+    if (monthly || this.saved()!.datos.limites.mensual) {
+      datos.limites.mensual = monthly ? { moneda: this.monthlyCurrency, importe: monthly } : null;
+    }
     const categoryLimits = (this.draft.limites_categoria ?? [])
       .map(limit => ({ ...limit, importe: normalizedAmount(limit.importe) ?? '' }));
     if (categoryLimits.some(limit => !limit.importe)) {
@@ -163,9 +171,9 @@ export class Planning implements OnChanges {
   add(){if(this.draft.conceptos.length>=40)return;this.draft.conceptos.push({id:crypto.randomUUID(),concepto:'',importe:'',moneda:'ARS',frecuencia:'semana'});this.dirty=true;}
   remove(id:string){if(!window.confirm('¿Quitar este concepto del presupuesto? No se borrarán gastos reales.'))return;this.draft.conceptos=this.draft.conceptos.filter(row=>row.id!==id);this.dirty=true;}
   show(){this.hidden.set(false);try{localStorage.setItem('gastos.totals.hidden','false');}catch{}window.dispatchEvent(new CustomEvent('gastos-privacy',{detail:false}));}
-  readonly periods=['diario','semanal'] as const;
+  readonly periods = ['diario', 'semanal', 'mensual'] as const;
   readonly money=money;
-  limit(period:'diario'|'semanal'){
+  limit(period: LimitPeriod){
     const limit=this.saved()?.datos.limites[period];if(!limit)return null;
     return limitUsage(limit,this.summary()?.totales,period,this.rate());
   }

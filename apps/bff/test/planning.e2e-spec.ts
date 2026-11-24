@@ -60,6 +60,23 @@ describe('Presupuestos HTTP',()=>{
     }
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+  it('reenvía el límite mensual global y valida su moneda e importe', async () => {
+    const limit = { moneda: 'ARS', importe: '30000.00' };
+    const withMonthly = (mensual: unknown) => ({
+      ...value,
+      datos: { ...value.datos, limites: { ...value.datos.limites, mensual } },
+    });
+    const payload = withMonthly(limit);
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(payload)));
+    await request(app.getHttpServer()).post(path).set('Authorization', 'Bearer token')
+      .send(payload).expect(200).expect(payload);
+    expect(fetchMock.mock.calls[0][1].body).toBe(JSON.stringify(payload));
+    for (const invalid of [{ ...limit, moneda: 'EUR' }, { ...limit, importe: 30000 }]) {
+      await request(app.getHttpServer()).post(path).set('Authorization', 'Bearer token')
+        .send(withMonthly(invalid)).expect(400);
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
   it('conserva conflicto y rechaza respuestas remotas invalidas',async()=>{
     fetchMock.mockResolvedValue(new Response('{}',{status:409}));await request(app.getHttpServer()).post(path).set('Authorization','Bearer token').send(value).expect(409);
     fetchMock.mockResolvedValue(new Response('{"version":0,"datos":{}}'));await request(app.getHttpServer()).get(path).set('Authorization','Bearer token').expect(502);
