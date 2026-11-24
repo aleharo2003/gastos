@@ -85,6 +85,7 @@ export class Expenses implements OnInit {
     if(!value?.categoria || this.category || this.editing || this.saving())return;
     this.category=value.categoria; this.clearSuggestion();
   }
+  reportMonth = '';
   readonly categoryReport = signal<CategoryReport | null>(null);
   readonly reportLoading = signal(false);
   readonly reportError = signal(false);
@@ -114,15 +115,24 @@ export class Expenses implements OnInit {
     if (open) void this.loadCategoryReport();
   }
 
+  selectReportMonth(event: Event): void {
+    const field = event.target as HTMLInputElement;
+    if (!field.validity.valid) return;
+    this.reportMonth = field.value;
+    void this.loadCategoryReport();
+  }
+
   async loadCategoryReport(): Promise<void> {
     const version = ++this.reportRequest;
     this.categoryReport.set(null);
     this.reportLoading.set(true);
     this.reportError.set(false);
-    const account = this.account.id ? '?account=' + encodeURIComponent(this.account.id) : '';
+    const params = new URLSearchParams();
+    if (this.account.id) params.set('account', this.account.id);
+    if (this.reportMonth) params.set('mes', this.reportMonth);
     try {
       const result = await this.auth.accountRequest<CategoryReport>(
-        'GET', `/api/spaces/${encodeURIComponent(this.space)}/expense-category-summary${account}`,
+        'GET', `/api/spaces/${encodeURIComponent(this.space)}/expense-category-summary${params.size ? '?' + params : ''}`,
       );
       if (!Array.isArray(result?.items)) throw new Error('Reporte inválido');
       if (this.alive && version === this.reportRequest) this.categoryReport.set(result);
