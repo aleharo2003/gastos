@@ -37,11 +37,16 @@ const pairs = [
   ['danger', 'danger-surface', 4.5],
   ['info', 'info-surface', 4.5],
   ['planning', 'planning-surface', 4.5],
+  ['debt', 'debt-surface', 4.5],
+  ['reminder', 'reminder-surface', 4.5],
   ['danger', 'planning-surface', 4.5],
   ['border', 'surface', 3], ['border', 'background', 3],
   ['focus', 'surface', 3], ['focus', 'background', 3],
 ];
-for (const surface of ['warning-surface', 'info-surface', 'danger-surface', 'positive-surface', 'planning-surface']) {
+for (const surface of [
+  'warning-surface', 'info-surface', 'danger-surface', 'positive-surface', 'planning-surface',
+  'debt-surface', 'reminder-surface',
+]) {
   pairs.push(['text', surface, 4.5], ['muted', surface, 4.5], ['focus', surface, 3]);
 }
 for (const theme of ['light', 'dark']) {

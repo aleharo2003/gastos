@@ -11,9 +11,12 @@
 <app-due-overview [space]="space" [active]="tab() === 'today'" [hidden]="tab() !== 'today'"
   [accounts]="items()" [moreAccounts]="next() !== null" [accountsLoading]="loading()"
   (loadAccounts)="load(true)" (paymentSaved)="duePaymentSaved()" (openDebts)="tab.set('debts')" />
-<app-reminder-preferences [space]="space" [active]="tab() === 'reminders'" [hidden]="tab() !== 'reminders'" />
-<app-planning [space]="space" [compact]="tab() !== 'plan'" [hidden]="tab() !== 'plan' && tab() !== 'expenses'" [revision]="planRevision()" (configure)="tab.set('plan')" />
-<section [hidden]="tab() !== 'accounts' && items().length > 0" aria-labelledby="accounts-title">
+<app-reminder-preferences class="workspace-panel reminders-panel" [space]="space"
+  [active]="tab() === 'reminders'" [hidden]="tab() !== 'reminders'" />
+<app-planning class="workspace-panel planning-panel" [space]="space" [compact]="tab() !== 'plan'"
+  [hidden]="tab() !== 'plan' && tab() !== 'expenses'" [revision]="planRevision()" (configure)="tab.set('plan')" />
+<section class="workspace-panel accounts-panel" [hidden]="tab() !== 'accounts' && items().length > 0"
+  aria-labelledby="accounts-title">
   <h3 id="accounts-title">Tus cuentas</h3>
   <p>Una cuenta indica dónde tenés tu dinero: efectivo, banco o billetera.</p>
   @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
@@ -37,11 +40,18 @@
   </form>
 </section>
 
-<app-commitments (draftsChanged)="draftCount.set($event)" [hidden]="tab() !== 'debts'" [space]="space" [accounts]="items()" [moreAccounts]="next() !== null" [accountsLoading]="loading()" (loadAccounts)="load(true)" (changed)="planRevision.update(incrementPlan)" />
+<app-commitments class="workspace-panel debts-panel" (draftsChanged)="draftCount.set($event)"
+  [hidden]="tab() !== 'debts'" [space]="space" [accounts]="items()" [moreAccounts]="next() !== null"
+  [accountsLoading]="loading()" (loadAccounts)="load(true)" (changed)="planRevision.update(incrementPlan)" />
 
-<app-savings-goals [hidden]="tab() !== 'savings'" [space]="space" [accounts]="items()" [moreAccounts]="next() !== null" [accountsLoading]="loading()" [revision]="planRevision()" (loadAccounts)="load(true)" (prepareTransfer)="fundGoal($event)" />
-
-<app-transfers [hidden]="tab() !== 'savings'" [space]="space" [accounts]="items()" [moreAccounts]="next() !== null" [accountsLoading]="loading()" (loadAccounts)="load(true)" (changed)="planRevision.update(incrementPlan)" (viewAccount)="choose($event)" />
+<div class="savings-panels" [hidden]="tab() !== 'savings'">
+  <app-savings-goals class="workspace-panel savings-panel" [space]="space" [accounts]="items()"
+    [moreAccounts]="next() !== null" [accountsLoading]="loading()" [revision]="planRevision()"
+    (loadAccounts)="load(true)" (prepareTransfer)="fundGoal($event)" />
+  <app-transfers class="workspace-panel savings-panel" [space]="space" [accounts]="items()"
+    [moreAccounts]="next() !== null" [accountsLoading]="loading()" (loadAccounts)="load(true)"
+    (changed)="planRevision.update(incrementPlan)" (viewAccount)="choose($event)" />
+</div>
 
 <div [hidden]="tab() !== 'expenses'">
   @if (items().length) {
@@ -54,8 +64,10 @@
     @if (next() !== null) { <button type="button" class="secondary" (click)="load(true)" [disabled]="loading() || saving()">Cargar más cuentas</button> }
   }
 @for (account of selected(); track account.id) {
-  <app-incomes [space]="space" [account]="account" [accounts]="items()" [revision]="planRevision()" (changed)="planRevision.update(incrementPlan)" />
-  <app-expenses [space]="space" [account]="account" [accounts]="items()" (summaryChanged)="planRevision.update(incrementPlan)" />
+  <app-incomes class="workspace-panel savings-panel" [space]="space" [account]="account" [accounts]="items()"
+    [revision]="planRevision()" (changed)="planRevision.update(incrementPlan)" />
+  <app-expenses class="workspace-panel expenses-panel" [space]="space" [account]="account" [accounts]="items()"
+    (summaryChanged)="planRevision.update(incrementPlan)" />
 }
 
 </div>
