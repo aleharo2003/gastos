@@ -23,6 +23,16 @@ describe('Gastos HTTP', () => {
     vi.stubGlobal('fetch', fetchMock);
   });
   afterEach(async () => { await app.close(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
+  it('consulta un mes anterior y rechaza meses inválidos', async () => {
+    const path = `/api/spaces/${space}/expense-category-summary`;
+    const report = { desde: '2024-02-01', hasta: '2024-02-29', items: [] };
+    fetchMock.mockResolvedValue(new Response(JSON.stringify(report)));
+    await request(app.getHttpServer()).get(path + '?mes=2024-02').set('Authorization', 'Bearer token')
+      .expect(200).expect(report);
+    expect(new URL(String(fetchMock.mock.calls[0][0])).searchParams.get('mes')).toBe('2024-02');
+    await request(app.getHttpServer()).get(path + '?mes=2024-13').set('Authorization', 'Bearer token').expect(400);
+  });
+
   it('consulta el desglose del mes por cuenta, con token y sin caché', async () => {
     const reportPath = `/api/spaces/${space}/expense-category-summary`;
     const auth = 'Bearer token';
