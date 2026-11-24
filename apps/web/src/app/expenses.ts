@@ -55,7 +55,7 @@ export class Expenses implements OnInit {
   readonly error = signal('');
   readonly notice = signal('');
   readonly next = signal<number | null>(null);
-  readonly categories = EXPENSE_CATEGORIES;
+  readonly categories = [...EXPENSE_CATEGORIES];
   category = '';
   readonly suggestion = signal<CategorySuggestion|null>(null);
   readonly suggesting = signal(false);
