@@ -36,7 +36,7 @@ HISTORY = text("""
           AND strpos(lower(descripcion), lower(:texto))>0
     ), pagina AS (
         SELECT f.id, f.fecha, f.tipo, f.descripcion, f.moneda, f.importe::text AS importe,
-               o.nombre AS origen, d.nombre AS destino
+               o.nombre AS origen, d.nombre AS destino, f.categoria
         FROM filtrados f
         LEFT JOIN public.cuentas o ON o.id=f.origen_id AND o.espacio_id=:space
         LEFT JOIN public.cuentas d ON d.id=f.destino_id AND d.espacio_id=:space

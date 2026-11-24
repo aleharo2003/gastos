@@ -11,7 +11,7 @@ const currencies = ['ARS', 'USD', 'EUR'];
 const keys = ['desde', 'hasta', 'tipo', 'moneda', 'cuenta', 'texto', 'cursor', 'categoria'];
 const isName = (value: unknown) => value === null || (typeof value === 'string' && value.length <= 160);
 
-type Item = { id: string; fecha: string; tipo: string; descripcion: string; moneda: string; importe: string; origen: string | null; destino: string | null };
+type Item = { id: string; fecha: string; tipo: string; descripcion: string; moneda: string; importe: string; origen: string | null; destino: string | null; categoria?: string | null };
 type Totals = { moneda: string; ingresos: string; gastos: string; transferencias: string };
 type Page = { items: Item[]; totales: Totals[]; next_cursor: string | null };
 
@@ -67,9 +67,9 @@ export class MovementsController {
         if (!row || typeof row.id !== 'string' || !uuid.test(row.id) || typeof row.fecha !== 'string' || !day.test(row.fecha) ||
             !kinds.includes(row.tipo) || !currencies.includes(row.moneda) || typeof row.descripcion !== 'string' ||
             row.descripcion.length > 320 || typeof row.importe !== 'string' || !amount.test(row.importe) ||
-            !isName(row.origen) || !isName(row.destino)) throw new Error();
-        const { id, fecha, tipo, descripcion, moneda, importe, origen, destino } = row;
-        return { id, fecha, tipo, descripcion, moneda, importe, origen, destino };
+            !isName(row.origen) || !isName(row.destino) || (row.categoria !== undefined && !isName(row.categoria))) throw new Error();
+        const { id, fecha, tipo, descripcion, moneda, importe, origen, destino, categoria } = row;
+        return { id, fecha, tipo, descripcion, moneda, importe, origen, destino, ...(categoria === undefined ? {} : { categoria }) };
       });
       const totales = page.totales.map(row => {
         if (!row || !currencies.includes(row.moneda) ||
