@@ -39,6 +39,39 @@
   @if (notice()) { <p class="notice" role="status">{{ notice() }}</p> }
   @if (loading()) { <p role="status">Cargando cuentas…</p> }
   @if (!items().length && !loading() && !error()) { <p>Todavía no tenés cuentas. Agregá la primera.</p> }
+  @if (tab() === 'accounts') {
+    <section class="account-card" aria-labelledby="account-totals-title">
+      <h4 id="account-totals-title">Saldo de todas las cuentas</h4>
+      @if (amountsHidden()) {
+        <p>Importes ocultos.</p>
+      } @else if (balancesError()) {
+        <p role="alert">No pudimos cargar los saldos.</p>
+        <button type="button" class="secondary" (click)="loadBalances()">Reintentar</button>
+      } @else if (balances(); as result) {
+        <dl>
+          @for (row of result.totales; track row.moneda) {
+            <div><dt>{{ row.moneda }}</dt><dd>{{ balanceAmount(row.saldo) }}</dd></div>
+          }
+        </dl>
+        <label for="account-total-currency">Consolidar en</label>
+        <select id="account-total-currency" [ngModel]="balanceCurrency()" (ngModelChange)="balanceCurrency.set($event)">
+          <option value="ARS">ARS</option>
+          <option value="USD">USD</option>
+        </select>
+        @if (consolidatedBalance(); as total) {
+          @if (total.value === null) {
+            <p>Hay monedas que no se pueden convertir con la cotización disponible.</p>
+          } @else {
+            <p><strong>{{ balanceCurrency() }} {{ formattedConsolidatedBalance(total.value) }}</strong></p>
+            @if (total.estimated) { <p>Conversión estimada · 1 USD = ARS {{ referenceRate() }}</p> }
+          }
+        }
+        <button type="button" class="secondary" (click)="loadBalances()">Actualizar saldos</button>
+      } @else {
+        <p role="status">Cargando saldos…</p>
+      }
+    </section>
+  }
   <ul class="account-grid">
     @for (account of items(); track account.id) {
       <li class="account-card">
