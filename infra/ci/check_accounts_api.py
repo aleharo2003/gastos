@@ -1,9 +1,12 @@
 """Contrato de cuentas contra PostgreSQL real en la fixture de CI."""
 from concurrent.futures import ThreadPoolExecutor
+from datetime import date
 from uuid import uuid4
 from fastapi import HTTPException
 from sqlalchemy import text
-from app.accounts import AccountInput, AccountRename, create_account, list_accounts, rename_account
+from sqlalchemy.exc import IntegrityError
+from app.accounts import AccountInput, AccountRename, create_account, list_accounts, rename_account, set_account_state
+from app.expenses import ExpenseInput, create_expense
 from app.db.connection import create_runtime_engine, create_migration_engine
 from app.db.unit_of_work import runtime_transaction
 
@@ -44,8 +47,25 @@ def check_accounts_api(runtime_url, migration_url):
         denied(lambda: rename(other, other, 'Caja', 'Otro'), 404)
         # Colision con ID ajeno no filtra nombre ni permite apropiarse de la cuenta.
         denied(lambda: create(other, other, account), 409)
+        expense = ExpenseInput(id=uuid4(), fecha=date.today(), descripcion='Compra',
+                               moneda='ARS', importe='10.00')
+        with runtime_transaction(runtime, usuario_id=owner, espacio_id=owner) as s:
+            original = create_expense(s, owner, owner, account.id, expense)
+            assert set_account_state(s, owner, owner, account.id, False)['activa'] is False
         with runtime_transaction(runtime, usuario_id=reader, espacio_id=owner) as s:
-            assert len(list_accounts(s, reader, owner)['items']) == 1
+            assert list_accounts(s, reader, owner)['items'] == []
+            assert list_accounts(s, reader, owner, inactive=True)['items'][0]['id'] == account.id
+        with runtime_transaction(runtime, usuario_id=owner, espacio_id=owner) as s:
+            assert create_expense(s, owner, owner, account.id, expense) == original
+        try:
+            with runtime_transaction(runtime, usuario_id=owner, espacio_id=owner) as s:
+                create_expense(s, owner, owner, account.id, expense.model_copy(update={'id': uuid4()}))
+        except IntegrityError as error:
+            assert error.orig.diag.constraint_name == 'cuenta_activa_para_movimientos'
+        else:
+            raise AssertionError('La cuenta inactiva aceptó un nuevo gasto')
+        with runtime_transaction(runtime, usuario_id=owner, espacio_id=owner) as s:
+            assert set_account_state(s, owner, owner, account.id, True)['activa'] is True
         with runtime_transaction(runtime, usuario_id=other, espacio_id=other) as s:
             assert list_accounts(s, other, other)['items'] == []
         with migrator.begin() as c:
@@ -60,6 +80,7 @@ def check_accounts_api(runtime_url, migration_url):
     finally:
         with migrator.begin() as c:
             for user in users:
+                c.execute(text('DELETE FROM public.gastos WHERE espacio_id=:u'), {'u':user})
                 c.execute(text('DELETE FROM public.cuentas WHERE espacio_id=:u'), {'u':user})
             for user in users:
                 c.execute(text('DELETE FROM public.miembros_espacio WHERE usuario_id=:u OR espacio_id=:u'), {'u':user})

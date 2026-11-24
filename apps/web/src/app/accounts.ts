@@ -33,6 +33,11 @@ export class Accounts implements OnInit {
   readonly tab = signal<'today' | 'expenses' | 'accounts' | 'plan' | 'savings' | 'debts' | 'reminders'>(
     inject(DOCUMENT).defaultView?.matchMedia?.('(max-width: 767px)').matches ? 'expenses' : 'today',
   );
+  readonly showInactive = signal(false);
+  readonly inactiveAccounts = signal<Account[]>([]);
+  readonly inactiveOffset = signal<number | null>(0);
+  readonly inactiveLoading = signal(false);
+  readonly changingState = signal<string | null>(null);
   readonly expandedBalance = signal<string | null>(null);
   readonly balance = signal<AccountBalance | null>(null);
   readonly balanceError = signal(false);
@@ -61,8 +66,23 @@ export class Accounts implements OnInit {
   @ViewChild(Expenses) expenses?: Expenses;
   @ViewChild(Incomes) incomes?: Incomes;
   @ViewChild(Transfers) transfers?: Transfers;
-  fundGoal(goal:GoalTransfer){
-    if(!this.items().some(row=>row.id===goal.cuenta_id))this.items.update(rows=>[...rows,{id:goal.cuenta_id,espacio_id:this.space,nombre:goal.cuenta_nombre}]);
+  async fundGoal(goal: GoalTransfer): Promise<void> {
+    if (!this.items().some(row => row.id === goal.cuenta_id)) {
+      try {
+        const account = await this.auth.accountRequest<Account & { activa: boolean }>(
+          'GET', `${this.path}/${encodeURIComponent(goal.cuenta_id)}`,
+        );
+        if (!this.alive) return;
+        if (!account.activa) {
+          this.transfers?.error.set('La cuenta de la meta está inactiva. Reactivala desde Cuentas para hacer un aporte.');
+          return;
+        }
+        this.items.update(rows => rows.some(row => row.id === account.id) ? rows : [...rows, account]);
+      } catch {
+        if (this.alive) this.transfers?.error.set('No pudimos consultar la cuenta de la meta.');
+        return;
+      }
+    }
     this.transfers?.prepareGoal(goal);
   }
   choose(id: string): void {
@@ -206,6 +226,63 @@ export class Accounts implements OnInit {
     } catch {
       if (this.alive) this.error.set('No pudimos cargar tus cuentas. Volvé a intentar.');
     } finally { if (this.alive) this.loading.set(false); }
+  }
+
+  toggleInactive(): void {
+    this.showInactive.update(show => !show);
+    if (this.showInactive()) void this.loadInactive();
+  }
+
+  async loadInactive(more = false): Promise<void> {
+    const offset = more ? this.inactiveOffset() : 0;
+    if (offset === null || this.inactiveLoading()) return;
+    this.inactiveLoading.set(true);
+    this.error.set('');
+    try {
+      const page = await this.auth.accountRequest<Page>('GET', `${this.path}?offset=${offset}&inactivas=true`);
+      if (!this.alive) return;
+      this.inactiveAccounts.update(rows => [...new Map((more ? [...rows, ...page.items] : page.items).map(row => [row.id, row])).values()]);
+      this.inactiveOffset.set(page.next_offset);
+    } catch {
+      if (this.alive) this.error.set('No pudimos cargar las cuentas inactivas.');
+    } finally {
+      if (this.alive) this.inactiveLoading.set(false);
+    }
+  }
+
+  async setAccountActive(account: Account, active: boolean): Promise<void> {
+    if (this.changingState() || this.loading() || this.inactiveLoading() || this.renaming()) return;
+    if (!active && (this.expenses?.hasPendingWork() || this.incomes?.hasPendingWork())) {
+      this.error.set('Terminá o limpiá los formularios abiertos antes de desactivar la cuenta.');
+      return;
+    }
+    this.changingState.set(account.id);
+    this.error.set('');
+    this.notice.set('');
+    try {
+      const updated = await this.auth.accountRequest<Account & { activa: boolean }>(
+        'PATCH', `${this.path}/${encodeURIComponent(account.id)}/status`, { activa: active },
+      );
+      if (!this.alive) return;
+      if (updated.activa) {
+        this.inactiveAccounts.update(rows => rows.filter(row => row.id !== account.id));
+      } else {
+        this.items.update(rows => rows.filter(row => row.id !== account.id));
+        if (this.expandedBalance() === account.id) this.closeBalance();
+        if (this.editingAccount()?.id === account.id) this.closeAccountEditor();
+        if (this.selected()[0]?.id === account.id) {
+          this.selected.set([{ id: '', espacio_id: this.space, nombre: 'Todas las cuentas' }]);
+        }
+      }
+      this.notice.set(active ? 'Cuenta reactivada.' : 'Cuenta desactivada. Su historial se conserva.');
+      await Promise.all([this.load(), this.showInactive() ? this.loadInactive() : Promise.resolve()]);
+    } catch (error) {
+      if (this.alive) this.error.set(error instanceof HttpErrorResponse && error.status === 403
+        ? 'No tenés permiso para cambiar el estado de esta cuenta.'
+        : 'No pudimos confirmar el cambio de estado. Podés reintentar.');
+    } finally {
+      if (this.alive) this.changingState.set(null);
+    }
   }
 
   editAccount(account: Account): void {

@@ -1,6 +1,6 @@
 from uuid import UUID, uuid4
 
-from sqlalchemy import ForeignKey, Text, UniqueConstraint, Uuid
+from sqlalchemy import ForeignKey, Text, UniqueConstraint, Uuid, true
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -16,3 +16,4 @@ class Cuenta(Base):
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     espacio_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey('public.espacios.id'), nullable=False)
     nombre: Mapped[str] = mapped_column(Text, nullable=False)
+    activa: Mapped[bool] = mapped_column(nullable=False, server_default=true())

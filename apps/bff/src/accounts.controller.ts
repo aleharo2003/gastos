@@ -17,11 +17,12 @@ export class AccountsController {
   constructor(private readonly auth: AuthService) {}
 
   @Get()
-  async list(@Param('space') space: string, @Query('offset') offset: string | undefined, @Req() request: Request, @Res({ passthrough: true }) response: Response) {
+  async list(@Param('space') space: string, @Query('offset') offset: string | undefined, @Query('inactivas') inactive: unknown, @Req() request: Request, @Res({ passthrough: true }) response: Response) {
     response.setHeader('Cache-Control', 'no-store');
     const token = await this.token(request, response);
     if (offset !== undefined && (typeof offset !== 'string' || !/^\d{1,6}$/.test(offset) || Number(offset) > 100000)) throw new BadRequestException('Pagina invalida');
-    return this.forward(token, space, undefined, Number(offset ?? 0));
+    if (inactive !== undefined && inactive !== 'true') throw new BadRequestException('Estado invalido');
+    return this.forward(token, space, undefined, Number(offset ?? 0), undefined, undefined, inactive === 'true');
   }
 
   @Post()
@@ -52,6 +53,27 @@ export class AccountsController {
     return this.forward(token, space, { nombre: data.nombre.trim(), nombre_anterior: data.nombre_anterior }, 0, id.toLowerCase());
   }
 
+  @Get(':account')
+  async detail(@Param('space') space: string, @Param('account') id: string,
+      @Req() request: Request, @Res({ passthrough: true }) response: Response) {
+    response.setHeader('Cache-Control', 'no-store');
+    const token = await this.token(request, response);
+    if (!UUID.test(id)) throw new BadRequestException('Cuenta invalida');
+    return this.forward(token, space, undefined, 0, id.toLowerCase(), 'detail');
+  }
+
+  @Patch(':account/status')
+  async setState(@Param('space') space: string, @Param('account') id: string, @Body() body: unknown,
+      @Req() request: Request, @Res({ passthrough: true }) response: Response) {
+    response.setHeader('Cache-Control', 'no-store');
+    const token = await this.token(request, response);
+    const data = body as { activa?: unknown };
+    if (!UUID.test(id) || !data || Object.keys(data).length !== 1 || typeof data.activa !== 'boolean') {
+      throw new BadRequestException('Cuenta invalida');
+    }
+    return this.forward(token, space, { activa: data.activa }, 0, id.toLowerCase(), 'status');
+  }
+
   private async token(request: Request, response: Response) {
     const count = request.rawHeaders.filter((v, i) => i % 2 === 0 && v.toLowerCase() === 'authorization').length;
     const parts = request.headers.authorization?.trim().split(/\s+/) ?? [];
@@ -65,7 +87,8 @@ export class AccountsController {
     }
   }
 
-  private async forward(token: string, rawSpace: string, body?: { id: string; nombre: string } | { nombre: string; nombre_anterior: string }, offset = 0, accountId?: string) {
+  private async forward(token: string, rawSpace: string, body?: { id: string; nombre: string } | { nombre: string; nombre_anterior: string } | { activa: boolean }, offset = 0, accountId?: string,
+      action?: 'detail' | 'status', inactive = false) {
     if (!UUID.test(rawSpace)) throw new BadRequestException('Espacio invalido');
     const space = rawSpace.toLowerCase();
     try {
@@ -76,18 +99,24 @@ export class AccountsController {
       const rawTimeout = process.env.API_TIMEOUT_MS ?? '5000';
       const timeout = Number(rawTimeout);
       if (!/^\d+$/.test(rawTimeout) || !Number.isSafeInteger(timeout) || timeout < 1 || timeout > 2147483647) throw new Error();
-      const suffix = accountId ? `/${accountId}` : `?offset=${offset}`;
+      const suffix = accountId ? `/${accountId}${action === 'status' ? '/status' : ''}`
+        : `?offset=${offset}${inactive ? '&inactivas=true' : ''}`;
       const result = await fetch(new URL(`/spaces/${space}/accounts${suffix}`, base), {
-        method: accountId ? 'PATCH' : body ? 'POST' : 'GET', redirect: 'error', signal: AbortSignal.timeout(timeout),
+        method: body ? (accountId ? 'PATCH' : 'POST') : 'GET', redirect: 'error', signal: AbortSignal.timeout(timeout),
         headers: { Accept: 'application/json', Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
         ...(body ? { body: JSON.stringify(body) } : {}),
       });
       if ([400, 401, 403, 404, 409, 422, 503].includes(result.status)) throw new HttpException('No se pudo completar la operacion', result.status);
       if (!result.ok) throw new Error();
       const data = await boundedJson(result, 65536);
-      if (body) {
+      if (body || action === 'detail') {
         const row = account(data, space);
         if (accountId && row.id !== accountId) throw new Error();
+        if (action) {
+          const { activa } = data as { activa?: unknown };
+          if (typeof activa !== 'boolean' || (body && 'activa' in body && body.activa !== activa)) throw new Error();
+          return { ...row, activa };
+        }
         return row;
       }
       const page = data as { items: unknown[]; next_offset: number | null };
