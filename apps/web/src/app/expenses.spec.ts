@@ -70,6 +70,34 @@ describe('Gastos', () => {
     expect(details.querySelector('app-receipts')).not.toBeNull();
     fixture.destroy();
   });
+  it('muestra porcentajes por moneda y abre el historial filtrado del reporte', async () => {
+    const { fixture, request, component } = setup();
+    await fixture.whenStable();
+    request.mockResolvedValueOnce({
+      desde: '2026-11-01', hasta: '2026-11-30', items: [
+        { moneda: 'ARS', categoria: 'alimentos', total: '30.00' },
+        { moneda: 'ARS', categoria: null, total: '10.00' },
+        { moneda: 'USD', categoria: 'ocio', total: '1.00' },
+      ],
+    });
+    await component.loadCategoryReport();
+    expect(request).toHaveBeenLastCalledWith('GET', '/api/spaces/space/expense-category-summary?account=account');
+    expect(component.reportGroups().map(group => group.rows.map(row => row.percent)))
+      .toEqual([['75,0%', '25,0%'], ['100,0%']]);
+    fixture.detectChanges();
+    const panel: HTMLElement = fixture.nativeElement.querySelector('.category-report');
+    expect(panel.textContent).toContain('75,0%');
+    window.dispatchEvent(new CustomEvent('gastos-privacy', { detail: true }));
+    fixture.detectChanges();
+    expect(panel.textContent).not.toContain('75,0%');
+    window.dispatchEvent(new CustomEvent('gastos-privacy', { detail: false }));
+
+    component.filterText = 'otro filtro';
+    await component.viewCategoryExpenses(component.reportGroups()[0].rows[1]);
+    expect(request).toHaveBeenLastCalledWith(
+      'GET', '/api/spaces/space/accounts/account/expenses?offset=0&desde=2026-11-01&hasta=2026-11-30&categoria=sin_categoria&moneda=ARS',
+    );
+  });
   it('no actualiza otra cuenta tras destruir el formulario',async()=>{
     const {fixture,request,component}=setup();await fixture.whenStable();
     let finish!: (value:unknown)=>void;request.mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));

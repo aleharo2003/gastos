@@ -73,3 +73,16 @@ li.expense-item { display: block; background: var(--g-surface); padding: 0; }
 .expense-detail-content p { margin: 0 0 8px; }
 .row-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .row-actions button { width: auto; padding: 8px 10px; font-size: .875rem; margin: 0; min-height: 44px; }
+
+.category-report {
+  background: var(--g-surface);
+  border: 1px solid var(--g-border);
+  border-radius: var(--piggo-radius-card);
+  padding: 10px 14px;
+  margin-block: 12px;
+}
+.report-currency { margin-top: 12px; padding-top: 10px; }
+.report-currency h4 { margin: 0; }
+.report-row { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; }
+.report-row span { font-variant-numeric: tabular-nums; }
+.report-currency button { width: fit-content; padding: 6px 10px; }

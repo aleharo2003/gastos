@@ -81,6 +81,40 @@
   <app-expense-totals [space]="space" [account]="account.id" [revision]="summaryRevision()" />
   <h3>{{ account.id ? "Gastos de " + account.nombre : "Gastos · Todas las cuentas" }}</h3>
   <p>Los importes de cada gasto conservan su moneda original. Los totales convertidos son una referencia.</p>
+  <details class="category-report" #categoryPanel (toggle)="toggleCategoryReport(categoryPanel.open)">
+    <summary>¿En qué gasté este mes?</summary>
+    @if (reportLoading()) { <p role="status">Cargando el reporte…</p> }
+    @if (reportError()) {
+      <p role="alert">No pudimos cargar el reporte.</p>
+      <button type="button" class="secondary" (click)="loadCategoryReport()">Reintentar</button>
+    }
+    @if (categoryReport(); as report) {
+      <p>{{ report.desde.split('-').reverse().join('/') }} al {{ report.hasta.split('-').reverse().join('/') }}</p>
+      @if (!report.items.length) { <p>Todavía no hay gastos registrados en este mes.</p> }
+      @for (group of reportGroups(); track group.currency) {
+        <section class="report-currency" [attr.aria-labelledby]="'report-currency-' + group.currency">
+          <h4 [id]="'report-currency-' + group.currency">{{ group.currency }}</h4>
+          <ul>
+            @for (row of group.rows; track row.categoria) {
+              <li>
+                <div class="report-row">
+                  <strong>{{ categoryName(row.categoria) }}</strong>
+                  @if (!reportAmountsHidden()) {
+                    <span>{{ showAmount(row.total) }} · {{ row.percent }}</span>
+                  } @else { <span>••••</span> }
+                </div>
+                <button type="button" class="secondary" (click)="viewCategoryExpenses(row)"
+                  [disabled]="loading() || saving()"
+                  [attr.aria-label]="'Ver gastos de ' + categoryName(row.categoria) + ' en ' + group.currency">
+                  Ver gastos
+                </button>
+              </li>
+            }
+          </ul>
+        </section>
+      }
+    }
+  </details>
   <details class="filters" [open]="!!appliedFilters()">
     <summary>Filtrar gastos {{ appliedFilters() ? '· Filtros aplicados' : '' }}</summary>
     <form #filtersForm="ngForm" (ngSubmit)="applyFilters()">
@@ -108,7 +142,7 @@
       <button type="button" class="secondary" (click)="applyFilters(true)" [disabled]="loading() || saving()">Limpiar filtros</button>
     </form>
   </details>
-  <p>Buscando en todos los gastos de {{ account.nombre }}. {{ items().length }} resultados cargados{{ next() !== null ? '; hay más disponibles.' : '.' }}</p>
+  <p id="expense-results" tabindex="-1">Buscando en todos los gastos de {{ account.nombre }}. {{ items().length }} resultados cargados{{ next() !== null ? '; hay más disponibles.' : '.' }}</p>
   @if (loading()) { <p role="status">Cargando gastos…</p> }
   @if (!items().length && !loading() && !error()) { <p>{{ appliedFilters() ? 'No hay gastos que coincidan. Probá ampliar las fechas o limpiar los filtros.' : 'Todavía no registraste gastos en esta cuenta.' }}</p> }
   <ul class="expense-list">

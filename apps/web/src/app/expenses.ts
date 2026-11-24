@@ -5,8 +5,12 @@ import { AuthSession } from './auth-session';
 import { ExpenseTotals } from './expense-totals';
 import { Receipts } from './receipts';
 import { SimilarExpenses } from './similar-expenses';
+import { cents } from './money-reference';
+import { progress } from './planning-math';
 
 type Expense = { id: string; espacio_id: string; cuenta_id: string; fecha: string; descripcion: string; moneda: string; importe: string; categoria?: string | null; coincidencia_aproximada?: boolean; cuenta_nombre?: string };
+type CategoryTotal = { moneda: string; categoria: string | null; total: string };
+type CategoryReport = { desde: string; hasta: string; items: CategoryTotal[] };
 type CategorySuggestion = {categoria:string|null;coincidencias:number;total:number};
 type Payload = Pick<Expense, 'id' | 'fecha' | 'descripcion' | 'moneda' | 'importe' | 'categoria'>;
 export function normalizeAmount(value: string): string | null {
@@ -87,6 +91,66 @@ export class Expenses implements OnInit {
     if(!value?.categoria || this.category || this.editing || this.saving())return;
     this.category=value.categoria; this.clearSuggestion();
   }
+  readonly categoryReport = signal<CategoryReport | null>(null);
+  readonly reportLoading = signal(false);
+  readonly reportError = signal(false);
+  readonly reportAmountsHidden = signal(false);
+  private reportOpen = false;
+  private reportRequest = 0;
+  private readonly reportPrivacyListener = (event: Event) => {
+    this.reportAmountsHidden.set((event as CustomEvent).detail === true);
+  };
+  readonly reportGroups = computed(() => {
+    const groups = new Map<string, CategoryTotal[]>();
+    for (const row of this.categoryReport()?.items ?? []) {
+      const group = groups.get(row.moneda) ?? [];
+      group.push(row);
+      groups.set(row.moneda, group);
+    }
+    return [...groups].map(([currency, rows]) => {
+      const total = rows.reduce((sum, row) => sum + cents(row.total), 0n);
+      return { currency, rows: rows.map(row => ({
+        ...row, percent: total > 0n ? progress(cents(row.total), total).text : '0,0%',
+      })) };
+    });
+  });
+
+  toggleCategoryReport(open: boolean): void {
+    this.reportOpen = open;
+    if (open) void this.loadCategoryReport();
+  }
+
+  async loadCategoryReport(): Promise<void> {
+    const version = ++this.reportRequest;
+    this.categoryReport.set(null);
+    this.reportLoading.set(true);
+    this.reportError.set(false);
+    const account = this.account.id ? '?account=' + encodeURIComponent(this.account.id) : '';
+    try {
+      const result = await this.auth.accountRequest<CategoryReport>(
+        'GET', `/api/spaces/${encodeURIComponent(this.space)}/expense-category-summary${account}`,
+      );
+      if (!Array.isArray(result?.items)) throw new Error('Reporte inválido');
+      if (this.alive && version === this.reportRequest) this.categoryReport.set(result);
+    } catch {
+      if (this.alive && version === this.reportRequest) this.reportError.set(true);
+    } finally {
+      if (this.alive && version === this.reportRequest) this.reportLoading.set(false);
+    }
+  }
+
+  async viewCategoryExpenses(row: CategoryTotal): Promise<void> {
+    const report = this.categoryReport();
+    if (!report || this.loading() || this.saving()) return;
+    this.filterFrom = report.desde;
+    this.filterTo = report.hasta;
+    this.filterCategory = row.categoria ?? 'sin_categoria';
+    this.filterCurrency = row.moneda;
+    this.filterText = '';
+    await this.applyFilters();
+    if (this.alive) document.getElementById('expense-results')?.focus();
+  }
+
   filterApproximate = true;
   filterFrom = ''; filterTo = ''; filterCategory = ''; filterCurrency = ''; filterText = '';
   readonly appliedFilters = signal('');
@@ -167,7 +231,14 @@ export class Expenses implements OnInit {
     this.clearSuggestion();
     this.editing=null; this.category=''; this.date=today(); this.description=''; this.amount=''; this.error.set(''); this.notice.set('Edición cancelada.');
   }
-  constructor() { inject(DestroyRef).onDestroy(() => { this.alive = false; }); }
+  constructor() {
+    try { this.reportAmountsHidden.set(localStorage.getItem('gastos.totals.hidden') === 'true'); } catch {}
+    window.addEventListener('gastos-privacy', this.reportPrivacyListener);
+    inject(DestroyRef).onDestroy(() => {
+      this.alive = false;
+      window.removeEventListener('gastos-privacy', this.reportPrivacyListener);
+    });
+  }
   ngOnInit() { void this.load(); }
   private accountPath(id:string) { return `/api/spaces/${encodeURIComponent(this.space)}/accounts/${encodeURIComponent(id)}/expenses`; }
   private get path() { return this.account.id ? this.accountPath(this.account.id) : `/api/spaces/${encodeURIComponent(this.space)}/expenses`; }
@@ -235,6 +306,7 @@ export class Expenses implements OnInit {
         ? 'No tenés permiso para registrar gastos en este espacio.'
         : 'No pudimos confirmar el guardado. Reintentá sin cambiar los datos para evitar duplicar esta solicitud.');
     } finally { if (this.alive) this.saving.set(false); }
+    if (saved && this.alive && this.reportOpen) void this.loadCategoryReport();
     if(saved && this.alive && this.appliedFilters()) {
       this.items.set([]); this.next.set(null); await this.load();
     }
