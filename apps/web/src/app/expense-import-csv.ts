@@ -63,7 +63,7 @@ export function previewImport(
 ): ImportRow[] {
   if (new Set(Object.values(mapping)).size !== 3 ||
       Object.values(mapping).some(index => index < 0 || index >= width)) return [];
-  return records.flatMap((record, index) => {
+  return records.flatMap<ImportRow>((record, index) => {
     if (record.every(value => !value.trim())) return [];
     const line = index + 2;
     if (record.length !== width) return [{ line, error: 'La cantidad de columnas difiere del encabezado.' }];
