@@ -182,6 +182,10 @@
             <div class="row-actions">
               <button type="button" class="secondary" (click)="edit(item)" [disabled]="saving() || loading()"
                 [attr.aria-label]="'Editar ' + item.descripcion">Editar</button>
+              @if (!item.pago_cuota) {
+                <button type="button" class="secondary" (click)="confirmVoid(item)"
+                  [disabled]="saving() || loading() || !!editing" [attr.aria-label]="'Anular ' + item.descripcion">Anular</button>
+              }
               <button type="button" class="secondary" (click)="openReceipts(receiptExpense() === item.id ? null : item.id)"
                 [attr.aria-expanded]="receiptExpense() === item.id">Comprobantes</button>
               <button type="button" class="secondary" (click)="toggleSimilar(item.id)" [disabled]="saving() || loading()"

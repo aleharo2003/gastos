@@ -10,7 +10,7 @@ import { SimilarExpenses } from './similar-expenses';
 import { cents } from './money-reference';
 import { progress } from './planning-math';
 
-type Expense = { id: string; espacio_id: string; cuenta_id: string; fecha: string; descripcion: string; moneda: string; importe: string; categoria?: string | null; nota?: string | null; coincidencia_aproximada?: boolean; cuenta_nombre?: string };
+type Expense = { id: string; espacio_id: string; cuenta_id: string; fecha: string; descripcion: string; moneda: string; importe: string; categoria?: string | null; nota?: string | null; coincidencia_aproximada?: boolean; cuenta_nombre?: string; pago_cuota?: boolean };
 type CategoryTotal = { moneda: string; categoria: string | null; total: string };
 type CategoryReport = { desde: string; hasta: string; items: CategoryTotal[] };
 type CategorySuggestion = {categoria:string|null;coincidencias:number;total:number};
@@ -239,6 +239,40 @@ export class Expenses implements OnInit {
     if (this.saving() || !window.confirm('¿Descartar los cambios de este gasto?')) return;
     this.clearSuggestion();
     this.editing=null; this.category=''; this.date=today(); this.description=''; this.amount=''; this.note=''; this.error.set(''); this.notice.set('Edición cancelada.');
+  }
+
+  async confirmVoid(item: Expense): Promise<void> {
+    if (this.saving() || this.loading() || this.editing || item.pago_cuota) return;
+    if (window.confirm(`¿Anular el gasto «${item.descripcion}»? El saldo se actualizará y podrás consultarlo en Movimientos.`)) {
+      await this.voidExpense(item.cuenta_id, item.id);
+    }
+  }
+
+  private async voidExpense(accountId: string, expenseId: string): Promise<void> {
+    this.saving.set(true);
+    this.error.set('');
+    this.notice.set('');
+    let canceled = false;
+    try {
+      await this.auth.accountRequest('POST', `${this.accountPath(accountId)}/${expenseId}/void`);
+      if (!this.alive) return;
+      canceled = true;
+      this.items.update(rows => rows.filter(row => row.id !== expenseId));
+      this.recentPage.update(rows => rows.filter(row => row.id !== expenseId));
+      if (this.lastSaved() === expenseId) this.lastSaved.set(null);
+      if (this.receiptExpense() === expenseId) this.receiptExpense.set(null);
+      this.notice.set('Gasto anulado.');
+    } catch (error) {
+      if (this.alive) this.error.set(error instanceof HttpErrorResponse && error.status === 409
+        ? 'Este gasto corresponde a un pago de cuota.'
+        : 'No pudimos confirmar la anulación. Volvé a intentar.');
+    } finally {
+      if (this.alive) this.saving.set(false);
+    }
+    if (canceled && this.alive) {
+      await this.load();
+      if (this.reportOpen) void this.loadCategoryReport();
+    }
   }
   constructor() {
     try { this.reportAmountsHidden.set(localStorage.getItem('gastos.totals.hidden') === 'true'); } catch {}

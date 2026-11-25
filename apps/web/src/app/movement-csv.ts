@@ -2,7 +2,7 @@ import { EXPENSE_CATEGORIES } from './expense-categories';
 
 type MovementRow = {
   fecha: string; tipo: string; descripcion: string; moneda: string; importe: string;
-  origen: string | null; destino: string | null; categoria?: string | null;
+  origen: string | null; destino: string | null; categoria?: string | null; anulado?: boolean;
 };
 
 function cell(value: string | null): string {
@@ -16,7 +16,8 @@ export function movementCsv(rows: readonly MovementRow[]): string {
     ...rows.map(row => {
       const category = row.tipo === 'gasto' && row.categoria !== undefined
         ? EXPENSE_CATEGORIES.find(item => item.id === row.categoria)?.label ?? 'Sin categoría' : '';
-      return [row.fecha, row.tipo, row.descripcion, row.moneda, row.importe, row.origen, row.destino, category].map(cell).join(',');
+      const type = row.anulado ? `${row.tipo} anulado` : row.tipo;
+      return [row.fecha, type, row.descripcion, row.moneda, row.importe, row.origen, row.destino, category].map(cell).join(',');
     }),
   ].join('\r\n') + '\r\n';
 }

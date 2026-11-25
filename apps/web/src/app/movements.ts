@@ -7,11 +7,11 @@ import { showAmount } from './expenses';
 
 type Movement = {
   id: string; fecha: string; tipo: 'gasto' | 'ingreso' | 'transferencia'; descripcion: string;
-  moneda: string; importe: string; origen: string | null; destino: string | null; categoria?: string | null;
+  moneda: string; importe: string; origen: string | null; destino: string | null; categoria?: string | null; anulado?: boolean;
 };
 type Totals = { moneda: string; ingresos: string; gastos: string; transferencias: string; variacion_cuenta?: string };
 type Page = { items: Movement[]; totales: Totals[]; next_cursor: string | null };
-const emptyFilters = { desde: '', hasta: '', tipo: '', moneda: '', cuenta: '', texto: '', categoria: '' };
+const emptyFilters = { desde: '', hasta: '', tipo: '', moneda: '', cuenta: '', texto: '', categoria: '', anulados: '' };
 
 @Component({
   selector: 'app-movements',
