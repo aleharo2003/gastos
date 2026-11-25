@@ -53,15 +53,19 @@ def check_backup(migration_url, password, grant_path):
     data = decrypt_archive(archive, key)
     assert data == payload
     # Solo se vacían las filas sintéticas de esta prueba, en la fixture desechable.
-    with connect(**migrator) as connection:
+    def remove_test_rows(connection):
         connection.execute('DELETE FROM public.gastos WHERE id=%s', (expense,))
         connection.execute('DELETE FROM public.cuentas WHERE id=%s', (account,))
         connection.execute('DELETE FROM public.miembros_espacio WHERE espacio_id IN (%s,%s)', (owner, other))
         connection.execute('DELETE FROM public.espacios WHERE id IN (%s,%s)', (owner, other))
         connection.execute('DELETE FROM public.perfiles WHERE usuario_id IN (%s,%s)', (owner, other))
+
+    with connect(**migrator) as connection:
+        remove_test_rows(connection)
         restore(connection, data)
         assert connection.execute('SELECT importe,descripcion,nota FROM public.gastos WHERE id=%s', (expense,)).fetchone() == (
             Decimal('98765.43'), '=1+1', 'Prueba de restauración')
         assert connection.execute('SELECT activa FROM public.cuentas WHERE id=%s', (account,)).fetchone() == (False,)
         assert connection.execute('SELECT id FROM public.espacios').fetchall() == [(owner,)]
+        remove_test_rows(connection)
     print('OK: una sola cuenta de respaldo, una sola área de datos, cifrado y restauración en PostgreSQL desechable.')

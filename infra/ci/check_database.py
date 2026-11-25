@@ -285,6 +285,16 @@ def check_database(fixture):
                 raise CheckError("Runtime pudo crear una tabla en public.")
             finally:
                 connection.rollback()
+        backup_password = secrets.token_urlsafe(32)
+        admin(database, f"""
+            CREATE ROLE app_backup LOGIN NOINHERIT NOBYPASSRLS NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD '{backup_password}';
+            GRANT CONNECT ON DATABASE postgres TO app_backup;
+            GRANT USAGE ON SCHEMA public TO app_backup;
+        """)
+        try:
+            check_backup(urls[MIGRATOR], backup_password, ROOT / 'infra/postgres/grant-backup.sql')
+        except ValueError as error:
+            raise CheckError(f"Falló el resguardo de prueba: {error}") from None
         check_transaction_context(urls[RUNTIME], urls[MIGRATOR])
         check_read_rls(urls[RUNTIME], urls[MIGRATOR])
         check_accounts_rls(urls[RUNTIME], urls[MIGRATOR])
@@ -319,13 +329,6 @@ def check_database(fixture):
             check_workspace_links(urls[MIGRATOR])
         except (CoverageError, PrivilegeError, WorkspaceLinkError) as error:
             raise CheckError(str(error)) from None
-        backup_password = secrets.token_urlsafe(32)
-        admin(database, f"""
-            CREATE ROLE app_backup LOGIN NOINHERIT NOBYPASSRLS NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD '{backup_password}';
-            GRANT CONNECT ON DATABASE postgres TO app_backup;
-            GRANT USAGE ON SCHEMA public TO app_backup;
-        """)
-        check_backup(urls[MIGRATOR], backup_password, ROOT / 'infra/postgres/grant-backup.sql')
         step("8/8 Comparar estructura externa y datos centinela con su estado inicial.")
         if external_state(database) != before:
             raise CheckError("Cambio la estructura externa o sus datos centinela.")
