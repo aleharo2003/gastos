@@ -16,6 +16,7 @@ class Ingreso(Base):
         CheckConstraint('char_length(btrim(descripcion)) BETWEEN 1 AND 160', name='ck_ingresos_descripcion'),
         CheckConstraint("categoria IS NULL OR categoria ~ '^[a-z0-9_-]{1,36}$'", name='ck_ingresos_categoria'),
         Index('ix_ingresos_espacio_cuenta_fecha', 'espacio_id', 'cuenta_id', 'fecha'),
+        Index('ix_ingresos_espacio_fecha', 'espacio_id', 'fecha'),
     )
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     espacio_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)

@@ -34,6 +34,8 @@ HISTORY = text("""
           AND (CAST(:moneda AS text) IS NULL OR moneda=:moneda)
           AND (CAST(:cuenta AS uuid) IS NULL OR origen_id=:cuenta OR destino_id=:cuenta)
           AND (CAST(:categoria AS text) IS NULL OR (tipo='gasto' AND COALESCE(categoria,'sin_categoria')=:categoria))
+          AND (CAST(:categoria_ingreso AS text) IS NULL OR
+               (tipo='ingreso' AND COALESCE(categoria,'sin_categoria')=:categoria_ingreso))
           AND (strpos(
               translate(lower(descripcion), 'áéíóúü', 'aeiouu'),
               translate(lower(:texto), 'áéíóúü', 'aeiouu')
@@ -72,7 +74,7 @@ def list_movements(session, user, space, filters, cursor):
     require_member(session, user, space)
     cursor_date, cursor_kind, cursor_id = cursor or (None, None, None)
     row = session.execute(HISTORY, {
-        'categoria': None, 'anulados': False, **filters, 'space': space, 'limit': PAGE_SIZE + 1,
+        'categoria': None, 'categoria_ingreso': None, 'anulados': False, **filters, 'space': space, 'limit': PAGE_SIZE + 1,
         'cursor_fecha': cursor_date, 'cursor_tipo': cursor_kind, 'cursor_id': cursor_id,
     }).mappings().one()
     items = row['items'][:PAGE_SIZE]
@@ -101,12 +103,16 @@ def movement_history(space: UUID, request: Request, response: Response,
                      tipo: Kind | None = None, moneda: Currency | None = None,
                      cuenta: UUID | None = None,
                      categoria: ExpenseFilter | None = None,
+                     categoria_ingreso: str | None = Query(default=None, pattern=r'^[a-z0-9_-]{1,36}$'),
                      texto: str = Query(default='', max_length=160, pattern=r'^[^\x00-\x1f\x7f]*$'),
                      anulados: bool = False,
                      cursor: str | None = Query(default=None, max_length=70)):
     if desde and hasta and desde > hasta:
         raise HTTPException(422, 'El rango de fechas es inválido', headers=NO_STORE)
-    filters = {'categoria': categoria, 'desde': desde, 'hasta': hasta, 'tipo': tipo, 'moneda': moneda,
+    if categoria is not None and categoria_ingreso is not None:
+        raise HTTPException(422, 'Elegí una sola categoría', headers=NO_STORE)
+    filters = {'categoria': categoria, 'categoria_ingreso': categoria_ingreso,
+               'desde': desde, 'hasta': hasta, 'tipo': tipo, 'moneda': moneda,
                'cuenta': cuenta, 'texto': texto.strip(), 'anulados': anulados}
     after = parse_cursor(cursor)
     return execute(request, response, space, lambda session, user: list_movements(session, user, space, filters, after))

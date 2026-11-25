@@ -18,6 +18,7 @@ class Gasto(Base):
         CheckConstraint("categoria IS NULL OR categoria IN ('alimentos','transporte','vivienda','servicios','salud','educacion','ocio','impuestos','auto','bancario','ropa','otros') OR categoria ~ '^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$'", name='ck_gastos_categoria'),
         CheckConstraint('nota IS NULL OR char_length(nota) BETWEEN 1 AND 500', name='ck_gastos_nota'),
         Index('ix_gastos_espacio_cuenta_fecha', 'espacio_id', 'cuenta_id', 'fecha'),
+        Index('ix_gastos_espacio_fecha', 'espacio_id', 'fecha'),
     )
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     espacio_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
