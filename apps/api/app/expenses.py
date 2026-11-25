@@ -11,13 +11,14 @@ from sqlalchemy import text
 from app.accounts import execute, require_member, NO_STORE
 from app.expense_search import ExpenseSearch
 from app.category_suggestions import suggest_category
+from app.movement_categories import ExpenseFilter, ExpenseKey, category_rows, lock_catalog, require_active_category
 from app.similar_expenses import similarity
 
 router = APIRouter()
 AMOUNT = re.compile(r'(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,2})?')
 
-
 Category = Literal['alimentos','transporte','vivienda','servicios','salud','educacion','ocio','impuestos','auto','bancario','ropa','otros']
+CATEGORIES = ['alimentos', 'transporte', 'vivienda', 'servicios', 'salud', 'educacion', 'ocio', 'impuestos', 'auto', 'bancario', 'ropa', 'otros']
 
 
 class ExpenseInput(BaseModel):
@@ -27,7 +28,7 @@ class ExpenseInput(BaseModel):
     descripcion: str
     moneda: Literal['ARS','USD','EUR']
     importe: Decimal
-    categoria: Category | None = None
+    categoria: ExpenseKey | None = None
     nota: str | None = None
 
     @field_validator('nota')
@@ -91,6 +92,8 @@ def edit_expense(session, user, space, account, expense_id, body):
     if body.original.id != expense_id or body.nuevo.id != expense_id:
         raise HTTPException(422, 'Identificador inconsistente', headers=NO_STORE)
     params = {'id':expense_id, 's':space, 'a':account}
+    if body.nuevo.categoria is not None:
+        lock_catalog(session, space)
     row = session.execute(text('''SELECT * FROM public.gastos
         WHERE id=:id AND espacio_id=:s AND cuenta_id=:a FOR UPDATE'''), params).mappings().one_or_none()
     if row is None:
@@ -107,6 +110,8 @@ def edit_expense(session, user, space, account, expense_id, body):
         return public_expense(row)
     if not matches(body.original):
         raise HTTPException(409, 'El gasto cambio; actualiza la lista antes de editar', headers=NO_STORE)
+    if 'categoria' in body.nuevo.model_fields_set and body.nuevo.categoria != row['categoria']:
+        require_active_category(session, space, 'gasto', body.nuevo.categoria)
     params.update(f=body.nuevo.fecha, d=body.nuevo.descripcion, m=body.nuevo.moneda, i=body.nuevo.importe,
                   c=body.nuevo.categoria if 'categoria' in body.nuevo.model_fields_set else row['categoria'],
                   nota=body.nuevo.nota if 'nota' in body.nuevo.model_fields_set else row['nota'])
@@ -162,24 +167,14 @@ def public_expense(row):
     return result
 
 
-CATEGORIES = ['alimentos', 'transporte', 'vivienda', 'servicios', 'salud', 'educacion', 'ocio', 'impuestos', 'auto', 'bancario', 'ropa', 'otros']
-
-
 class ExpenseFilters(BaseModel):
     model_config = ConfigDict(extra='forbid')
     desde: date | None = None
     hasta: date | None = None
-    categoria: str | None = None
+    categoria: ExpenseFilter | None = None
     moneda: Literal['ARS','USD','EUR'] | None = None
     texto: str = ''
     aproximada: bool = True
-
-    @field_validator('categoria')
-    @classmethod
-    def category(cls, value):
-        if value is not None and value not in CATEGORIES and value != 'sin_categoria':
-            raise ValueError('Categoria invalida')
-        return value
 
     @field_validator('texto')
     @classmethod
@@ -246,6 +241,12 @@ def create_expense(session, user, space, account, body):
     require_account(session, user, space, account, write=True)
     params = {'id':body.id,'s':space,'a':account,'u':user,'f':body.fecha,
               'd':body.descripcion,'m':body.moneda,'i':body.importe,'c':body.categoria,'nota':body.nota}
+    if body.categoria is not None:
+        lock_catalog(session, space)
+        existing = session.execute(text('SELECT id FROM public.gastos WHERE id=:id AND espacio_id=:s AND cuenta_id=:a'),
+                                   params).scalar_one_or_none()
+        if existing is None:
+            require_active_category(session, space, 'gasto', body.categoria)
     session.execute(text('''INSERT INTO public.gastos(id,espacio_id,cuenta_id,usuario_id,fecha,descripcion,moneda,importe,categoria,nota)
                             VALUES (:id,:s,:a,:u,:f,:d,:m,:i,:c,:nota) ON CONFLICT (id) DO NOTHING'''),params)
     row = session.execute(text('SELECT * FROM public.gastos WHERE id=:id AND espacio_id=:s AND cuenta_id=:a'),
@@ -260,7 +261,7 @@ def create_expense(session, user, space, account, body):
 def get_expenses(space: UUID, account: UUID, request: Request, response: Response,
                  offset: int = Query(default=0, ge=0, le=100000),
                  desde: date | None = None, hasta: date | None = None,
-                 categoria: Literal['alimentos','transporte','vivienda','servicios','salud','educacion','ocio','impuestos','auto','bancario','ropa','otros','sin_categoria'] | None = None,
+                 categoria: ExpenseFilter | None = None,
                  moneda: Literal['ARS','USD','EUR'] | None = None,
                  texto: str = Query(default='', max_length=160, pattern=r'^[^\x00-\x1f\x7f]*$'),
                  aproximada: bool = True):
@@ -278,7 +279,9 @@ def category_suggestion(session, user, space, account, description):
     rows = session.execute(text('''SELECT descripcion, categoria FROM public.gastos
         WHERE espacio_id=:s AND cuenta_id=:a AND anulado_en IS NULL AND categoria IS NOT NULL
         ORDER BY fecha DESC, id DESC LIMIT 500'''), {'s':space,'a':account}).mappings().all()
-    return suggest_category(description, rows)
+    available = {key for (kind, key), category in category_rows(session, space).items()
+                 if kind == 'gasto' and category['activa']}
+    return suggest_category(description, (row for row in rows if row['categoria'] in available))
 
 
 @router.get('/spaces/{space}/accounts/{account}/expenses/category-suggestion')
@@ -316,7 +319,7 @@ def get_similar_expenses(space:UUID,account:UUID,expense_id:UUID,request:Request
 def get_all_expenses(space: UUID, request: Request, response: Response,
                  offset: int = Query(default=0, ge=0, le=100000),
                  desde: date | None = None, hasta: date | None = None,
-                 categoria: Literal['alimentos','transporte','vivienda','servicios','salud','educacion','ocio','impuestos','auto','bancario','ropa','otros','sin_categoria'] | None = None,
+                     categoria: ExpenseFilter | None = None,
                  moneda: Literal['ARS','USD','EUR'] | None = None,
                  texto: str = Query(default='', max_length=160, pattern=r'^[^\x00-\x1f\x7f]*$'),
                  aproximada: bool = True):

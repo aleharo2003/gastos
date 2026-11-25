@@ -190,6 +190,17 @@
   </form>
 </section>
 
+@if (tab() === 'accounts') {
+  <details class="workspace-panel" #categorySettings>
+    <summary>Categorías de gastos e ingresos</summary>
+    @defer (on interaction(categorySettings)) {
+      <app-category-settings [space]="space" />
+    } @placeholder {
+      <p>Administrá el catálogo del espacio.</p>
+    }
+  </details>
+}
+
 <app-commitments class="workspace-panel debts-panel"
   [active]="tab() === 'debts'" (draftsChanged)="draftCount.set($event)"
   [hidden]="tab() !== 'debts'" [space]="space" [accounts]="items()"

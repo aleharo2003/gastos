@@ -5,12 +5,14 @@ import { boundedJson } from './token-verifier.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CATEGORIES = ["alimentos", "transporte", "vivienda", "servicios", "salud", "educacion", "ocio", "impuestos", "auto", "bancario", "ropa", "otros"];
+const isExpenseCategory = (value: unknown): value is string =>
+  typeof value === 'string' && (CATEGORIES.includes(value) || UUID.test(value));
 type ExpenseInput = { id: string; fecha: string; descripcion: string; moneda: string; importe: string; categoria?: string | null; nota?: string | null };
 type Expense = ExpenseInput & { espacio_id: string; cuenta_id: string; coincidencia_aproximada?: boolean; cuenta_nombre?: string; pago_cuota?: boolean };
 type ExpenseEdit = { original: ExpenseInput; nuevo: ExpenseInput };
 function valid(value: unknown): value is ExpenseInput {
   const row = value as ExpenseInput;
-  return !!row && (row.nota == null || (typeof row.nota === 'string' && [...row.nota.trim()].length <= 500 && !/[\x00-\x1f\x7f]/.test(row.nota.trim()))) && (row.categoria == null || CATEGORIES.includes(row.categoria)) && typeof row.id === 'string' && UUID.test(row.id) && !/^0{8}-0{4}-0{4}-0{4}-0{12}$/.test(row.id) &&
+  return !!row && (row.nota == null || (typeof row.nota === 'string' && [...row.nota.trim()].length <= 500 && !/[\x00-\x1f\x7f]/.test(row.nota.trim()))) && (row.categoria == null || isExpenseCategory(row.categoria)) && typeof row.id === 'string' && UUID.test(row.id) && !/^0{8}-0{4}-0{4}-0{4}-0{12}$/.test(row.id) &&
     typeof row.fecha === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(row.fecha) &&
     typeof row.descripcion === 'string' && [...row.descripcion.trim()].length >= 1 && [...row.descripcion.trim()].length <= 160 &&
     !/[\x00-\x1f\x7f]/.test(row.descripcion) && ['ARS','USD','EUR'].includes(row.moneda) &&
@@ -84,7 +86,7 @@ export class ExpensesController {
       const value = query[key];
       if (typeof value !== 'string' || value.length > 160 || /[\x00-\x1f\x7f]/.test(value)) throw new BadRequestException('Filtro invalido');
       if (['desde','hasta'].includes(key) && !/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new BadRequestException('Fecha invalida');
-      if (key === 'categoria' && ![...CATEGORIES,'sin_categoria'].includes(value)) throw new BadRequestException('Categoria invalida');
+      if (key === 'categoria' && value !== 'sin_categoria' && !isExpenseCategory(value)) throw new BadRequestException('Categoria invalida');
       if (key === 'moneda' && !['ARS','USD','EUR'].includes(value)) throw new BadRequestException('Moneda invalida');
       if (key === 'aproximada' && !['true','false'].includes(value)) throw new BadRequestException('Modo de busqueda invalido');
       filters.set(key,value);
@@ -185,7 +187,7 @@ export class ExpensesController {
         const seen = new Set<string>();
         const items = report.items.map(item => {
           if (!item || !report.meses.includes(item.mes) || !['ARS', 'USD', 'EUR'].includes(item.moneda) ||
-              (item.categoria !== null && !CATEGORIES.includes(item.categoria)) ||
+              (item.categoria !== null && !isExpenseCategory(item.categoria)) ||
               typeof item.total !== 'string' || !/^(?:0|[1-9][0-9]{0,30})\.[0-9]{2}$/.test(item.total)) throw new Error();
           const { mes, moneda, categoria, total } = item;
           const key = mes + ':' + moneda + ':' + (categoria ?? '');
@@ -202,7 +204,7 @@ export class ExpensesController {
             value.hasta.slice(0, 7) !== value.desde.slice(0, 7) || !Array.isArray(value.items) ||
             value.items.length > 3 * (CATEGORIES.length + 1) || value.items.some(row =>
               !row || !['ARS', 'USD', 'EUR'].includes(row.moneda) ||
-              (row.categoria !== null && !CATEGORIES.includes(row.categoria)) ||
+              (row.categoria !== null && !isExpenseCategory(row.categoria)) ||
               typeof row.total !== 'string' || !/^(?:0|[1-9][0-9]{0,30})\.[0-9]{2}$/.test(row.total)
             )) throw new Error();
         const requestedMonth = filters.get('mes');
@@ -231,7 +233,7 @@ export class ExpensesController {
             !Number.isInteger(value.coincidencias) || !Number.isInteger(value.total) || value.total>500 || value.total<0 || value.coincidencias>value.total) throw new Error();
         if (value.categoria===null) {
           if(value.coincidencias!==0 || value.total!==0)throw new Error();
-        } else if(typeof value.categoria!=='string' || !CATEGORIES.includes(value.categoria) || value.coincidencias<2 || value.coincidencias*3<value.total*2)throw new Error();
+        } else if(typeof value.categoria!=='string' || !isExpenseCategory(value.categoria) || value.coincidencias<2 || value.coincidencias*3<value.total*2)throw new Error();
         return {categoria:value.categoria,coincidencias:value.coincidencias,total:value.total};
       }
       if (voidTarget) {

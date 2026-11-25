@@ -1,3 +1,5 @@
+import { CategoryCatalog } from './category-catalog';
+import { CategorySettings } from './category-settings';
 import { TodayCategoryReport } from './today-category-report';
 import { Movements } from './movements';
 import { DueOverview } from './due-overview';
@@ -20,7 +22,7 @@ type Page = { items: Account[]; next_offset: number | null };
 type AccountBalance = { totales: { moneda: string; saldo: string }[] };
 
 @Component({
-  selector: 'app-accounts', imports: [FormsModule, TodayCategoryReport, Movements, Expenses, Planning, Incomes, Transfers, SavingsGoals, Commitments, DueOverview, ReminderPreferences],
+  selector: 'app-accounts', imports: [FormsModule, CategorySettings, TodayCategoryReport, Movements, Expenses, Planning, Incomes, Transfers, SavingsGoals, Commitments, DueOverview, ReminderPreferences],
   templateUrl: './accounts.html', styleUrl: './accounts.css',
 })
 export class Accounts implements OnInit {
@@ -215,7 +217,10 @@ export class Accounts implements OnInit {
   balanceAmount(value: string): string {
     return this.amountsHidden() ? '••••' : showAmount(value);
   }
+  private readonly categoryCatalog = inject(CategoryCatalog);
+
   ngOnInit(): void {
+    this.categoryCatalog.ensure(this.space);
     try {
       const saved = JSON.parse(localStorage.getItem('gastos.reference.' + this.space) ?? 'null');
       if (typeof saved?.rate === 'string') this.referenceRate.set(saved.rate);

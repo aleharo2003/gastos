@@ -1,0 +1,31 @@
+@if (error()) { <p role="alert">{{ error() }}</p> }
+@if (!ready() && !busy()) {
+  <button type="button" class="secondary" (click)="load()">Reintentar</button>
+}
+@if (ready()) {
+  <label>Tipo <select [(ngModel)]="kind" (ngModelChange)="reset()" [disabled]="busy()">
+    <option value="gasto">Gastos</option><option value="ingreso">Ingresos</option>
+  </select></label>
+  <form (ngSubmit)="save()">
+    <label>Nombre <input name="name" [(ngModel)]="name" maxlength="80" required [disabled]="busy()"></label>
+    <label>Color <input name="color" type="color" [(ngModel)]="color" [disabled]="busy()"></label>
+    <button type="submit" [disabled]="busy() || !name.trim()">{{ editing ? 'Guardar categoría' : 'Crear categoría' }}</button>
+    @if (editing) {
+      <button type="button" class="secondary" (click)="reset()" [disabled]="busy()">Cancelar edición</button>
+    }
+  </form>
+  @if (duplicate(); as row) {
+    <button type="button" class="secondary" (click)="edit(row)" [disabled]="busy()">Ver categoría existente</button>
+  }
+  <ul>
+    @for (row of rows(); track row.id) {
+      <li>
+        <span>{{ row.nombre }} @if (!row.activa) { (inactiva) }</span>
+        <button type="button" class="secondary" (click)="edit(row)" [disabled]="busy()"
+          [attr.aria-label]="'Editar ' + row.nombre">Editar</button>
+        <button type="button" class="secondary" (click)="toggle(row)" [disabled]="busy()"
+          [attr.aria-label]="(row.activa ? 'Desactivar ' : 'Reactivar ') + row.nombre">{{ row.activa ? 'Desactivar' : 'Reactivar' }}</button>
+      </li>
+    }
+  </ul>
+}

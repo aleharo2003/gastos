@@ -11,6 +11,7 @@ from app.expenses import expense_category_summary, expense_summary, expense_tren
 from app.expenses import void_expense
 from app.incomes import account_balance
 from app.movements import list_movements
+from app.movement_categories import CategoryCreate, CategoryUpdate, list_categories, save_category
 from app.db.connection import create_runtime_engine, create_migration_engine
 from app.db.unit_of_work import runtime_transaction
 
@@ -262,6 +263,30 @@ def check_expenses_api(runtime_url, migration_url):
         audited = history(anulados=True)
         assert [(row['id'], row['anulado']) for row in audited['items']] == [(str(canceled.id), True)]
         assert audited['totales'] == []
+
+        custom = CategoryCreate(id=str(uuid4()), tipo='gasto', nombre='Comida Casa', color='#64748b')
+
+        def category_write(who, space, category, changes, create=False):
+            with runtime_transaction(runtime, usuario_id=who, espacio_id=space) as session:
+                return save_category(session, who, space, 'gasto', category, changes, create=create)
+
+        def categories(who, space):
+            with runtime_transaction(runtime, usuario_id=who, espacio_id=space) as session:
+                return list_categories(session, who, space)['items']
+
+        assert any(row['id'] == 'sueldo' and row['tipo'] == 'ingreso' for row in categories(reader, owner))
+        denied(lambda: category_write(reader, owner, custom.id, custom, create=True), 403)
+        assert category_write(editor, owner, custom.id, custom, create=True)['nombre'] == 'Comida Casa'
+        duplicate = CategoryCreate(id=str(uuid4()), tipo='gasto', nombre='comidaCASA')
+        denied(lambda: category_write(owner, owner, duplicate.id, duplicate, create=True), 409)
+        assert all(row['id'] != custom.id for row in categories(other, other))
+        recorded = body(categoria=custom.id)
+        assert create(owner, owner, account, recorded)['categoria'] == custom.id
+        category_write(owner, owner, custom.id, CategoryUpdate(nombre='Comida hogar', activa=False))
+        assert create(owner, owner, account, recorded)['categoria'] == custom.id
+        denied(lambda: create(owner, owner, account, body(categoria=custom.id)), 422)
+        assert any(row['id'] == custom.id and row['nombre'] == 'Comida hogar' and not row['activa']
+                   for row in categories(reader, owner))
 
         with migrator.begin() as c: c.execute(text('DELETE FROM public.miembros_espacio WHERE usuario_id=:u AND espacio_id=:s'),{'u':editor,'s':owner})
         denied(lambda:create(editor,owner,account,body()),403)

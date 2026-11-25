@@ -11,11 +11,12 @@ function cell(value: string | null): string {
   return '"' + safe.replaceAll('"', '""') + '"';
 }
 
-export function movementCsv(rows: readonly MovementRow[]): string {
+export function movementCsv(rows: readonly MovementRow[], categoryLabel: (id?: string | null) => string = id =>
+  EXPENSE_CATEGORIES.find(item => item.id === id)?.label ?? 'Sin categoría'): string {
   return '\ufeff' + ['Fecha,Tipo,Descripción,Moneda,Importe,Origen,Destino,Categoría',
     ...rows.map(row => {
       const category = row.tipo === 'gasto' && row.categoria !== undefined
-        ? EXPENSE_CATEGORIES.find(item => item.id === row.categoria)?.label ?? 'Sin categoría' : '';
+        ? categoryLabel(row.categoria) : '';
       const type = row.anulado ? `${row.tipo} anulado` : row.tipo;
       return [row.fecha, type, row.descripcion, row.moneda, row.importe, row.origen, row.destino, category].map(cell).join(',');
     }),

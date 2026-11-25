@@ -51,7 +51,7 @@
     <label for="expense-category">Categoría <small>(opcional)</small></label>
     <select id="expense-category" name="category" [(ngModel)]="category" (ngModelChange)="clearSuggestion()" [disabled]="saving()">
       <option value="">Sin categoría</option>
-      @for(c of categories; track c.id){<option [value]="c.id">{{ c.label }}</option>}
+      @for(c of selectableCategories; track c.id){<option [value]="c.id">{{ c.label }}</option>}
     </select>
     @if(!editing && !category){
       @if(suggesting()){<small role="status">Buscando una categoría en tus gastos anteriores…</small>}

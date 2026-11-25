@@ -1,6 +1,6 @@
 import { Component, DestroyRef, inject, input, OnInit, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { EXPENSE_CATEGORIES } from './expense-categories';
+import { CategoryCatalog } from './category-catalog';
 import { AuthSession } from './auth-session';
 import { movementCsv } from './movement-csv';
 import { showAmount } from './expenses';
@@ -66,7 +66,8 @@ export class Movements implements OnInit {
     this.exporting.set(false);
   }
   readonly loaded = signal(false);
-  readonly categories = EXPENSE_CATEGORIES;
+  private readonly catalog = inject(CategoryCatalog);
+  get categories() { return this.catalog.expenseOptions(this.space()); }
   readonly labels = { gasto: 'Gasto', ingreso: 'Ingreso', transferencia: 'Transferencia' };
   filters = { ...emptyFilters };
   private applied = { ...emptyFilters };
@@ -82,7 +83,7 @@ export class Movements implements OnInit {
   }
 
   categoryName(category?: string | null): string {
-    return this.categories.find(item => item.id === category)?.label ?? 'Sin categoría';
+    return this.catalog.label(this.space(), 'gasto', category);
   }
 
   ngOnInit(): void {
@@ -185,7 +186,8 @@ export class Movements implements OnInit {
         if (cursor) seen.add(cursor);
       } while (cursor);
 
-      const url = URL.createObjectURL(new Blob([movementCsv([...rows.values()])], { type: 'text/csv;charset=utf-8' }));
+      const url = URL.createObjectURL(new Blob([movementCsv([...rows.values()], id => this.categoryName(id))],
+        { type: 'text/csv;charset=utf-8' }));
       const link = document.createElement('a');
       link.href = url;
       link.download = 'piggo-movimientos.csv';

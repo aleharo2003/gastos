@@ -1,17 +1,19 @@
-import { BadGatewayException, BadRequestException, Controller, Get, HttpException, Param, Req, Res, UnauthorizedException } from '@nestjs/common';
+import { BadGatewayException, BadRequestException, Body, Controller, Get, HttpException, Param, Patch, Post, Req, Res, UnauthorizedException } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { AuthService } from './auth.service.js';
 import { boundedJson } from './token-verifier.js';
 
 const id = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-type Category = { id: string; tipo: 'gasto' | 'ingreso'; nombre: string; activa: boolean };
+type Category = { id: string; tipo: 'gasto' | 'ingreso'; nombre: string; activa: boolean; color?: string | null };
+type Mutation = { method: 'POST' | 'PATCH'; suffix: string; body: unknown };
 
 function asCategory(value: unknown): Category {
   const row = value as Category | null;
   if (!row || typeof row.id !== 'string' || !/^[a-z0-9_-]{1,36}$/.test(row.id) ||
       !['gasto', 'ingreso'].includes(row.tipo) || typeof row.nombre !== 'string' ||
-      !row.nombre.trim() || [...row.nombre].length > 80 || typeof row.activa !== 'boolean') throw new Error();
-  return { id: row.id, tipo: row.tipo, nombre: row.nombre, activa: row.activa };
+      !row.nombre.trim() || [...row.nombre].length > 80 || typeof row.activa !== 'boolean' ||
+      (row.color != null && (typeof row.color !== 'string' || !/^#[0-9a-f]{6}$/.test(row.color)))) throw new Error();
+  return { id: row.id, tipo: row.tipo, nombre: row.nombre, activa: row.activa, color: row.color ?? null };
 }
 
 @Controller('api/spaces/:space/categories')
@@ -29,7 +31,26 @@ export class MovementCategoriesController {
     }
   }
 
-  private async forward(space: string, request: Request, response: Response): Promise<unknown> {
+  @Post()
+  async create(@Param('space') space: string, @Body() body: unknown, @Req() request: Request, @Res({ passthrough: true }) response: Response) {
+    const value = await this.forward(space, request, response, { method: 'POST', suffix: '', body });
+    return this.categoryResponse(value);
+  }
+
+  @Patch(':kind/:category')
+  async update(@Param('space') space: string, @Param('kind') kind: string, @Param('category') category: string,
+      @Body() body: unknown, @Req() request: Request, @Res({ passthrough: true }) response: Response) {
+    if (!['gasto', 'ingreso'].includes(kind) || !/^[a-z0-9_-]{1,36}$/.test(category)) throw new BadRequestException('Categoría inválida');
+    const value = await this.forward(space, request, response, { method: 'PATCH', suffix: '/' + kind + '/' + category, body });
+    return this.categoryResponse(value);
+  }
+
+  private categoryResponse(value: unknown): Category {
+    try { return asCategory(value); }
+    catch { throw new BadGatewayException('Respuesta de categoría inválida'); }
+  }
+
+  private async forward(space: string, request: Request, response: Response, mutation?: Mutation): Promise<unknown> {
     response.setHeader('Cache-Control', 'no-store');
     const parts = request.headers.authorization?.trim().split(/\s+/) ?? [];
     const count = request.rawHeaders.filter((header, index) => index % 2 === 0 && header.toLowerCase() === 'authorization').length;
@@ -49,11 +70,14 @@ export class MovementCategoriesController {
       const rawTimeout = process.env.API_TIMEOUT_MS ?? '5000';
       const timeout = Number(rawTimeout);
       if (!/^\d+$/.test(rawTimeout) || !Number.isSafeInteger(timeout) || timeout < 1 || timeout > 2147483647) throw new Error();
-      const result = await fetch(new URL('/spaces/' + space.toLowerCase() + '/categories', base), {
-        headers: { Accept: 'application/json', Authorization: 'Bearer ' + parts[1] },
+      const result = await fetch(new URL('/spaces/' + space.toLowerCase() + '/categories' + (mutation?.suffix ?? ''), base), {
+        method: mutation?.method ?? 'GET',
+        headers: { Accept: 'application/json', Authorization: 'Bearer ' + parts[1],
+          ...(mutation ? { 'Content-Type': 'application/json' } : {}) },
+        ...(mutation ? { body: JSON.stringify(mutation.body) } : {}),
         redirect: 'error', signal: AbortSignal.timeout(timeout),
       });
-      if ([400, 401, 403, 409, 422, 503].includes(result.status)) {
+      if ([400, 401, 403, 404, 409, 422, 503].includes(result.status)) {
         throw new HttpException('No se pudo consultar el catálogo', result.status);
       }
       if (!result.ok) throw new Error();
