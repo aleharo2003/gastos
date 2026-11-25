@@ -36,6 +36,10 @@ export class AuthSession {
   private signingOut = false;
   private storageKey = '';
 
+  get userId(): string | undefined {
+    return this.session?.user.id;
+  }
+
   async initialize(): Promise<void> {
     if (this.started) return;
     this.started = true;
