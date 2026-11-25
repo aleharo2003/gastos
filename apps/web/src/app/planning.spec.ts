@@ -21,6 +21,36 @@ describe('Plan compartido y límites globales',()=>{
     expect(f.nativeElement.textContent).toContain('125,0%');
     expect(f.nativeElement.querySelector('.limit-balance strong')?.textContent).toContain('USD 50,00');
   });
+  it('compara meses cerrados con su propio presupuesto y muestra gastos si falta el historial', async () => {
+    const {f, c, request} = await setup();
+    const plan = c.saved()!;
+    c.saved.set({ ...plan, datos: { ...plan.datos, limites_categoria: [
+      { categoria: 'ocio', moneda: 'ARS', importe: '100.00' },
+    ] } });
+    request.mockImplementation(async (_method, path: string) => {
+      const month = new URL(path, 'https://example.test').searchParams.get('mes');
+      if (path.includes('/category-limits')) {
+        return { mes: month, limites_categoria: month === '2020-05'
+          ? [{ categoria: 'alimentos', moneda: 'ARS', importe: '90.00' }] : null };
+      }
+      return { desde: month + '-01', hasta: month + '-31', items: [
+        { categoria: 'ocio', moneda: 'ARS', total: '42.00' },
+      ] };
+    });
+    c.selectCategoryMonth('2020-05');
+    await f.whenStable();
+    f.detectChanges();
+    expect(c.categoryUsage()).toEqual([expect.objectContaining({ categoria: 'alimentos', spent: 0n, difference: 9000n })]);
+    expect(c.categoryComparison()?.unbudgeted.map(row => row.category)).toEqual(['ocio']);
+    c.selectCategoryMonth('2020-03');
+    await f.whenStable();
+    f.detectChanges();
+    const report = f.nativeElement.querySelector('.category-limits').textContent;
+    expect(c.categoryComparison()?.totals).toEqual([['ARS', 4200n]]);
+    expect(report).toContain('No hay un presupuesto guardado');
+    expect(report).toContain('Gastos por categoría');
+    expect(report).not.toContain('Gastos sin presupuesto');
+  });
   it('guarda solo configuración versionada, normaliza el importe y conserva borrador ante conflicto',async()=>{
     const {c,request}=await setup();c.weekly='220,50';c.dirty=true;
     await c.save();expect(request.mock.calls.filter(call=>call[0]==='POST')[0]).toEqual(['POST','/api/spaces/s/spending-plan',{version:1,datos:{limites:{diario:null,semanal:{moneda:'USD',importe:'220.50'}},conceptos:[]}}]);

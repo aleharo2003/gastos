@@ -35,8 +35,19 @@
     @if(!compact && saved()){
       <section class="category-limits" aria-labelledby="category-limits-title">
           <h3 id="category-limits-title">Presupuesto frente a gastos del mes</h3>
+          <label>Mes del reporte
+            <input type="month" [ngModel]="categoryMonth() || currentMonth()" (ngModelChange)="selectCategoryMonth($event)"
+              min="1900-01" [max]="currentMonth()">
+          </label>
+          @if (categoryMonth()) {
+            <button type="button" (click)="selectCategoryMonth('')">Volver a este mes</button>
+          }
           @if (categoryComparison(); as comparison) {
-            <p>{{ comparison.month }} · Límites vigentes</p>
+            @if (reportLimits() === null) {
+              <p>No hay un presupuesto guardado para este mes. Podés consultar los gastos registrados.</p>
+            } @else if (categoryMonth() && rate()) {
+              <p>Las conversiones usan la cotización de referencia actual.</p>
+            }
             @if (comparison.totals.length) {
               <p><strong>Total real del mes</strong></p>
               <ul>
@@ -45,12 +56,14 @@
                 }
               </ul>
             } @else {
-              <p>Todavía no hay gastos registrados este mes.</p>
+              <p>No hay gastos registrados para este mes.</p>
             }
           }
           @if (categoryError()) {
             <p class="error" role="alert">No pudimos actualizar el consumo por categoría.</p>
             <button type="button" (click)="loadCategoryUsage()">Reintentar</button>
+          } @else if (!categorySpending()) {
+            <p role="status">Cargando gastos del mes.</p>
           }
           <div class="limit-grid">
             @for (item of categoryUsage(); track item.categoria) {
@@ -59,7 +72,11 @@
                 <h4>{{ categoryLabel(item.categoria) }}</h4>
                 @if (item.spent !== null && item.progress) {
                   <p class="limit-balance">
-                    <span>{{ item.progress.exceeded ? 'Superaste el límite por' : 'Te quedan' }}</span>
+                    @if (categoryMonth()) {
+                      <span>{{ item.progress.exceeded ? 'Exceso sobre el límite' : 'Por debajo del límite' }}</span>
+                    } @else {
+                      <span>{{ item.progress.exceeded ? 'Superaste el límite por' : 'Te quedan' }}</span>
+                    }
                     <strong>{{ item.moneda }} {{ money(item.difference!) }}</strong>
                   </p>
                   <p class="limit-consumption">{{ item.progress.text }} usado · {{ item.moneda }} {{ money(item.spent) }} de {{ money(item.amount) }}</p>
@@ -68,9 +85,16 @@
                     [attr.aria-valuetext]="item.progress.text + ' del límite'">
                     <span [style.width.%]="item.progress.width"></span>
                   </div>
-                  @if (item.progress.warning && !item.progress.exceeded) { <p>Estás cerca del límite.</p> }
+                  @if (!categoryMonth() && item.progress.warning && !item.progress.exceeded) { <p>Estás cerca del límite.</p> }
                 } @else {
                   <p>Límite: {{ item.moneda }} {{ money(item.amount) }}</p>
+                  @if (item.totals?.length) {
+                    <ul aria-label="Gasto real por moneda">
+                      @for (total of item.totals; track total.moneda) {
+                        <li>{{ total.moneda }} {{ money(toCents(total.mes)) }}</li>
+                      }
+                    </ul>
+                  }
                   <p>{{ categorySpending() ? 'Conversión pendiente: revisá la cotización o las monedas.' : 'Consumo pendiente de actualizar.' }}</p>
                 }
               </article>
@@ -78,7 +102,7 @@
           </div>
           @if (categoryComparison(); as comparison) {
             @if (comparison.unbudgeted.length) {
-              <h4>Gastos sin presupuesto</h4>
+              <h4>{{ reportLimits() === null ? 'Gastos por categoría' : 'Gastos sin presupuesto' }}</h4>
               <ul>
                 @for (row of comparison.unbudgeted; track row.category) {
                   <li>
