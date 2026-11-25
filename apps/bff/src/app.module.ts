@@ -7,6 +7,7 @@ import { TransfersController } from './transfers.controller.js';
 import { IncomesController } from './incomes.controller.js';
 import { PlanningController } from './planning.controller.js';
 import { ExpensesController } from './expenses.controller.js';
+import { ExpenseImportController } from './expense-import.controller.js';
 import { ReceiptsController } from './receipts.controller.js';
 import { AccountsController } from './accounts.controller.js';
 import { Module } from '@nestjs/common';
@@ -17,7 +18,7 @@ import { AuthService } from './auth.service.js';
 
 @Module({
   imports: [],
-  controllers: [MovementsController, SpaceExportController, MovementCategoriesController, CommitmentsController, SavingsGoalsController, TransfersController, IncomesController, PlanningController, ReceiptsController, ExpensesController, AppController, AuthController, AccountsController],
+  controllers: [MovementsController, SpaceExportController, MovementCategoriesController, CommitmentsController, SavingsGoalsController, TransfersController, IncomesController, PlanningController, ReceiptsController, ExpensesController, ExpenseImportController, AppController, AuthController, AccountsController],
   providers: [AppService, AuthService],
 })
 export class AppModule {}
