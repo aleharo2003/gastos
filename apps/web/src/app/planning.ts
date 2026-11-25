@@ -6,8 +6,11 @@ import { CurrencyTotal,cents,money,rateUnits,reference } from './money-reference
 import { emptyPlan,normalizedAmount,PlanData,PlanEnvelope,LimitPeriod,projected,progress,limitUsage,usageAgainstLimit } from './planning-math';
 import { EXPENSE_CATEGORIES } from './expense-categories';
 import { CategoryCatalog } from './category-catalog';
+import { installmentLocalDate } from './installment-date';
+import type { CategoryLimit } from './planning-math';
 
 type CategorySpending = { desde: string; hasta: string; items: { categoria: string | null; moneda: string; total: string }[] };
+type CategoryLimitHistory = { mes: string; limites_categoria: CategoryLimit[] | null };
 type Summary={fecha:string;mes:string;semana_desde:string;semana_hasta:string;totales:CurrencyTotal[]};
 @Component({selector:'app-planning',imports:[FormsModule],templateUrl:'./planning.html',styleUrl:'./planning.css'})
 export class Planning implements OnChanges {
@@ -27,23 +30,29 @@ export class Planning implements OnChanges {
   readonly rate=signal('');
   readonly categorySpending = signal<CategorySpending | null>(null);
   readonly categoryError = signal(false);
+  readonly categoryMonth = signal('');
+  readonly currentMonth = () => installmentLocalDate().slice(0, 7);
+  private readonly historicalLimits = signal<CategoryLimit[] | null>(null);
+  readonly reportLimits = computed(() => this.categoryMonth()
+    ? this.historicalLimits()
+    : this.saved()?.datos.limites_categoria ?? []);
   categoryToAdd = '';
   private categoryRequest = 0;
 
   readonly categoryUsage = computed(() => {
     const spending = this.categorySpending();
     const rate = rateUnits(this.rate());
-    return (this.saved()?.datos.limites_categoria ?? []).map(limit => {
+    return (this.reportLimits() ?? []).map(limit => {
       const totals = spending?.items.filter(row => row.categoria === limit.categoria)
         .map(row => ({ moneda: row.moneda, mes: row.total }));
       const spent = totals ? reference(totals, 'mes', limit.moneda, rate) : null;
-      return { categoria: limit.categoria, ...usageAgainstLimit(limit, spent) };
+      return { categoria: limit.categoria, totals, ...usageAgainstLimit(limit, spent) };
     });
   });
   readonly categoryComparison = computed(() => {
     const report = this.categorySpending();
     if (!report) return null;
-    const budgeted = new Set(this.categoryUsage().map(row => row.categoria));
+    const budgeted = new Set(this.reportLimits()?.map(row => row.categoria));
     const unbudgeted = new Map<string | null, Map<string, bigint>>();
     const totals = new Map<string, bigint>();
     for (const row of report.items) {
@@ -96,11 +105,17 @@ export class Planning implements OnChanges {
       this.categoryRequest++;
       this.categorySpending.set(null);
       this.categoryError.set(false);
+      this.categoryMonth.set('');
+      this.historicalLimits.set(null);
       this.categoryToAdd = '';
       try{const value=JSON.parse(localStorage.getItem('gastos.reference.'+this.space)??'null');if(typeof value?.rate==='string'&&rateUnits(value.rate))this.rate.set(value.rate);}catch{}
       void this.load();
     }
     if(changes['space']||changes['revision'])void this.loadUsage();
+    if (changes['compact'] && this.compact) {
+      this.categoryMonth.set('');
+      this.historicalLimits.set(null);
+    }
     if (!changes['space'] && (changes['compact'] || changes['revision'] || changes['showCategoryAlerts'])) void this.loadCategoryUsage();
   }
   private get path(){return `/api/spaces/${encodeURIComponent(this.space)}/spending-plan`;}
@@ -136,16 +151,32 @@ export class Planning implements OnChanges {
     this.categoryError.set(false);
     const plan = this.saved();
     if (!plan || (this.compact && (!this.showCategoryAlerts || !plan.datos.limites_categoria?.length))) return;
+    const month = this.categoryMonth();
+    const query = month ? '?mes=' + encodeURIComponent(month) : '';
     try {
-      const report = await this.auth.accountRequest<CategorySpending>(
-        'GET', `/api/spaces/${encodeURIComponent(this.space)}/expense-category-summary`,
-      );
-      if (!Array.isArray(report?.items)) throw new Error('Reporte inválido');
+      const [report, history] = await Promise.all([
+        this.auth.accountRequest<CategorySpending>(
+          'GET', `/api/spaces/${encodeURIComponent(this.space)}/expense-category-summary${query}`,
+        ),
+        month ? this.auth.accountRequest<CategoryLimitHistory>('GET', this.path + '/category-limits' + query) : null,
+      ]);
+      if (!Array.isArray(report?.items) ||
+          (month && (history?.mes !== month || report.desde.slice(0, 7) !== month))) throw new Error('Reporte inválido');
       for (const row of report.items) cents(row.total);
-      if (this.alive && request === this.categoryRequest) this.categorySpending.set(report);
+      if (this.alive && request === this.categoryRequest) {
+        this.historicalLimits.set(history?.limites_categoria ?? null);
+        this.categorySpending.set(report);
+      }
     } catch {
       if (this.alive && request === this.categoryRequest) this.categoryError.set(true);
     }
+  }
+
+  selectCategoryMonth(month: string): void {
+    if (month && (!/^(19[0-9]{2}|20[0-9]{2})-(0[1-9]|1[0-2])$/.test(month) || month > this.currentMonth())) return;
+    this.historicalLimits.set(null);
+    this.categoryMonth.set(month === this.currentMonth() ? '' : month);
+    void this.loadCategoryUsage();
   }
 
   availableCategories() {
@@ -199,6 +230,7 @@ export class Planning implements OnChanges {
   show(){this.hidden.set(false);try{localStorage.setItem('gastos.totals.hidden','false');}catch{}window.dispatchEvent(new CustomEvent('gastos-privacy',{detail:false}));}
   readonly periods = ['diario', 'semanal', 'mensual'] as const;
   readonly money=money;
+  readonly toCents = cents;
   limit(period: LimitPeriod){
     const limit=this.saved()?.datos.limites[period];if(!limit)return null;
     return limitUsage(limit,this.summary()?.totales,period,this.rate());

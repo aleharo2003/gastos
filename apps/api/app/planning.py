@@ -3,7 +3,7 @@ import json
 from decimal import Decimal
 from typing import Literal
 from uuid import UUID
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import text
 from app.accounts import execute, require_member, NO_STORE
@@ -67,6 +67,18 @@ def get_plan(session,user,space):
     row=session.execute(text('SELECT version,datos FROM public.planes_gasto WHERE espacio_id=:s'),{'s':space}).mappings().one_or_none()
     return dict(row) if row else {'version':0,'datos':EMPTY}
 
+
+def get_category_limit_history(session, user, space, month):
+    require_member(session, user, space)
+    return session.execute(text("""
+        SELECT limites
+        FROM public.planes_gasto
+        CROSS JOIN LATERAL jsonb_each(historial_categoria) AS history(mes, limites)
+        WHERE espacio_id=:space AND mes<=:month
+        ORDER BY mes DESC LIMIT 1
+    """), {'space': space, 'month': month}).scalar_one_or_none()
+
+
 def save_plan(session,user,space,body):
     require_member(session,user,space,write=True)
     # Create the empty configuration if absent, then lock it. Concurrent first
@@ -87,6 +99,15 @@ def save_plan(session,user,space,body):
     if row['version']!=body.version:raise HTTPException(409,'El presupuesto cambió en otra sesión',headers=NO_STORE)
     result=session.execute(text('UPDATE public.planes_gasto SET datos=CAST(:d AS jsonb),version=version+1 WHERE espacio_id=:s RETURNING version,datos'),{'s':space,'d':json.dumps(desired)}).mappings().one()
     return dict(result)
+
+
+@router.get('/spaces/{space}/spending-plan/category-limits')
+def read_category_limit_history(space: UUID, request: Request, response: Response,
+                                mes: str = Query(pattern=r'^(19[0-9]{2}|20[0-9]{2})-(0[1-9]|1[0-2])$')):
+    return execute(request, response, space, lambda session, user: {
+        'mes': mes, 'limites_categoria': get_category_limit_history(session, user, space, mes),
+    })
+
 
 @router.get('/spaces/{space}/spending-plan')
 def read_plan(space:UUID,request:Request,response:Response):

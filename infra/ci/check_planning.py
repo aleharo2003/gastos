@@ -4,7 +4,7 @@ from uuid import uuid4
 from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
-from app.planning import PlanUpdate,get_plan,save_plan,EMPTY
+from app.planning import PlanUpdate,get_category_limit_history,get_plan,save_plan,EMPTY
 from app.db.connection import create_runtime_engine,create_migration_engine
 from app.db.unit_of_work import runtime_transaction
 
@@ -15,6 +15,9 @@ def check_planning(runtime_url,migration_url):
         with runtime_transaction(runtime,usuario_id=who,espacio_id=space) as s:return get_plan(s,who,space)
     def save(value,who=owner,space=owner):
         with runtime_transaction(runtime,usuario_id=who,espacio_id=space) as s:return save_plan(s,who,space,PlanUpdate(**value))
+    def history(month, who=owner):
+        with runtime_transaction(runtime, usuario_id=who, espacio_id=owner) as s:
+            return get_category_limit_history(s, who, owner, month)
     def denied(action,code):
         try:action()
         except HTTPException as e:assert e.status_code==code
@@ -41,6 +44,26 @@ def check_planning(runtime_url,migration_url):
         with_limit = save({'version': 2, 'datos': current['datos'] | {'limites_categoria': category_limits}}, editor)
         assert with_limit['version'] == 3 and read(reader)['datos']['limites_categoria'] == category_limits
         denied(lambda: save({'version': 3, 'datos': current['datos']}, reader), 403)
+        with migrator.begin() as c:
+            month = c.execute(text("""
+                SELECT to_char(statement_timestamp() AT TIME ZONE 'America/Argentina/Buenos_Aires', 'YYYY-MM')
+            """)).scalar_one()
+            c.execute(text("""
+                UPDATE public.planes_gasto
+                SET historial_categoria = historial_categoria || jsonb_build_object('2000-01', datos->'limites_categoria')
+                WHERE espacio_id=:s
+            """), {'s': owner})
+        assert history('1999-12', reader) is None
+        assert history('2000-02', reader) == category_limits
+        assert history(month, reader) == category_limits
+        denied(lambda: history(month, other), 403)
+        try:
+            with runtime_transaction(runtime, usuario_id=owner, espacio_id=owner) as s:
+                s.execute(text("UPDATE public.planes_gasto SET historial_categoria='{}'"))
+        except DBAPIError as error:
+            assert error.orig.sqlstate == '42501'
+        else:
+            raise AssertionError('Runtime pudo editar directamente el historial de límites')
 
         legacy_data = current['datos'] | {'limites': {'diario': None, 'semanal': None}}
         legacy_write = save({'version': 3, 'datos': legacy_data})
@@ -48,6 +71,8 @@ def check_planning(runtime_url,migration_url):
         assert save({'version': 3, 'datos': legacy_data}) == legacy_write
         cleared = save({'version': 4, 'datos': legacy_data | {'limites_categoria': []}})
         assert cleared == {'version': 5, 'datos': legacy_data}
+        assert history(month, reader) == []
+        assert history('2000-02', reader) == category_limits
         monthly_limit = {'moneda': 'ARS', 'importe': '12345.00'}
         monthly_data = legacy_data | {'limites': legacy_data['limites'] | {'mensual': monthly_limit}}
         assert save({'version': 5, 'datos': monthly_data}) == {'version': 6, 'datos': monthly_data}

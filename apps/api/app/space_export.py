@@ -29,7 +29,7 @@ TABLES = (
     ('pagos_cuota', 'id cuota_id', 'cuota_id, id'),
     ('variaciones_indice', 'indice periodo variacion', 'indice, periodo'),
     ('metas_ahorro', 'id cuenta_id nombre moneda objetivo fecha_objetivo archivada version', 'id'),
-    ('planes_gasto', 'version datos', 'version'),
+    ('planes_gasto', 'version datos historial_categoria', 'version'),
     ('comprobantes', 'id gasto_id nombre mime bytes sha256', 'gasto_id, id'),
 )
 PREFERENCES = 'canal dias_anticipacion hora_local vencimientos vencidas resumen_semanal'
