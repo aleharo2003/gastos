@@ -29,6 +29,7 @@ BEGIN
                 OR has_any_column_privilege('app_backup',c.oid,'INSERT,UPDATE,REFERENCES')
                 OR (c.relname <> ALL(related || ARRAY['espacios','perfiles','alembic_version'])
                     AND (has_table_privilege('app_backup',c.oid,'SELECT') OR has_any_column_privilege('app_backup',c.oid,'SELECT'))))
+    )
         OR EXISTS (SELECT FROM pg_proc WHERE proowner='app_migrator'::regrole AND has_function_privilege('app_backup',oid,'EXECUTE'))
         OR EXISTS (SELECT FROM pg_class c WHERE c.relnamespace='public'::regnamespace
                    AND c.relname=ANY(related || ARRAY['espacios','perfiles']) AND NOT (c.relrowsecurity AND c.relforcerowsecurity))
