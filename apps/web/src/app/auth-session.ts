@@ -158,10 +158,18 @@ export class AuthSession {
   }
 
   async downloadReceipt(path: string): Promise<Blob> {
+    return this.downloadFile(path, environment.requestTimeoutMs);
+  }
+
+  async downloadSpaceExport(space: string): Promise<Blob> {
+    return this.downloadFile('/api/spaces/' + encodeURIComponent(space) + '/export', 65_000);
+  }
+
+  private async downloadFile(path: string, timeout: number): Promise<Blob> {
     const session=this.session;
     if(!session||!this.verified()) throw new Error('Sesion no disponible');
     const result=await firstValueFrom(this.http.get(`${environment.bffBaseUrl}${path}`,{
-      headers:{Authorization:`Bearer ${session.access_token}`},responseType:'blob',timeout:environment.requestTimeoutMs,
+      headers:{Authorization:`Bearer ${session.access_token}`},responseType:'blob',timeout,
     }));
     if(this.session!==session) throw new Error('La sesion cambio');
     return result;

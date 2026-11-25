@@ -1,5 +1,6 @@
 import { CategoryCatalog } from './category-catalog';
 import { CategorySettings } from './category-settings';
+import { SpaceExport } from './space-export';
 import { TodayCategoryReport } from './today-category-report';
 import { Movements } from './movements';
 import { DueOverview } from './due-overview';
@@ -22,7 +23,7 @@ type Page = { items: Account[]; next_offset: number | null };
 type AccountBalance = { totales: { moneda: string; saldo: string }[] };
 
 @Component({
-  selector: 'app-accounts', imports: [FormsModule, CategorySettings, TodayCategoryReport, Movements, Expenses, Planning, Incomes, Transfers, SavingsGoals, Commitments, DueOverview, ReminderPreferences],
+  selector: 'app-accounts', imports: [FormsModule, CategorySettings, SpaceExport, TodayCategoryReport, Movements, Expenses, Planning, Incomes, Transfers, SavingsGoals, Commitments, DueOverview, ReminderPreferences],
   templateUrl: './accounts.html', styleUrl: './accounts.css',
 })
 export class Accounts implements OnInit {
