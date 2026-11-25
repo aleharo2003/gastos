@@ -1,4 +1,5 @@
 import { MovementsController } from './movements.controller.js';
+import { MovementCategoriesController } from './movement-categories.controller.js';
 import { CommitmentsController } from './commitments.controller.js';
 import { SavingsGoalsController } from './savings-goals.controller.js';
 import { TransfersController } from './transfers.controller.js';
@@ -15,7 +16,7 @@ import { AuthService } from './auth.service.js';
 
 @Module({
   imports: [],
-  controllers: [MovementsController, CommitmentsController, SavingsGoalsController, TransfersController, IncomesController, PlanningController, ReceiptsController, ExpensesController, AppController, AuthController, AccountsController],
+  controllers: [MovementsController, MovementCategoriesController, CommitmentsController, SavingsGoalsController, TransfersController, IncomesController, PlanningController, ReceiptsController, ExpensesController, AppController, AuthController, AccountsController],
   providers: [AppService, AuthService],
 })
 export class AppModule {}
