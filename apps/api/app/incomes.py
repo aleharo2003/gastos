@@ -98,7 +98,7 @@ def list_incomes(session, user, space, account=None, offset=0):
     rows = session.execute(text("""
         SELECT i.*, c.nombre AS cuenta_nombre FROM public.ingresos i
         JOIN public.cuentas c ON c.espacio_id=i.espacio_id AND c.id=i.cuenta_id
-        WHERE i.espacio_id=:s
+        WHERE i.espacio_id=:s AND i.anulado_en IS NULL
     """ + clause + ' ORDER BY i.fecha DESC, i.id DESC LIMIT 101 OFFSET :offset'),
         {'s':space, 'a':account, 'offset':offset}).mappings().all()
     return {'items':[public_income(row) for row in rows[:100]],
@@ -120,7 +120,7 @@ def account_balance(session, user, space, account=None):
         FROM (
           SELECT moneda, importe AS entrada, 0::numeric AS salida,
               0::numeric AS transferencia_entrada, 0::numeric AS transferencia_salida
-          FROM public.ingresos WHERE espacio_id=:s""" + clause + """
+          FROM public.ingresos WHERE espacio_id=:s AND anulado_en IS NULL""" + clause + """
           UNION ALL
           SELECT moneda, 0::numeric, importe, 0::numeric, 0::numeric
           FROM public.gastos WHERE espacio_id=:s AND anulado_en IS NULL""" + clause + """

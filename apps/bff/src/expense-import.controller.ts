@@ -42,6 +42,8 @@ export class ExpenseImportController {
     await this.auth.verifyIdentity(parts[1]);
     const { space, account } = params;
     if (!uuid.test(space) || !uuid.test(account)) throw new BadRequestException('Cuenta o espacio inválido');
+    const kind = request.query['tipo'];
+    if (kind !== undefined && kind !== 'gasto' && kind !== 'ingreso') throw new BadRequestException('Tipo inválido');
     const json = body === undefined ? undefined : JSON.stringify(body);
     if (json && Buffer.byteLength(json) > 90 * 1024) throw new HttpException('Dividí el archivo en partes más chicas', 413);
     try {
@@ -50,6 +52,7 @@ export class ExpenseImportController {
       if (base.username || base.password || base.search || base.hash || base.pathname !== '/' ||
           (base.protocol !== 'https:' && !(base.protocol === 'http:' && local))) throw new Error();
       const url = new URL('/spaces/' + space + '/accounts/' + account + '/expense-import' + suffix, base);
+      if (kind) url.searchParams.set('tipo', kind);
       const result = await fetch(url, {
         method, body: json, redirect: 'error', signal: AbortSignal.timeout(20_000),
         headers: { Accept: 'application/json', Authorization: 'Bearer ' + parts[1],

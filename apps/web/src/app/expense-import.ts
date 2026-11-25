@@ -31,6 +31,8 @@ export class ExpenseImport {
   readonly duplicates = computed(() => this.lineNumbers(this.checked()?.duplicadas));
   readonly manualMatches = computed(() => this.lineNumbers(this.checked()?.coincidencias_manuales));
   account = '';
+  kind: 'gasto' | 'ingreso' = 'gasto';
+  get movementLabel() { return this.kind === 'ingreso' ? 'ingresos' : 'gastos'; }
   skipInvalid = false;
   includeManualMatches = false;
   private batch = '';
@@ -105,8 +107,9 @@ export class ExpenseImport {
     return indices?.map(index => this.validRows()[index]?.line).filter(line => line !== undefined) ?? [];
   }
 
-  private get path(): string {
-    return '/api/spaces/' + encodeURIComponent(this.space()) + '/accounts/' + encodeURIComponent(this.account) + '/expense-import';
+  private path(suffix = ''): string {
+    const base = '/api/spaces/' + encodeURIComponent(this.space()) + '/accounts/' + encodeURIComponent(this.account);
+    return base + '/expense-import' + suffix + '?tipo=' + this.kind;
   }
 
   async chooseAccount(): Promise<void> {
@@ -116,14 +119,14 @@ export class ExpenseImport {
   }
 
   private async loadBatches(): Promise<void> {
-    const page = await this.auth.accountRequest<{ items: Batch[] }>('GET', this.path);
+    const page = await this.auth.accountRequest<{ items: Batch[] }>('GET', this.path());
     this.batches.set(page.items);
   }
 
   async check(includeManualMatches = false): Promise<void> {
     if (!this.account || !this.valid().length || (this.invalidCount() && !this.skipInvalid)) return;
     await this.run(async () => {
-      const result = await this.auth.accountRequest<Checked>('POST', this.path + '/preview', {
+      const result = await this.auth.accountRequest<Checked>('POST', this.path('/preview'), {
         filas: this.valid(), incluir_coincidencias_manuales: includeManualMatches,
       });
       this.batch = crypto.randomUUID();
@@ -140,9 +143,9 @@ export class ExpenseImport {
       incluir_coincidencias_manuales: this.includeManualMatches,
     };
     await this.run(async () => {
-      const result = await this.auth.accountRequest<{ importadas: number }>('POST', this.path, payload);
+      const result = await this.auth.accountRequest<{ importadas: number }>('POST', this.path(), payload);
       this.checked.set(null);
-      this.notice.set('Gastos importados: ' + result.importadas + '.');
+      this.notice.set('Movimientos importados: ' + result.importadas + '.');
       if (this.destroy.destroyed) return;
       this.changed.emit();
       await this.loadBatches();
@@ -150,11 +153,13 @@ export class ExpenseImport {
   }
 
   async undo(batch: Batch): Promise<void> {
-    if (this.busy() || !window.confirm('¿Anular los gastos vigentes de este lote?')) return;
+    if (this.busy() || !window.confirm('¿Anular los ' + this.movementLabel + ' vigentes de este lote?')) return;
     await this.run(async () => {
-      const result = await this.auth.accountRequest<{ anuladas: number }>('POST', this.path + '/' + encodeURIComponent(batch.lote) + '/void');
+      const result = await this.auth.accountRequest<{ anuladas: number }>(
+        'POST', this.path('/' + encodeURIComponent(batch.lote) + '/void'),
+      );
       this.invalidate();
-      this.notice.set('Gastos anulados: ' + result.anuladas + '.');
+      this.notice.set('Movimientos anulados: ' + result.anuladas + '.');
       if (this.destroy.destroyed) return;
       this.changed.emit();
       await this.loadBatches();

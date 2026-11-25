@@ -204,7 +204,7 @@
 @if (tab() === 'accounts' && !amountsHidden()) {
   <app-space-export [space]="space" />
   <details class="workspace-panel" #expenseImport>
-    <summary>Importar gastos desde CSV</summary>
+    <summary>Importar movimientos desde CSV</summary>
     @defer (on interaction(expenseImport)) {
       <app-expense-import [space]="space" [accounts]="items()" [moreAccounts]="next() !== null"
         (loadAccounts)="load(true)" (changed)="duePaymentSaved(); loadBalances()" />
