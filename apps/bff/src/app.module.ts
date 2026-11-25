@@ -1,4 +1,5 @@
 import { MovementsController } from './movements.controller.js';
+import { SpaceExportController } from './space-export.controller.js';
 import { MovementCategoriesController } from './movement-categories.controller.js';
 import { CommitmentsController } from './commitments.controller.js';
 import { SavingsGoalsController } from './savings-goals.controller.js';
@@ -16,7 +17,7 @@ import { AuthService } from './auth.service.js';
 
 @Module({
   imports: [],
-  controllers: [MovementsController, MovementCategoriesController, CommitmentsController, SavingsGoalsController, TransfersController, IncomesController, PlanningController, ReceiptsController, ExpensesController, AppController, AuthController, AccountsController],
+  controllers: [MovementsController, SpaceExportController, MovementCategoriesController, CommitmentsController, SavingsGoalsController, TransfersController, IncomesController, PlanningController, ReceiptsController, ExpensesController, AppController, AuthController, AccountsController],
   providers: [AppService, AuthService],
 })
 export class AppModule {}

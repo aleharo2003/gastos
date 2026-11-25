@@ -1,8 +1,11 @@
 """Gastos: dinero exacto, aislamiento y reintento contra la base desechable."""
+import csv
+import io
 from datetime import date
 from decimal import Decimal
 from concurrent.futures import ThreadPoolExecutor
 from uuid import uuid4
+from zipfile import ZipFile
 from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
@@ -12,6 +15,7 @@ from app.expenses import void_expense
 from app.incomes import account_balance
 from app.movements import list_movements
 from app.movement_categories import CategoryCreate, CategoryUpdate, list_categories, save_category
+from app.space_export import build_export
 from app.db.connection import create_runtime_engine, create_migration_engine
 from app.db.unit_of_work import runtime_transaction
 
@@ -287,6 +291,30 @@ def check_expenses_api(runtime_url, migration_url):
         denied(lambda: create(owner, owner, account, body(categoria=custom.id)), 422)
         assert any(row['id'] == custom.id and row['nombre'] == 'Comida hogar' and not row['activa']
                    for row in categories(reader, owner))
+
+        formula = body(descripcion='=1+1', nota='Café, casa', importe='0.10')
+        create(owner, owner, account, formula)
+
+        def export_as(user):
+            with runtime_transaction(runtime, usuario_id=user, espacio_id=owner, repeatable_read=True) as session:
+                assert session.execute(text('SHOW transaction_isolation')).scalar_one() == 'repeatable read'
+                return build_export(session, user, owner)
+
+        denied(lambda: export_as(reader), 403)
+        denied(lambda: export_as(editor), 403)
+        denied(lambda: export_as(other), 403)
+        with ZipFile(io.BytesIO(export_as(owner))) as archive:
+            assert archive.testzip() is None
+            assert {'LEEME.txt', 'cuentas.csv', 'gastos.csv', 'compromisos.csv', 'preferencias_avisos.csv'} <= set(archive.namelist())
+            rows = list(csv.DictReader(io.StringIO(archive.read('gastos.csv').decode('utf-8-sig'))))
+            assert len(rows) > 100 and all(row['cuenta_id'] != str(foreign) for row in rows)
+            assert 'usuario_id' not in rows[0]
+            exported = next(row for row in rows if row['id'] == str(formula.id))
+            assert (exported['descripcion'], exported['nota'], exported['importe']) == ("'=1+1", 'Café, casa', '0.10')
+            assert next(row for row in rows if row['id'] == str(canceled.id))['anulado_en']
+            catalog = list(csv.DictReader(io.StringIO(archive.read('categorias.csv').decode('utf-8-sig'))))
+            assert any(row['id'] == custom.id and row['nombre'] == 'Comida hogar' and row['activa'] == 'False' for row in catalog)
+            assert 'ruta' not in archive.read('comprobantes.csv').decode('utf-8-sig')
 
         with migrator.begin() as c: c.execute(text('DELETE FROM public.miembros_espacio WHERE usuario_id=:u AND espacio_id=:s'),{'u':editor,'s':owner})
         denied(lambda:create(editor,owner,account,body()),403)

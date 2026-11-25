@@ -4,6 +4,10 @@ export class InvalidToken extends Error {}
 export class AuthUnavailable extends Error {}
 
 export async function boundedJson(response: Response, limit: number): Promise<unknown> {
+  return JSON.parse((await boundedBytes(response, limit)).toString('utf8')) as unknown;
+}
+
+export async function boundedBytes(response: Response, limit: number): Promise<Buffer> {
   if (!response.body) throw new Error('Respuesta vacia');
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -16,7 +20,7 @@ export async function boundedJson(response: Response, limit: number): Promise<un
       if (size > limit) throw new Error('Respuesta demasiado grande');
       chunks.push(part.value);
     }
-    return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown;
+    return Buffer.concat(chunks, size);
   } finally {
     await reader.cancel().catch(() => undefined);
     reader.releaseLock();
