@@ -86,10 +86,44 @@ export class Movements implements OnInit {
   }
 
   ngOnInit(): void {
-    this.filters.cuenta = this.initialAccount()?.id ?? '';
+    const account = this.initialAccount();
     const report = this.initialReport();
+    if (account) this.filters.cuenta = account.id;
     if (report) Object.assign(this.filters, report, { tipo: 'gasto' });
-    void this.load();
+    if (!account && !report) this.restoreFilters();
+    void this.load(false, false);
+  }
+
+  private filterStorageKey(): string | undefined {
+    const userId = this.auth.userId;
+    if (userId) return `piggo:movement-filters:${userId}:${this.space()}`;
+    return undefined;
+  }
+
+  private restoreFilters(): void {
+    const key = this.filterStorageKey();
+    if (!key) return;
+    try {
+      const saved: unknown = JSON.parse(localStorage.getItem(key) ?? 'null');
+      if (!saved || typeof saved !== 'object') return;
+      const values = saved as Record<string, unknown>;
+      for (const field of Object.keys(emptyFilters) as (keyof typeof emptyFilters)[]) {
+        const value = values[field];
+        if (typeof value === 'string') this.filters[field] = value;
+      }
+    } catch {
+      // The history remains available when browser storage is disabled or damaged.
+    }
+  }
+
+  private rememberFilters(filters: typeof emptyFilters): void {
+    const key = this.filterStorageKey();
+    if (!key) return;
+    try {
+      localStorage.setItem(key, JSON.stringify(filters));
+    } catch {
+      // Applying a filter does not require browser storage.
+    }
   }
 
   datePreset(period: 'today' | 'month' | 'previous'): void {
@@ -166,7 +200,7 @@ export class Movements implements OnInit {
     }
   }
 
-  async load(more = false): Promise<void> {
+  async load(more = false, remember = true): Promise<void> {
     if (this.loading() || (more && !this.next())) return;
     if (!more && this.filters.desde && this.filters.hasta && this.filters.desde > this.filters.hasta) {
       this.error.set('La fecha inicial debe ser anterior o igual a la fecha final.');
@@ -190,6 +224,7 @@ export class Movements implements OnInit {
       this.totals.set(page.totales);
       this.next.set(page.next_cursor);
       this.applied = filters;
+      if (!more && remember) this.rememberFilters(filters);
       this.loaded.set(true);
     } catch {
       if (version === this.request) this.error.set('No pudimos cargar los movimientos. Volvé a intentar.');

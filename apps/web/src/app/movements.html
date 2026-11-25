@@ -19,8 +19,8 @@
     </select></label>
     <label>Cuenta <select name="cuenta" [(ngModel)]="filters.cuenta">
       <option value="">Todas las cuentas</option>
-      @if (initialAccount(); as initial) {
-        @if (!accountAvailable(initial.id)) { <option [value]="initial.id">{{ initial.nombre }}</option> }
+      @if (filters.cuenta && !accountAvailable(filters.cuenta)) {
+        <option [value]="filters.cuenta">{{ initialAccount()?.id === filters.cuenta ? initialAccount()?.nombre : 'Cuenta guardada' }}</option>
       }
       @for (account of accounts(); track account.id) { <option [value]="account.id">{{ account.nombre }}</option> }
       @if (inactiveChoices().length) {
