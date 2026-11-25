@@ -20,7 +20,7 @@ HISTORY = text("""
                cuenta_id AS origen_id, NULL::uuid AS destino_id, categoria, nota, anulado_en IS NOT NULL AS anulado
         FROM public.gastos WHERE espacio_id=:space
         UNION ALL
-        SELECT id, fecha, 'ingreso', descripcion, moneda, importe, NULL::uuid, cuenta_id, categoria, NULL::text, false
+        SELECT id, fecha, 'ingreso', descripcion, moneda, importe, NULL::uuid, cuenta_id, categoria, NULL::text, anulado_en IS NOT NULL
         FROM public.ingresos WHERE espacio_id=:space
         UNION ALL
         SELECT id, fecha, 'transferencia', descripcion, moneda, importe, origen_id, destino_id, NULL::text, NULL::text, false

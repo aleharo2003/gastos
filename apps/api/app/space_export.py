@@ -19,7 +19,7 @@ FILENAME = 'piggo-datos.zip'
 # Include only explicitly portable fields. Never use SELECT * in an export.
 TABLES = (
     ('cuentas', 'id nombre activa', 'id'),
-    ('ingresos', 'id cuenta_id fecha descripcion moneda importe categoria', 'fecha, id'),
+    ('ingresos', 'id cuenta_id fecha descripcion moneda importe categoria anulado_en', 'fecha, id'),
     ('gastos', 'id cuenta_id fecha descripcion moneda importe categoria nota anulado_en', 'fecha, id'),
     ('transferencias', 'id origen_id destino_id fecha descripcion moneda importe', 'fecha, id'),
     ('compromisos', 'id cuenta_id nombre moneda importe categoria primer_vencimiento total_cuotas '
@@ -43,7 +43,7 @@ importar las columnas de importes como texto.
 
 Cada archivo representa una entidad. Los identificadores vinculan los CSV.
 En pagos_cuota, id también identifica el gasto correspondiente. Una fecha en
-anulado_en identifica un gasto anulado que se conserva como parte del historial.
+anulado_en identifica un movimiento anulado que se conserva como parte del historial.
 Piggo antepone un apóstrofo al texto que Excel podría interpretar como fórmula.
 
 Comprobantes incluye los metadatos, sin el contenido de los adjuntos.

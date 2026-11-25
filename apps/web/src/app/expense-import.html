@@ -1,5 +1,10 @@
 <fieldset [disabled]="busy()">
-<label>Cuenta de los gastos
+<label>Tipo de movimiento
+  <select [(ngModel)]="kind" (ngModelChange)="chooseAccount()">
+    <option value="gasto">Gastos</option><option value="ingreso">Ingresos</option>
+  </select>
+</label>
+<label>Cuenta de los {{ movementLabel }}
   <select [(ngModel)]="account" (ngModelChange)="chooseAccount()">
     <option value="">Elegí una cuenta activa</option>
     @for (item of accounts(); track item.id) { <option [value]="item.id">{{ item.nombre }}</option> }
@@ -13,7 +18,7 @@
     <option value=";">Punto y coma</option><option value=",">Coma</option>
   </select>
 </label>
-<label>Archivo CSV de gastos <input type="file" accept=".csv,text/csv" (change)="select($event)"></label>
+<label>Archivo CSV de {{ movementLabel }} <input type="file" accept=".csv,text/csv" (change)="select($event)"></label>
 @if (headers().length) {
   @for (field of fields; track field.key) {
     <label>{{ field.label }}
@@ -23,7 +28,7 @@
       </select>
     </label>
   }
-  <label>Moneda de los gastos
+  <label>Moneda de los {{ movementLabel }}
     <select [(ngModel)]="currency" (ngModelChange)="refresh()"><option>ARS</option><option>USD</option><option>EUR</option></select>
   </label>
   @if (rows().length) {
@@ -42,14 +47,14 @@
   <button type="button" class="secondary" (click)="check()"
     [disabled]="!account || !valid().length || (invalidCount() > 0 && !skipInvalid)">Revisar duplicados</button>
   @if (checked(); as preview) {
-    <p>Gastos a importar: {{ preview.nuevas }}.</p>
+    <p>Movimientos a importar: {{ preview.nuevas }}.</p>
     @if (duplicates().length) { <p>Filas ya importadas que se omitirán: {{ duplicates().join(', ') }}.</p> }
     @if (manualMatches().length) {
-      <p>Filas que coinciden con gastos manuales: {{ manualMatches().join(', ') }}.</p>
+      <p>Filas que coinciden con {{ movementLabel }} manuales: {{ manualMatches().join(', ') }}.</p>
       <button type="button" class="secondary" (click)="check(!includeManualMatches)">
-        {{ includeManualMatches ? 'Omitir coincidencias con gastos manuales' : 'Incluir coincidencias con gastos manuales' }}
+        {{ includeManualMatches ? 'Omitir coincidencias manuales' : 'Incluir coincidencias manuales' }}
       </button>
-      <p>{{ includeManualMatches ? 'Se incluirán las coincidencias con gastos manuales.' : 'Se omitirán las coincidencias con gastos manuales.' }}</p>
+      <p>{{ includeManualMatches ? 'Se incluirán las coincidencias manuales.' : 'Se omitirán las coincidencias manuales.' }}</p>
     }
     <button type="button" (click)="commit()" [disabled]="!preview.nuevas">Confirmar importación</button>
   }
@@ -58,7 +63,7 @@
   <h4>Últimos lotes para revertir</h4>
   <ul>
     @for (batch of batches(); track batch.lote) {
-      <li>{{ batch.gastos }} gastos · {{ batch.fecha.slice(0, 10).split('-').reverse().join('/') }}
+      <li>{{ batch.gastos }} {{ movementLabel }} · {{ batch.fecha.slice(0, 10).split('-').reverse().join('/') }}
         <button type="button" class="secondary" (click)="undo(batch)">Revertir lote</button>
       </li>
     }

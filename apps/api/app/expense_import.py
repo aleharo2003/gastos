@@ -2,7 +2,7 @@
 from collections import Counter
 from hashlib import sha256
 import json
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID, uuid5
 
 from fastapi import APIRouter, HTTPException, Request, Response
@@ -11,8 +11,11 @@ from sqlalchemy import text
 
 from app.accounts import NO_STORE, execute
 from app.expenses import ExpenseInput, require_account
+from app.incomes import IncomeInput
 
 router = APIRouter()
+Kind = Literal['gasto', 'ingreso']
+TABLES = {'gasto': 'gastos', 'ingreso': 'ingresos'}
 
 
 class CsvExpense(BaseModel):
@@ -36,11 +39,12 @@ def lock_import(session, space):
                     {'s': space})
 
 
-def normalized_rows(space, account, values):
+def normalized_rows(space, account, values, kind):
     seen = Counter()
+    model = ExpenseInput if kind == 'gasto' else IncomeInput
     for position, value in enumerate(values, start=1):
         try:
-            row = ExpenseInput(id=space, **value.model_dump())
+            row = model(id=space, **value.model_dump())
         except ValidationError:
             raise HTTPException(422, f'La fila válida número {position} tiene datos inválidos', headers=NO_STORE) from None
         identity = json.dumps((str(account), row.fecha.isoformat(), row.descripcion, row.moneda,
@@ -49,21 +53,23 @@ def normalized_rows(space, account, values):
         yield uuid5(space, identity + '#' + str(seen[identity])), row
 
 
-def match_manual_rows(session, params, rows, imported):
+def match_manual_rows(session, params, rows, imported, kind):
     candidates = [row.model_dump(mode='json', include={'fecha', 'descripcion', 'moneda', 'importe'})
                   for key, row in rows if key not in imported]
     if not candidates:
         return []
-    matches = session.execute(text('''
+    payment_filter = ('AND NOT EXISTS (SELECT 1 FROM public.pagos_cuota p WHERE p.espacio_id=g.espacio_id AND p.id=g.id)'
+                      if kind == 'gasto' else '')
+    matches = session.execute(text(f'''
         WITH candidatos AS (
             SELECT DISTINCT fecha, descripcion, moneda, importe
             FROM jsonb_to_recordset(CAST(:candidates AS jsonb))
                 AS r(fecha date, descripcion text, moneda text, importe numeric)
         )
         SELECT g.fecha, g.descripcion, g.moneda, g.importe, count(*) AS cantidad
-        FROM public.gastos g JOIN candidatos c USING (fecha, descripcion, moneda, importe)
+        FROM public.{TABLES[kind]} g JOIN candidatos c USING (fecha, descripcion, moneda, importe)
         WHERE g.espacio_id=:s AND g.cuenta_id=:a AND g.anulado_en IS NULL AND g.clave_importacion IS NULL
-          AND NOT EXISTS (SELECT 1 FROM public.pagos_cuota p WHERE p.espacio_id=g.espacio_id AND p.id=g.id)
+          {payment_filter}
         GROUP BY g.fecha, g.descripcion, g.moneda, g.importe
     '''), params | {'candidates': json.dumps(candidates)}).mappings()
     counts = {(row['fecha'], row['descripcion'], row['moneda'], row['importe']): row['cantidad'] for row in matches}
@@ -76,17 +82,18 @@ def match_manual_rows(session, params, rows, imported):
     return duplicates
 
 
-def import_rows(session, user, space, account, body, *, commit):
+def import_rows(session, user, space, account, body, *, commit, kind: Kind = 'gasto'):
     require_account(session, user, space, account, write=True)
     if commit and (body.lote is None or not body.lote.int or body.revision is None):
         raise HTTPException(422, 'Confirmá la vista previa del lote', headers=NO_STORE)
     if commit:
         lock_import(session, space)
     params = {'s': space, 'a': account, 'lote': body.lote}
+    table = TABLES[kind]
     if commit:
-        previous = session.execute(text('''
+        previous = session.execute(text(f'''
             SELECT count(*) AS total, bool_and(usuario_id=:u AND cuenta_id=:a) AS mismo
-            FROM public.gastos WHERE espacio_id=:s AND lote_importacion=:lote
+            FROM public.{table} WHERE espacio_id=:s AND lote_importacion=:lote
         '''), params | {'u': user}).mappings().one()
         if previous['total']:
             if not previous['mismo']:
@@ -94,12 +101,12 @@ def import_rows(session, user, space, account, body, *, commit):
             return {'lote': body.lote, 'importadas': previous['total']}
     if not session.execute(text('SELECT activa FROM public.cuentas WHERE espacio_id=:s AND id=:a'), params).scalar_one():
         raise HTTPException(409, 'La cuenta está inactiva', headers=NO_STORE)
-    rows = list(normalized_rows(space, account, body.filas))
-    existing = set(session.execute(text('''
-        SELECT clave_importacion FROM public.gastos WHERE espacio_id=:s
+    rows = list(normalized_rows(space, account, body.filas, kind))
+    existing = set(session.execute(text(f'''
+        SELECT clave_importacion FROM public.{table} WHERE espacio_id=:s
           AND clave_importacion=ANY(CAST(:keys AS uuid[])) AND anulado_en IS NULL
     '''), params | {'keys': [key for key, _ in rows]}).scalars())
-    manual = match_manual_rows(session, params, rows, existing)
+    manual = match_manual_rows(session, params, rows, existing, kind)
     excluded_manual = set() if body.incluir_coincidencias_manuales else set(manual)
     fresh = [(key, row) for position, (key, row) in enumerate(rows)
              if key not in existing and position not in excluded_manual]
@@ -109,8 +116,8 @@ def import_rows(session, user, space, account, body, *, commit):
         return {'nuevas': len(fresh), 'duplicadas': duplicates, 'coincidencias_manuales': manual, 'revision': revision}
     if not fresh or revision != body.revision:
         raise HTTPException(409, 'Volvé a revisar los duplicados', headers=NO_STORE)
-    session.execute(text('''
-        INSERT INTO public.gastos(id,espacio_id,cuenta_id,usuario_id,fecha,descripcion,moneda,importe,lote_importacion,clave_importacion,importado_en)
+    session.execute(text(f'''
+        INSERT INTO public.{table}(id,espacio_id,cuenta_id,usuario_id,fecha,descripcion,moneda,importe,lote_importacion,clave_importacion,importado_en)
         VALUES (:id,:s,:a,:u,:fecha,:descripcion,:moneda,:importe,:lote,:clave,now())
     '''), [params | {'id': uuid5(body.lote, str(key)), 'u': user, 'fecha': row.fecha,
                      'descripcion': row.descripcion, 'moneda': row.moneda, 'importe': row.importe, 'clave': key}
@@ -118,22 +125,22 @@ def import_rows(session, user, space, account, body, *, commit):
     return {'lote': body.lote, 'importadas': len(fresh)}
 
 
-def recent_batches(session, user, space, account):
+def recent_batches(session, user, space, account, kind: Kind = 'gasto'):
     require_account(session, user, space, account, write=True)
-    rows = session.execute(text('''
+    rows = session.execute(text(f'''
         SELECT lote_importacion AS lote, count(*) AS gastos, min(importado_en) AS fecha
-        FROM public.gastos WHERE espacio_id=:s AND cuenta_id=:a
+        FROM public.{TABLES[kind]} WHERE espacio_id=:s AND cuenta_id=:a
           AND lote_importacion IS NOT NULL AND anulado_en IS NULL
         GROUP BY lote_importacion ORDER BY fecha DESC, lote_importacion LIMIT 50
     '''), {'s': space, 'a': account}).mappings()
     return {'items': [dict(row) for row in rows]}
 
 
-def cancel_batch(session, user, space, account, batch):
+def cancel_batch(session, user, space, account, batch, kind: Kind = 'gasto'):
     require_account(session, user, space, account, write=True)
     lock_import(session, space)
-    result = session.execute(text('''
-        UPDATE public.gastos SET anulado_en=now()
+    result = session.execute(text(f'''
+        UPDATE public.{TABLES[kind]} SET anulado_en=now()
         WHERE espacio_id=:s AND cuenta_id=:a AND lote_importacion=:lote AND anulado_en IS NULL
     '''), {'s': space, 'a': account, 'lote': batch})
     return {'anuladas': result.rowcount}
@@ -143,20 +150,22 @@ BASE = '/spaces/{space}/accounts/{account}/expense-import'
 
 
 @router.get(BASE)
-def read_batches(space: UUID, account: UUID, request: Request, response: Response):
-    return execute(request, response, space, lambda session, user: recent_batches(session, user, space, account))
+def read_batches(space: UUID, account: UUID, request: Request, response: Response, tipo: Kind = 'gasto'):
+    return execute(request, response, space, lambda session, user: recent_batches(session, user, space, account, tipo))
 
 
 @router.post(BASE + '/preview')
-def preview_batch(space: UUID, account: UUID, body: ImportRequest, request: Request, response: Response):
-    return execute(request, response, space, lambda session, user: import_rows(session, user, space, account, body, commit=False))
+def preview_batch(space: UUID, account: UUID, body: ImportRequest, request: Request, response: Response, tipo: Kind = 'gasto'):
+    return execute(request, response, space,
+                   lambda session, user: import_rows(session, user, space, account, body, commit=False, kind=tipo))
 
 
 @router.post(BASE)
-def commit_batch(space: UUID, account: UUID, body: ImportRequest, request: Request, response: Response):
-    return execute(request, response, space, lambda session, user: import_rows(session, user, space, account, body, commit=True))
+def commit_batch(space: UUID, account: UUID, body: ImportRequest, request: Request, response: Response, tipo: Kind = 'gasto'):
+    return execute(request, response, space,
+                   lambda session, user: import_rows(session, user, space, account, body, commit=True, kind=tipo))
 
 
 @router.post(BASE + '/{batch}/void')
-def void_batch(space: UUID, account: UUID, batch: UUID, request: Request, response: Response):
-    return execute(request, response, space, lambda session, user: cancel_batch(session, user, space, account, batch))
+def void_batch(space: UUID, account: UUID, batch: UUID, request: Request, response: Response, tipo: Kind = 'gasto'):
+    return execute(request, response, space, lambda session, user: cancel_batch(session, user, space, account, batch, tipo))

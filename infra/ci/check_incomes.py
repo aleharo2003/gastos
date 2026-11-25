@@ -1,5 +1,6 @@
 """Ingresos y saldos sobre PostgreSQL desechable, con el rol runtime real."""
 from concurrent.futures import ThreadPoolExecutor
+from decimal import Decimal
 from uuid import uuid4
 from fastapi import HTTPException
 from sqlalchemy import text
@@ -10,6 +11,7 @@ from app.expenses import ExpenseInput, ExpenseEdit, create_expense, edit_expense
 from app.db.connection import create_runtime_engine, create_migration_engine
 from app.db.unit_of_work import runtime_transaction
 from app.movements import list_movements, parse_cursor
+from app.expense_import import ImportRequest, cancel_batch, import_rows, recent_batches
 
 
 def check_incomes(runtime_url, migration_url):
@@ -126,6 +128,28 @@ def check_incomes(runtime_url, migration_url):
             assert len(ids) > 100 and len(ids) == len(set(ids))
             assert first['totales'] == second['totales'] == third['totales']
         assert [(row['id'], row['categoria']) for row in history['items']] == [(str(categorized.id), 'sueldo')]
+
+        row = dict(fecha='2026-11-17', descripcion='Ingreso categorizado', moneda='ARS', importe='100.10')
+        request = ImportRequest(filas=[row, row])
+        before_import = totals()['ARS']['saldo']
+        with runtime_transaction(runtime, usuario_id=owner, espacio_id=owner) as session:
+            preview = import_rows(session, owner, owner, account, request, commit=False, kind='ingreso')
+            assert preview['nuevas'] == 1 and preview['coincidencias_manuales'] == [0]
+            batch = uuid4()
+            confirmed = request.model_copy(update={'lote': batch, 'revision': preview['revision']})
+            assert import_rows(session, owner, owner, account, confirmed, commit=True, kind='ingreso')['importadas'] == 1
+            assert import_rows(session, owner, owner, account, confirmed, commit=True, kind='ingreso')['importadas'] == 1
+        assert totals()['ARS']['saldo'] == str(Decimal(before_import) + Decimal('100.10'))
+        with runtime_transaction(runtime, usuario_id=owner, espacio_id=owner) as session:
+            assert import_rows(session, owner, owner, account, request, commit=False, kind='ingreso')['duplicadas'] == [1]
+            assert recent_batches(session, owner, owner, account, 'ingreso')['items'][0]['lote'] == batch
+            assert cancel_batch(session, owner, owner, account, batch) == {'anuladas': 0}
+            assert cancel_batch(session, owner, owner, account, batch, 'ingreso') == {'anuladas': 1}
+            assert cancel_batch(session, owner, owner, account, batch, 'ingreso') == {'anuladas': 0}
+            audited = list_movements(session, owner, owner, filters | {'anulados': True}, None)
+            assert len(audited['items']) == 1 and audited['items'][0]['anulado']
+        assert totals()['ARS']['saldo'] == before_import
+        assert call(list_incomes, reader, owner, account)['items'][0]['id'] == str(categorized.id)
 
         with migrator.begin() as c:
             c.execute(text('DELETE FROM public.miembros_espacio WHERE usuario_id=:u AND espacio_id=:s'),{'u':editor,'s':owner})
