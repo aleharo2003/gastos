@@ -118,6 +118,14 @@
       }
     }
   </details>
+  @if (!reportAmountsHidden()) {
+    <details class="category-report" #trendPanel>
+      <summary>Evolución mensual de gastos</summary>
+      @defer (on interaction(trendPanel)) {
+        <app-expense-trend [space]="space" [account]="account.id" [revision]="summaryRevision()" />
+      }
+    </details>
+  }
   <details class="filters" [open]="!!appliedFilters()">
     <summary>Filtrar gastos {{ appliedFilters() ? '· Filtros aplicados' : '' }}</summary>
     <form #filtersForm="ngForm" (ngSubmit)="applyFilters()">

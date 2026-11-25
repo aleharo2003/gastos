@@ -1,5 +1,6 @@
 import { Component, computed, DestroyRef, EventEmitter, Output, inject, Input, OnInit, signal, ViewChildren, QueryList } from '@angular/core';
 import { EXPENSE_CATEGORIES } from './expense-categories';
+import { ExpenseTrend } from './expense-trend';
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { AuthSession } from './auth-session';
@@ -28,7 +29,7 @@ function today() {
   const date = new Date();
   return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
 }
-@Component({ selector: 'app-expenses', imports: [FormsModule, Receipts, SimilarExpenses, ExpenseTotals], templateUrl: './expenses.html', styleUrl: './expenses.css' })
+@Component({ selector: 'app-expenses', imports: [ExpenseTrend, FormsModule, Receipts, SimilarExpenses, ExpenseTotals], templateUrl: './expenses.html', styleUrl: './expenses.css' })
 export class Expenses implements OnInit {
   @Input({ required: true }) space = '';
   @Input({ required: true }) account = { id: '', nombre: '' };

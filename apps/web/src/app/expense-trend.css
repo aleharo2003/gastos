@@ -1,0 +1,6 @@
+.trend-filters { display: flex; flex-wrap: wrap; gap: .75rem; }
+.trend-filters label { display: grid; gap: .25rem; }
+.trend-chart { list-style: none; padding: 0; display: grid; gap: .5rem; }
+.trend-chart li { display: grid; grid-template-columns: 4.5rem minmax(0, 1fr) auto; gap: .6rem; align-items: center; }
+.trend-track { background: var(--g-bg); border-radius: .25rem; height: .55rem; overflow: hidden; }
+.trend-track span { display: block; height: 100%; background: var(--g-ink); border-radius: inherit; }
