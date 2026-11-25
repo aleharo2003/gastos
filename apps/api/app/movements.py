@@ -17,13 +17,13 @@ PAGE_SIZE = 50
 HISTORY = text("""
     WITH movimientos AS (
         SELECT id, fecha, 'gasto' AS tipo, descripcion, moneda, importe,
-               cuenta_id AS origen_id, NULL::uuid AS destino_id, categoria
+               cuenta_id AS origen_id, NULL::uuid AS destino_id, categoria, nota
         FROM public.gastos WHERE espacio_id=:space
         UNION ALL
-        SELECT id, fecha, 'ingreso', descripcion, moneda, importe, NULL::uuid, cuenta_id, NULL::text
+        SELECT id, fecha, 'ingreso', descripcion, moneda, importe, NULL::uuid, cuenta_id, NULL::text, NULL::text
         FROM public.ingresos WHERE espacio_id=:space
         UNION ALL
-        SELECT id, fecha, 'transferencia', descripcion, moneda, importe, origen_id, destino_id, NULL::text
+        SELECT id, fecha, 'transferencia', descripcion, moneda, importe, origen_id, destino_id, NULL::text, NULL::text
         FROM public.transferencias WHERE espacio_id=:space
     ), filtrados AS (
         SELECT * FROM movimientos
@@ -33,10 +33,13 @@ HISTORY = text("""
           AND (CAST(:moneda AS text) IS NULL OR moneda=:moneda)
           AND (CAST(:cuenta AS uuid) IS NULL OR origen_id=:cuenta OR destino_id=:cuenta)
           AND (CAST(:categoria AS text) IS NULL OR (tipo='gasto' AND COALESCE(categoria,'sin_categoria')=:categoria))
-          AND strpos(
+          AND (strpos(
               translate(lower(descripcion), 'áéíóúü', 'aeiouu'),
               translate(lower(:texto), 'áéíóúü', 'aeiouu')
-          )>0
+          )>0 OR strpos(
+              translate(lower(COALESCE(nota, '')), 'áéíóúü', 'aeiouu'),
+              translate(lower(:texto), 'áéíóúü', 'aeiouu')
+          )>0)
     ), pagina AS (
         SELECT f.id, f.fecha, f.tipo, f.descripcion, f.moneda, f.importe::text AS importe,
                o.nombre AS origen, d.nombre AS destino, f.categoria

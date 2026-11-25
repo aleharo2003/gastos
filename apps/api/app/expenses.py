@@ -28,6 +28,17 @@ class ExpenseInput(BaseModel):
     moneda: Literal['ARS','USD','EUR']
     importe: Decimal
     categoria: Category | None = None
+    nota: str | None = None
+
+    @field_validator('nota')
+    @classmethod
+    def note(cls, value):
+        if value is None:
+            return None
+        value = value.strip()
+        if len(value) > 500 or any(ord(char) < 32 or ord(char) == 127 for char in value):
+            raise ValueError('Nota de hasta 500 caracteres sin controles')
+        return value or None
 
     @field_validator('id')
     @classmethod
@@ -86,15 +97,17 @@ def edit_expense(session, user, space, account, expense_id, body):
         raise HTTPException(404, 'Gasto no disponible', headers=NO_STORE)
     def matches(value):
         return (all(row[key] == getattr(value, key) for key in ('fecha','descripcion','moneda','importe'))
-                and ('categoria' not in value.model_fields_set or row['categoria'] == value.categoria))
+                and ('categoria' not in value.model_fields_set or row['categoria'] == value.categoria)
+                and ('nota' not in value.model_fields_set or row['nota'] == value.nota))
     # A retry after a lost response returns the already saved state.
     if matches(body.nuevo):
         return public_expense(row)
     if not matches(body.original):
         raise HTTPException(409, 'El gasto cambio; actualiza la lista antes de editar', headers=NO_STORE)
     params.update(f=body.nuevo.fecha, d=body.nuevo.descripcion, m=body.nuevo.moneda, i=body.nuevo.importe,
-                  c=body.nuevo.categoria if 'categoria' in body.nuevo.model_fields_set else row['categoria'])
-    updated = session.execute(text('''UPDATE public.gastos SET fecha=:f, descripcion=:d, moneda=:m, importe=:i, categoria=:c
+                  c=body.nuevo.categoria if 'categoria' in body.nuevo.model_fields_set else row['categoria'],
+                  nota=body.nuevo.nota if 'nota' in body.nuevo.model_fields_set else row['nota'])
+    updated = session.execute(text('''UPDATE public.gastos SET fecha=:f, descripcion=:d, moneda=:m, importe=:i, categoria=:c, nota=:nota
         WHERE id=:id AND espacio_id=:s AND cuenta_id=:a RETURNING *'''),params).mappings().one_or_none()
     if updated is None:
         raise HTTPException(403, 'Sin permiso para editar', headers=NO_STORE)
@@ -107,9 +120,12 @@ def patch_expense(space: UUID, account: UUID, expense_id: UUID, body: ExpenseEdi
 
 
 def public_expense(row):
-    return {'id':str(row['id']), 'espacio_id':str(row['espacio_id']), 'cuenta_id':str(row['cuenta_id']),
+    result = {'id':str(row['id']), 'espacio_id':str(row['espacio_id']), 'cuenta_id':str(row['cuenta_id']),
             'fecha':row['fecha'].isoformat(), 'descripcion':row['descripcion'], 'moneda':row['moneda'],
             'importe':format(row['importe'], '.2f'), 'categoria':row['categoria']} | ({'cuenta_nombre':row['cuenta_nombre']} if 'cuenta_nombre' in row else {})
+    if row.get('nota') is not None:
+        result['nota'] = row['nota']
+    return result
 
 
 CATEGORIES = ['alimentos', 'transporte', 'vivienda', 'servicios', 'salud', 'educacion', 'ocio', 'impuestos', 'auto', 'bancario', 'ropa', 'otros']
@@ -191,13 +207,13 @@ def list_expenses(session, user, space, account, offset=0, filters=None):
 def create_expense(session, user, space, account, body):
     require_account(session, user, space, account, write=True)
     params = {'id':body.id,'s':space,'a':account,'u':user,'f':body.fecha,
-              'd':body.descripcion,'m':body.moneda,'i':body.importe,'c':body.categoria}
-    session.execute(text('''INSERT INTO public.gastos(id,espacio_id,cuenta_id,usuario_id,fecha,descripcion,moneda,importe,categoria)
-                            VALUES (:id,:s,:a,:u,:f,:d,:m,:i,:c) ON CONFLICT (id) DO NOTHING'''),params)
+              'd':body.descripcion,'m':body.moneda,'i':body.importe,'c':body.categoria,'nota':body.nota}
+    session.execute(text('''INSERT INTO public.gastos(id,espacio_id,cuenta_id,usuario_id,fecha,descripcion,moneda,importe,categoria,nota)
+                            VALUES (:id,:s,:a,:u,:f,:d,:m,:i,:c,:nota) ON CONFLICT (id) DO NOTHING'''),params)
     row = session.execute(text('SELECT * FROM public.gastos WHERE id=:id AND espacio_id=:s AND cuenta_id=:a'),
                           params).mappings().one_or_none()
     if (row is None or str(row['usuario_id']) != str(user) or row['fecha'] != body.fecha or
-        row['descripcion'] != body.descripcion or row['moneda'] != body.moneda or row['importe'] != body.importe or row['categoria'] != body.categoria):
+        row['descripcion'] != body.descripcion or row['moneda'] != body.moneda or row['importe'] != body.importe or row['categoria'] != body.categoria or row['nota'] != body.nota):
         raise HTTPException(409, 'Identificador usado para otro gasto', headers=NO_STORE)
     return public_expense(row)
 
