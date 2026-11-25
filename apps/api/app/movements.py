@@ -33,7 +33,10 @@ HISTORY = text("""
           AND (CAST(:moneda AS text) IS NULL OR moneda=:moneda)
           AND (CAST(:cuenta AS uuid) IS NULL OR origen_id=:cuenta OR destino_id=:cuenta)
           AND (CAST(:categoria AS text) IS NULL OR (tipo='gasto' AND COALESCE(categoria,'sin_categoria')=:categoria))
-          AND strpos(lower(descripcion), lower(:texto))>0
+          AND strpos(
+              translate(lower(descripcion), 'áéíóúü', 'aeiouu'),
+              translate(lower(:texto), 'áéíóúü', 'aeiouu')
+          )>0
     ), pagina AS (
         SELECT f.id, f.fecha, f.tipo, f.descripcion, f.moneda, f.importe::text AS importe,
                o.nombre AS origen, d.nombre AS destino, f.categoria
