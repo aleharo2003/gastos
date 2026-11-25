@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, field_validator
 from sqlalchemy import text
 from app.accounts import execute, require_member, NO_STORE
 from app.expenses import require_account
+from app.movement_categories import lock_catalog, require_active_category
 
 router = APIRouter()
 AMOUNT = re.compile(r'(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,2})?')
@@ -20,6 +21,14 @@ class IncomeInput(BaseModel):
     descripcion: str
     moneda: Literal['ARS','USD','EUR']
     importe: Decimal
+    categoria: str | None = None
+
+    @field_validator('categoria')
+    @classmethod
+    def category(cls, value):
+        if value is not None and not re.fullmatch(r'[a-z0-9_-]{1,36}', value):
+            raise ValueError('Categoría inválida')
+        return value
 
     @field_validator('id')
     @classmethod
@@ -53,22 +62,31 @@ class IncomeInput(BaseModel):
 
 
 def public_income(row):
-    return {'id':str(row['id']), 'espacio_id':str(row['espacio_id']), 'cuenta_id':str(row['cuenta_id']),
+    item = {'id':str(row['id']), 'espacio_id':str(row['espacio_id']), 'cuenta_id':str(row['cuenta_id']),
             'fecha':row['fecha'].isoformat(), 'descripcion':row['descripcion'],
             'moneda':row['moneda'], 'importe':format(row['importe'], '.2f')} | (
                 {'cuenta_nombre': row['cuenta_nombre']} if 'cuenta_nombre' in row else {})
+    if row['categoria'] is not None:
+        item['categoria'] = row['categoria']
+    return item
 
 
 def create_income(session, user, space, account, body):
     require_account(session, user, space, account, write=True)
     params = {'id':body.id, 's':space, 'a':account, 'u':user, 'f':body.fecha,
-              'd':body.descripcion, 'm':body.moneda, 'i':body.importe}
-    session.execute(text('''INSERT INTO public.ingresos(id,espacio_id,cuenta_id,usuario_id,fecha,descripcion,moneda,importe)
-        VALUES (:id,:s,:a,:u,:f,:d,:m,:i) ON CONFLICT (id) DO NOTHING'''), params)
+              'd':body.descripcion, 'm':body.moneda, 'i':body.importe, 'c':body.categoria}
+    if body.categoria is not None:
+        lock_catalog(session, space)
+        existing = session.execute(text('SELECT id FROM public.ingresos WHERE id=:id AND espacio_id=:s AND cuenta_id=:a'),
+                                   params).scalar_one_or_none()
+        if existing is None:
+            require_active_category(session, space, 'ingreso', body.categoria)
+    session.execute(text('''INSERT INTO public.ingresos(id,espacio_id,cuenta_id,usuario_id,fecha,descripcion,moneda,importe,categoria)
+        VALUES (:id,:s,:a,:u,:f,:d,:m,:i,:c) ON CONFLICT (id) DO NOTHING'''), params)
     row = session.execute(text('SELECT * FROM public.ingresos WHERE id=:id AND espacio_id=:s AND cuenta_id=:a'),
                           params).mappings().one_or_none()
     if (row is None or str(row['usuario_id']) != str(user) or
-        any(row[key] != getattr(body, key) for key in ('fecha','descripcion','moneda','importe'))):
+        any(row[key] != getattr(body, key) for key in ('fecha','descripcion','moneda','importe','categoria'))):
         raise HTTPException(409, 'Identificador usado para otro ingreso', headers=NO_STORE)
     return public_income(row)
 

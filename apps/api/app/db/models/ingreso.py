@@ -14,6 +14,7 @@ class Ingreso(Base):
         CheckConstraint("moneda IN ('ARS','USD','EUR')", name='ck_ingresos_moneda'),
         CheckConstraint('importe > 0 AND importe < 1000000000000', name='ck_ingresos_importe'),
         CheckConstraint('char_length(btrim(descripcion)) BETWEEN 1 AND 160', name='ck_ingresos_descripcion'),
+        CheckConstraint("categoria IS NULL OR categoria ~ '^[a-z0-9_-]{1,36}$'", name='ck_ingresos_categoria'),
         Index('ix_ingresos_espacio_cuenta_fecha', 'espacio_id', 'cuenta_id', 'fecha'),
     )
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
@@ -24,4 +25,4 @@ class Ingreso(Base):
     descripcion: Mapped[str] = mapped_column(Text, nullable=False)
     moneda: Mapped[str] = mapped_column(Text, nullable=False)
     importe: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
-
+    categoria: Mapped[str | None] = mapped_column(Text, nullable=True)

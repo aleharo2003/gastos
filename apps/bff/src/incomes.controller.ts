@@ -4,11 +4,12 @@ import { AuthService } from './auth.service.js';
 import { boundedJson } from './token-verifier.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-type IncomeInput = { id:string; fecha:string; descripcion:string; moneda:string; importe:string };
+type IncomeInput = { id:string; fecha:string; descripcion:string; moneda:string; importe:string; categoria?: string | null };
 type Income = IncomeInput & {espacio_id:string; cuenta_id:string; cuenta_nombre?: string };
 function valid(value: unknown): value is IncomeInput {
   const row = value as IncomeInput;
-  return !!row && typeof row.id === 'string' && UUID.test(row.id) && !/^0{8}-0{4}-0{4}-0{4}-0{12}$/.test(row.id) &&
+  return !!row && (row.categoria == null || (typeof row.categoria === 'string' && /^[a-z0-9_-]{1,36}$/.test(row.categoria))) &&
+    typeof row.id === 'string' && UUID.test(row.id) && !/^0{8}-0{4}-0{4}-0{4}-0{12}$/.test(row.id) &&
     typeof row.fecha === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(row.fecha) &&
     typeof row.descripcion === 'string' && [...row.descripcion.trim()].length >= 1 && [...row.descripcion.trim()].length <= 160 &&
     !/[\x00-\x1f\x7f]/.test(row.descripcion) && ['ARS','USD','EUR'].includes(row.moneda) &&
@@ -22,6 +23,7 @@ function income(value:unknown, space:string, account?:string):Income {
   if (row.cuenta_nombre !== undefined && (typeof row.cuenta_nombre !== 'string' || row.cuenta_nombre.length > 160)) throw new Error();
   return {id:row.id,espacio_id:space,cuenta_id:row.cuenta_id,fecha:row.fecha,
     descripcion:row.descripcion,moneda:row.moneda,importe:row.importe,
+    ...(row.categoria == null ? {} : { categoria: row.categoria }),
     ...(row.cuenta_nombre === undefined ? {} : { cuenta_nombre: row.cuenta_nombre })};
 }
 export function validateBalance(value:unknown) {
@@ -69,7 +71,7 @@ export class IncomesController {
   async create(@Param('space') space:string, @Param('account') account:string, @Body() body:unknown, @Req() request:Request, @Res({passthrough:true}) response:Response) {
     response.setHeader('Cache-Control','no-store');
     const token=await this.token(request,response);
-    if(!valid(body) || Object.keys(body).some(k=>!['id','fecha','descripcion','moneda','importe'].includes(k)))throw new BadRequestException('Ingreso invalido');
+    if(!valid(body) || Object.keys(body).some(k=>!['id','fecha','descripcion','moneda','importe','categoria'].includes(k)))throw new BadRequestException('Ingreso invalido');
     return this.forward(token,space,account,'create',{...body,id:body.id.toLowerCase(),descripcion:body.descripcion.trim()});
   }
 

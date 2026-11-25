@@ -9,6 +9,7 @@ from app.incomes import IncomeInput, create_income, list_incomes, account_balanc
 from app.expenses import ExpenseInput, ExpenseEdit, create_expense, edit_expense
 from app.db.connection import create_runtime_engine, create_migration_engine
 from app.db.unit_of_work import runtime_transaction
+from app.movements import list_movements
 
 
 def check_incomes(runtime_url, migration_url):
@@ -107,6 +108,17 @@ def check_incomes(runtime_url, migration_url):
             with migrator.begin() as c: c.execute(text(insert),params | {'a':foreign})
         except DBAPIError as error: assert error.orig.sqlstate=='23503'
         else: raise AssertionError('Se acepto ingreso en cuenta de otro espacio')
+        categorized = payload(fecha='2026-11-17', descripcion='Ingreso categorizado', categoria='sueldo')
+        assert call(create_income, owner, owner, account, categorized)['categoria'] == 'sueldo'
+        assert call(create_income, owner, owner, account, categorized)['id'] == str(categorized.id)
+        denied(lambda: call(create_income, owner, owner, account, payload(categoria='alimentos')), 422)
+        denied(lambda: call(create_income, owner, owner, account, payload(id=categorized.id, categoria='honorarios')), 409)
+        assert call(list_incomes, reader, owner, account)['items'][0]['categoria'] == 'sueldo'
+        with runtime_transaction(runtime, usuario_id=reader, espacio_id=owner) as session:
+            filters = dict(desde=None, hasta=None, tipo='ingreso', moneda='ARS', cuenta=account, texto='Ingreso categorizado')
+            history = list_movements(session, reader, owner, filters, None)
+        assert [(row['id'], row['categoria']) for row in history['items']] == [(str(categorized.id), 'sueldo')]
+
         with migrator.begin() as c:
             c.execute(text('DELETE FROM public.miembros_espacio WHERE usuario_id=:u AND espacio_id=:s'),{'u':editor,'s':owner})
         denied(lambda:call(create_income,editor,owner,account,payload()),403)
