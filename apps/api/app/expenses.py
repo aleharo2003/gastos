@@ -19,6 +19,8 @@ AMOUNT = re.compile(r'(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,2})?')
 
 Category = Literal['alimentos','transporte','vivienda','servicios','salud','educacion','ocio','impuestos','auto','bancario','ropa','otros']
 CATEGORIES = ['alimentos', 'transporte', 'vivienda', 'servicios', 'salud', 'educacion', 'ocio', 'impuestos', 'auto', 'bancario', 'ropa', 'otros']
+DETAIL_DATES = ('fecha_devengamiento', 'fecha_vencimiento')
+OPTIONAL_EXPENSE_FIELDS = ('categoria', 'nota', *DETAIL_DATES)
 
 
 class ExpenseInput(BaseModel):
@@ -30,6 +32,8 @@ class ExpenseInput(BaseModel):
     importe: Decimal
     categoria: ExpenseKey | None = None
     nota: str | None = None
+    fecha_devengamiento: date | None = None
+    fecha_vencimiento: date | None = None
 
     @field_validator('nota')
     @classmethod
@@ -53,6 +57,11 @@ class ExpenseInput(BaseModel):
         if not isinstance(value, str) or not re.fullmatch(r'[0-9]{4}-[0-9]{2}-[0-9]{2}', value):
             raise ValueError('Usar fecha ISO')
         return value
+
+    @field_validator(*DETAIL_DATES, mode='before')
+    @classmethod
+    def optional_iso_date(cls, value):
+        return None if value is None else cls.iso_date(value)
 
     @field_validator('descripcion')
     @classmethod
@@ -103,8 +112,8 @@ def edit_expense(session, user, space, account, expense_id, body):
 
     def matches(value):
         return (all(row[key] == getattr(value, key) for key in ('fecha','descripcion','moneda','importe'))
-                and ('categoria' not in value.model_fields_set or row['categoria'] == value.categoria)
-                and ('nota' not in value.model_fields_set or row['nota'] == value.nota))
+                and all(key not in value.model_fields_set or row[key] == getattr(value, key)
+                        for key in OPTIONAL_EXPENSE_FIELDS))
     # A retry after a lost response returns the already saved state.
     if matches(body.nuevo):
         return public_expense(row)
@@ -113,9 +122,10 @@ def edit_expense(session, user, space, account, expense_id, body):
     if 'categoria' in body.nuevo.model_fields_set and body.nuevo.categoria != row['categoria']:
         require_active_category(session, space, 'gasto', body.nuevo.categoria)
     params.update(f=body.nuevo.fecha, d=body.nuevo.descripcion, m=body.nuevo.moneda, i=body.nuevo.importe,
-                  c=body.nuevo.categoria if 'categoria' in body.nuevo.model_fields_set else row['categoria'],
-                  nota=body.nuevo.nota if 'nota' in body.nuevo.model_fields_set else row['nota'])
-    updated = session.execute(text('''UPDATE public.gastos SET fecha=:f, descripcion=:d, moneda=:m, importe=:i, categoria=:c, nota=:nota
+                  **{key: getattr(body.nuevo, key) if key in body.nuevo.model_fields_set else row[key]
+                     for key in OPTIONAL_EXPENSE_FIELDS})
+    updated = session.execute(text('''UPDATE public.gastos SET fecha=:f, descripcion=:d, moneda=:m, importe=:i,
+        categoria=:categoria, nota=:nota, fecha_devengamiento=:fecha_devengamiento, fecha_vencimiento=:fecha_vencimiento
         WHERE id=:id AND espacio_id=:s AND cuenta_id=:a RETURNING *'''),params).mappings().one_or_none()
     if updated is None:
         raise HTTPException(403, 'Sin permiso para editar', headers=NO_STORE)
@@ -162,6 +172,9 @@ def public_expense(row):
             'importe':format(row['importe'], '.2f'), 'categoria':row['categoria']} | ({'cuenta_nombre':row['cuenta_nombre']} if 'cuenta_nombre' in row else {})
     if row.get('nota') is not None:
         result['nota'] = row['nota']
+    for key in DETAIL_DATES:
+        if row.get(key) is not None:
+            result[key] = row[key].isoformat()
     if row.get('pago_cuota'):
         result['pago_cuota'] = True
     return result
@@ -240,19 +253,22 @@ def list_expenses(session, user, space, account, offset=0, filters=None):
 def create_expense(session, user, space, account, body):
     require_account(session, user, space, account, write=True)
     params = {'id':body.id,'s':space,'a':account,'u':user,'f':body.fecha,
-              'd':body.descripcion,'m':body.moneda,'i':body.importe,'c':body.categoria,'nota':body.nota}
+              'd':body.descripcion,'m':body.moneda,'i':body.importe,
+              **{key: getattr(body, key) for key in OPTIONAL_EXPENSE_FIELDS}}
     if body.categoria is not None:
         lock_catalog(session, space)
         existing = session.execute(text('SELECT id FROM public.gastos WHERE id=:id AND espacio_id=:s AND cuenta_id=:a'),
                                    params).scalar_one_or_none()
         if existing is None:
             require_active_category(session, space, 'gasto', body.categoria)
-    session.execute(text('''INSERT INTO public.gastos(id,espacio_id,cuenta_id,usuario_id,fecha,descripcion,moneda,importe,categoria,nota)
-                            VALUES (:id,:s,:a,:u,:f,:d,:m,:i,:c,:nota) ON CONFLICT (id) DO NOTHING'''),params)
+    session.execute(text('''INSERT INTO public.gastos(id,espacio_id,cuenta_id,usuario_id,fecha,descripcion,moneda,importe,
+                              categoria,nota,fecha_devengamiento,fecha_vencimiento)
+                            VALUES (:id,:s,:a,:u,:f,:d,:m,:i,:categoria,:nota,:fecha_devengamiento,:fecha_vencimiento)
+                            ON CONFLICT (id) DO NOTHING'''),params)
     row = session.execute(text('SELECT * FROM public.gastos WHERE id=:id AND espacio_id=:s AND cuenta_id=:a'),
                           params).mappings().one_or_none()
-    if (row is None or str(row['usuario_id']) != str(user) or row['fecha'] != body.fecha or
-        row['descripcion'] != body.descripcion or row['moneda'] != body.moneda or row['importe'] != body.importe or row['categoria'] != body.categoria or row['nota'] != body.nota):
+    if (row is None or str(row['usuario_id']) != str(user) or
+            any(row[key] != getattr(body, key) for key in ('fecha','descripcion','moneda','importe',*OPTIONAL_EXPENSE_FIELDS))):
         raise HTTPException(409, 'Identificador usado para otro gasto', headers=NO_STORE)
     return public_expense(row)
 
