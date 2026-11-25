@@ -201,6 +201,10 @@
   </details>
 }
 
+@if (tab() === 'accounts' && !amountsHidden()) {
+  <app-space-export [space]="space" />
+}
+
 <app-commitments class="workspace-panel debts-panel"
   [active]="tab() === 'debts'" (draftsChanged)="draftCount.set($event)"
   [hidden]="tab() !== 'debts'" [space]="space" [accounts]="items()"
