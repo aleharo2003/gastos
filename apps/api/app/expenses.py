@@ -95,6 +95,9 @@ def edit_expense(session, user, space, account, expense_id, body):
         WHERE id=:id AND espacio_id=:s AND cuenta_id=:a FOR UPDATE'''), params).mappings().one_or_none()
     if row is None:
         raise HTTPException(404, 'Gasto no disponible', headers=NO_STORE)
+    if row['anulado_en'] is not None:
+        raise HTTPException(409, 'El gasto está anulado', headers=NO_STORE)
+
     def matches(value):
         return (all(row[key] == getattr(value, key) for key in ('fecha','descripcion','moneda','importe'))
                 and ('categoria' not in value.model_fields_set or row['categoria'] == value.categoria)
@@ -119,12 +122,43 @@ def patch_expense(space: UUID, account: UUID, expense_id: UUID, body: ExpenseEdi
     return execute(request,response,space,lambda session,user: edit_expense(session,user,space,account,expense_id,body))
 
 
+def void_expense(session, user, space, account, expense_id):
+    require_account(session, user, space, account, write=True)
+    params = {'id': expense_id, 's': space, 'a': account}
+    row = session.execute(text('''
+        SELECT * FROM public.gastos
+        WHERE id=:id AND espacio_id=:s AND cuenta_id=:a FOR UPDATE
+    '''), params).mappings().one_or_none()
+    if row is None:
+        raise HTTPException(404, 'Gasto no disponible', headers=NO_STORE)
+    if row['anulado_en'] is None:
+        payment = session.execute(text('''
+            SELECT id FROM public.pagos_cuota WHERE espacio_id=:s AND id=:id
+        '''), params).scalar_one_or_none()
+        if payment is not None:
+            raise HTTPException(409, 'El gasto corresponde a un pago de cuota', headers=NO_STORE)
+        updated = session.execute(text('''
+            UPDATE public.gastos SET anulado_en=now()
+            WHERE id=:id AND espacio_id=:s AND cuenta_id=:a RETURNING id
+        '''), params).scalar_one_or_none()
+        if updated is None:
+            raise HTTPException(403, 'Sin permiso para anular', headers=NO_STORE)
+    return {'id': str(expense_id), 'anulado': True}
+
+
+@router.post('/spaces/{space}/accounts/{account}/expenses/{expense_id}/void')
+def post_void_expense(space: UUID, account: UUID, expense_id: UUID, request: Request, response: Response):
+    return execute(request, response, space, lambda session, user: void_expense(session, user, space, account, expense_id))
+
+
 def public_expense(row):
     result = {'id':str(row['id']), 'espacio_id':str(row['espacio_id']), 'cuenta_id':str(row['cuenta_id']),
             'fecha':row['fecha'].isoformat(), 'descripcion':row['descripcion'], 'moneda':row['moneda'],
             'importe':format(row['importe'], '.2f'), 'categoria':row['categoria']} | ({'cuenta_nombre':row['cuenta_nombre']} if 'cuenta_nombre' in row else {})
     if row.get('nota') is not None:
         result['nota'] = row['nota']
+    if row.get('pago_cuota'):
+        result['pago_cuota'] = True
     return result
 
 
@@ -162,7 +196,7 @@ def list_expenses(session, user, space, account, offset=0, filters=None):
     filters = filters or ExpenseFilters()
     if filters.desde and filters.hasta and filters.desde > filters.hasta:
         raise HTTPException(422, 'La fecha desde no puede superar hasta', headers=NO_STORE)
-    conditions = ['espacio_id=:s']
+    conditions = ['espacio_id=:s', 'anulado_en IS NULL']
     if account is not None: conditions.append('cuenta_id=:a')
     params = {'s':space,'a':account,'offset':offset}
     for field, operator in [('desde','>='), ('hasta','<=')]:
@@ -176,7 +210,11 @@ def list_expenses(session, user, space, account, offset=0, filters=None):
         conditions.append('categoria=:categoria'); params['categoria'] = filters.categoria
     if filters.moneda:
         conditions.append('moneda=:moneda'); params['moneda'] = filters.moneda
-    statement = 'SELECT *, (SELECT nombre FROM public.cuentas WHERE id=public.gastos.cuenta_id AND espacio_id=public.gastos.espacio_id) AS cuenta_nombre FROM public.gastos WHERE ' + ' AND '.join(conditions) + ' ORDER BY fecha DESC, id DESC'
+    statement = '''SELECT *,
+        (SELECT nombre FROM public.cuentas WHERE id=public.gastos.cuenta_id AND espacio_id=public.gastos.espacio_id) AS cuenta_nombre,
+        EXISTS (SELECT 1 FROM public.pagos_cuota p WHERE p.id=public.gastos.id
+                AND p.espacio_id=public.gastos.espacio_id) AS pago_cuota
+        FROM public.gastos WHERE ''' + ' AND '.join(conditions) + ' ORDER BY fecha DESC, id DESC'
     if not filters.texto:
         rows = session.execute(text(statement + ' LIMIT 101 OFFSET :offset'), params).mappings().all()
         return {'items':[public_expense(row) for row in rows[:100]],
@@ -238,7 +276,7 @@ def post_expense(space: UUID, account: UUID, body: ExpenseInput, request: Reques
 def category_suggestion(session, user, space, account, description):
     require_account(session, user, space, account)
     rows = session.execute(text('''SELECT descripcion, categoria FROM public.gastos
-        WHERE espacio_id=:s AND cuenta_id=:a AND categoria IS NOT NULL
+        WHERE espacio_id=:s AND cuenta_id=:a AND anulado_en IS NULL AND categoria IS NOT NULL
         ORDER BY fecha DESC, id DESC LIMIT 500'''), {'s':space,'a':account}).mappings().all()
     return suggest_category(description, rows)
 
@@ -252,10 +290,10 @@ def get_category_suggestion(space: UUID, account: UUID, request: Request, respon
 def list_similar_expenses(session,user,space,account,expense_id):
     require_account(session,user,space,account)
     params={'s':space,'a':account,'id':expense_id}
-    source=session.execute(text('SELECT descripcion FROM public.gastos WHERE espacio_id=:s AND cuenta_id=:a AND id=:id'),params).scalar_one_or_none()
+    source=session.execute(text('SELECT descripcion FROM public.gastos WHERE espacio_id=:s AND cuenta_id=:a AND id=:id AND anulado_en IS NULL'),params).scalar_one_or_none()
     if source is None:
         raise HTTPException(404,'Gasto no disponible',headers=NO_STORE)
-    result=session.execute(text('SELECT * FROM public.gastos WHERE espacio_id=:s AND cuenta_id=:a AND id<>:id ORDER BY fecha DESC, id DESC'),params,execution_options={'yield_per':200})
+    result=session.execute(text('SELECT * FROM public.gastos WHERE espacio_id=:s AND cuenta_id=:a AND id<>:id AND anulado_en IS NULL ORDER BY fecha DESC, id DESC'),params,execution_options={'yield_per':200})
     items=[]
     try:
         for row in result.mappings():
@@ -300,7 +338,7 @@ def expense_summary(session, user, space, account=None, day=None):
         COALESCE(SUM(importe) FILTER (WHERE fecha=:d),0) AS dia,
         COALESCE(SUM(importe) FILTER (WHERE fecha>=:f AND fecha<:u),0) AS mes,
         COALESCE(SUM(importe) FILTER (WHERE fecha>=:w AND fecha<:we),0) AS semana FROM public.gastos
-        WHERE espacio_id=:s AND fecha>=LEAST(:f,:w) AND fecha<GREATEST(:u,:we)""" + account_filter + ' GROUP BY moneda'),
+        WHERE espacio_id=:s AND anulado_en IS NULL AND fecha>=LEAST(:f,:w) AND fecha<GREATEST(:u,:we)""" + account_filter + ' GROUP BY moneda'),
         {'s':space,'a':account,'d':day,'f':first,'u':until,'w':week,'we':week_end}).mappings().all()
     return {'fecha':day.isoformat(), 'mes':day.strftime('%Y-%m'),'semana_desde':week.isoformat(),'semana_hasta':(week_end-timedelta(days=1)).isoformat(),
             'totales':[{'moneda':r['moneda'],'dia':format(r['dia'],'.2f'),'mes':format(r['mes'],'.2f'),'semana':format(r['semana'],'.2f')} for r in rows]}
@@ -324,7 +362,7 @@ def expense_category_summary(session, user, space, account=None, day=None):
     rows = session.execute(text("""
         SELECT moneda, categoria, SUM(importe) AS total
         FROM public.gastos
-        WHERE espacio_id=:space AND fecha>=:start AND fecha<:end
+        WHERE espacio_id=:space AND anulado_en IS NULL AND fecha>=:start AND fecha<:end
     """ + account_filter + """
         GROUP BY moneda, categoria
         ORDER BY moneda, total DESC, categoria NULLS LAST
@@ -358,7 +396,7 @@ def expense_trend(session, user, space, account=None, day=None):
     rows = session.execute(text("""
         SELECT to_char(fecha, 'YYYY-MM') AS mes, moneda, categoria, SUM(importe) AS total
         FROM public.gastos
-        WHERE espacio_id=:space AND fecha>=:start AND fecha<:end
+        WHERE espacio_id=:space AND anulado_en IS NULL AND fecha>=:start AND fecha<:end
           AND (CAST(:account AS uuid) IS NULL OR cuenta_id=:account)
         GROUP BY 1, moneda, categoria ORDER BY 1, moneda, categoria
     """), {'space': space, 'start': months[0], 'end': months[-1], 'account': account}).mappings().all()

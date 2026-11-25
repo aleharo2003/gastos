@@ -105,7 +105,7 @@ def account_balance(session, user, space, account=None):
           FROM public.ingresos WHERE espacio_id=:s""" + clause + """
           UNION ALL
           SELECT moneda, 0::numeric, importe, 0::numeric, 0::numeric
-          FROM public.gastos WHERE espacio_id=:s""" + clause + """
+          FROM public.gastos WHERE espacio_id=:s AND anulado_en IS NULL""" + clause + """
           UNION ALL
           SELECT moneda, 0::numeric, 0::numeric, importe, 0::numeric
           FROM public.transferencias WHERE espacio_id=:s""" + incoming + """

@@ -1,5 +1,6 @@
 """Gastos: dinero exacto, aislamiento y reintento contra la base desechable."""
 from datetime import date
+from decimal import Decimal
 from concurrent.futures import ThreadPoolExecutor
 from uuid import uuid4
 from fastapi import HTTPException
@@ -7,6 +8,9 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from app.accounts import AccountInput, create_account
 from app.expenses import expense_category_summary, expense_summary, expense_trend, list_similar_expenses, category_suggestion, ExpenseFilters, ExpenseInput, ExpenseEdit, edit_expense, create_expense, list_expenses
+from app.expenses import void_expense
+from app.incomes import account_balance
+from app.movements import list_movements
 from app.db.connection import create_runtime_engine, create_migration_engine
 from app.db.unit_of_work import runtime_transaction
 
@@ -226,6 +230,38 @@ def check_expenses_api(runtime_url, migration_url):
         ]
         denied(lambda: category_summary(who=other), 403)
         denied(lambda: category_summary(acct=foreign), 404)
+
+        summary_before_cancel_test = {row['moneda']: row for row in summary()['totales']}
+        canceled = body(fecha='2024-02-29', importe='9.85', categoria='alimentos', nota='Café de prueba')
+        assert create(owner, owner, account, canceled)['nota'] == canceled.nota
+
+        def cancel(who=owner, expense=canceled.id):
+            with runtime_transaction(runtime, usuario_id=who, espacio_id=owner) as session:
+                return void_expense(session, who, owner, account, expense)
+
+        def history(anulados=False):
+            filters = dict(desde=None, hasta=None, tipo=None, moneda=None, cuenta=account,
+                           texto='CAFE de prueba', anulados=anulados)
+            with runtime_transaction(runtime, usuario_id=owner, espacio_id=owner) as session:
+                return list_movements(session, owner, owner, filters, None)
+
+        def balance():
+            with runtime_transaction(runtime, usuario_id=owner, espacio_id=owner) as session:
+                rows = account_balance(session, owner, owner, account)['totales']
+                return next(row['saldo'] for row in rows if row['moneda'] == 'ARS')
+
+        before = balance()
+        assert [row['id'] for row in history()['items']] == [str(canceled.id)]
+        denied(lambda: cancel(who=reader), 403)
+        denied(lambda: cancel(expense=outside.id), 404)
+        assert cancel() == cancel() == {'id': str(canceled.id), 'anulado': True}
+        assert Decimal(balance()) - Decimal(before) == Decimal('9.85')
+        assert {row['moneda']: row for row in summary()['totales']} == summary_before_cancel_test
+        assert category_summary() == report
+        assert history()['items'] == []
+        audited = history(anulados=True)
+        assert [(row['id'], row['anulado']) for row in audited['items']] == [(str(canceled.id), True)]
+        assert audited['totales'] == []
 
         with migrator.begin() as c: c.execute(text('DELETE FROM public.miembros_espacio WHERE usuario_id=:u AND espacio_id=:s'),{'u':editor,'s':owner})
         denied(lambda:create(editor,owner,account,body()),403)
