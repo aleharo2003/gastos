@@ -6,6 +6,7 @@ import { ImportMapping, ImportRow, MAX_CSV_BYTES, parseImportCsv, previewImport 
 
 type Batch = { lote: string; gastos: number; fecha: string };
 type Checked = { nuevas: number; duplicadas: number[]; coincidencias_manuales: number[]; revision: string };
+const movementLabels = { gasto: 'gastos', ingreso: 'ingresos', transferencia: 'transferencias' };
 
 @Component({
   selector: 'app-expense-import',
@@ -31,8 +32,12 @@ export class ExpenseImport {
   readonly duplicates = computed(() => this.lineNumbers(this.checked()?.duplicadas));
   readonly manualMatches = computed(() => this.lineNumbers(this.checked()?.coincidencias_manuales));
   account = '';
-  kind: 'gasto' | 'ingreso' = 'gasto';
-  get movementLabel() { return this.kind === 'ingreso' ? 'ingresos' : 'gastos'; }
+  destination = '';
+  kind: keyof typeof movementLabels = 'gasto';
+  get movementLabel() { return movementLabels[this.kind]; }
+  get accountsReady(): boolean {
+    return !!this.account && (this.kind !== 'transferencia' || (!!this.destination && this.account !== this.destination));
+  }
   skipInvalid = false;
   includeManualMatches = false;
   private batch = '';
@@ -109,13 +114,15 @@ export class ExpenseImport {
 
   private path(suffix = ''): string {
     const base = '/api/spaces/' + encodeURIComponent(this.space()) + '/accounts/' + encodeURIComponent(this.account);
-    return base + '/expense-import' + suffix + '?tipo=' + this.kind;
+    const query = new URLSearchParams({ tipo: this.kind });
+    if (this.kind === 'transferencia') query.set('destino', this.destination);
+    return base + '/expense-import' + suffix + '?' + query;
   }
 
   async chooseAccount(): Promise<void> {
     this.invalidate();
     this.batches.set([]);
-    if (this.account) await this.run(() => this.loadBatches());
+    if (this.accountsReady) await this.run(() => this.loadBatches());
   }
 
   private async loadBatches(): Promise<void> {
@@ -124,7 +131,7 @@ export class ExpenseImport {
   }
 
   async check(includeManualMatches = false): Promise<void> {
-    if (!this.account || !this.valid().length || (this.invalidCount() && !this.skipInvalid)) return;
+    if (!this.accountsReady || !this.valid().length || (this.invalidCount() && !this.skipInvalid)) return;
     await this.run(async () => {
       const result = await this.auth.accountRequest<Checked>('POST', this.path('/preview'), {
         filas: this.valid(), incluir_coincidencias_manuales: includeManualMatches,
@@ -153,7 +160,7 @@ export class ExpenseImport {
   }
 
   async undo(batch: Batch): Promise<void> {
-    if (this.busy() || !window.confirm('¿Anular los ' + this.movementLabel + ' vigentes de este lote?')) return;
+    if (this.busy() || !window.confirm('¿Anular los movimientos vigentes de este lote?')) return;
     await this.run(async () => {
       const result = await this.auth.accountRequest<{ anuladas: number }>(
         'POST', this.path('/' + encodeURIComponent(batch.lote) + '/void'),

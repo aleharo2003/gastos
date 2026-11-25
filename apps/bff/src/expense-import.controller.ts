@@ -43,7 +43,14 @@ export class ExpenseImportController {
     const { space, account } = params;
     if (!uuid.test(space) || !uuid.test(account)) throw new BadRequestException('Cuenta o espacio inválido');
     const kind = request.query['tipo'];
-    if (kind !== undefined && kind !== 'gasto' && kind !== 'ingreso') throw new BadRequestException('Tipo inválido');
+    if (kind !== undefined && kind !== 'gasto' && kind !== 'ingreso' && kind !== 'transferencia') {
+      throw new BadRequestException('Tipo inválido');
+    }
+    const destination = request.query['destino'];
+    if (kind === 'transferencia' && (typeof destination !== 'string' || !uuid.test(destination))) {
+      throw new BadRequestException('Destino inválido');
+    }
+    if (kind !== 'transferencia' && destination !== undefined) throw new BadRequestException('Destino inesperado');
     const json = body === undefined ? undefined : JSON.stringify(body);
     if (json && Buffer.byteLength(json) > 90 * 1024) throw new HttpException('Dividí el archivo en partes más chicas', 413);
     try {
@@ -53,6 +60,7 @@ export class ExpenseImportController {
           (base.protocol !== 'https:' && !(base.protocol === 'http:' && local))) throw new Error();
       const url = new URL('/spaces/' + space + '/accounts/' + account + '/expense-import' + suffix, base);
       if (kind) url.searchParams.set('tipo', kind);
+      if (typeof destination === 'string') url.searchParams.set('destino', destination);
       const result = await fetch(url, {
         method, body: json, redirect: 'error', signal: AbortSignal.timeout(20_000),
         headers: { Accept: 'application/json', Authorization: 'Bearer ' + parts[1],

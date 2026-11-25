@@ -126,10 +126,10 @@ def account_balance(session, user, space, account=None):
           FROM public.gastos WHERE espacio_id=:s AND anulado_en IS NULL""" + clause + """
           UNION ALL
           SELECT moneda, 0::numeric, 0::numeric, importe, 0::numeric
-          FROM public.transferencias WHERE espacio_id=:s""" + incoming + """
+          FROM public.transferencias WHERE espacio_id=:s AND anulado_en IS NULL""" + incoming + """
           UNION ALL
           SELECT moneda, 0::numeric, 0::numeric, 0::numeric, importe
-          FROM public.transferencias WHERE espacio_id=:s""" + outgoing + """
+          FROM public.transferencias WHERE espacio_id=:s AND anulado_en IS NULL""" + outgoing + """
         ) movimientos GROUP BY moneda ORDER BY moneda"""), {'s':space,'a':account}).mappings().all()
     by_currency = {row['moneda']:row for row in rows}
     return {'totales':[{'moneda':currency, **{key:format(by_currency.get(currency, {}).get(key, Decimal(0)), '.2f')

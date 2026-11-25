@@ -1,6 +1,8 @@
 """Transferencias reales: atomicidad, conservacion, RLS y reintentos."""
 from concurrent.futures import ThreadPoolExecutor
 from uuid import uuid4
+from decimal import Decimal
+from app.expense_import import ImportRequest, cancel_batch, import_rows, recent_batches
 from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
@@ -147,6 +149,43 @@ def check_transfers(runtime_url,migration_url):
                 with migrator.begin() as c: c.execute(text(insert),params|changed)
             except DBAPIError as error: assert error.orig.sqlstate==code
             else: raise AssertionError('Restriccion de cuentas omitida')
+        csv_row = dict(fecha='2026-11-17', descripcion='Transferencia CSV', moneda='ARS', importe='0.10')
+        manual = transfer(owner, owner, body(origen_id=source, destino_id=savings, **csv_row))
+        csv_payload = ImportRequest(filas=[csv_row, csv_row])
+        source_before = Decimal(balance(source)['ARS']['saldo'])
+        destination_before = Decimal(balance(savings)['ARS']['saldo'])
+        total_before = balance()['ARS']['saldo']
+
+        def import_as(request, destination=savings, commit=False, actor=owner):
+            with runtime_transaction(runtime, usuario_id=actor, espacio_id=owner) as session:
+                return import_rows(session, actor, owner, source, request, commit=commit,
+                                   kind='transferencia', destination=destination)
+
+        denied(lambda: import_as(csv_payload, destination=source), 422)
+        denied(lambda: import_as(csv_payload, destination=foreign_target), 404)
+        denied(lambda: import_as(csv_payload, actor=reader), 403)
+        preview = import_as(csv_payload)
+        assert preview['coincidencias_manuales'] == [0] and preview['nuevas'] == 1
+        assert import_as(csv_payload, destination=empty)['nuevas'] == 2
+        batch = uuid4()
+        confirmed = csv_payload.model_copy(update={'lote': batch, 'revision': preview['revision']})
+        assert import_as(confirmed, commit=True) == import_as(confirmed, commit=True) == {'lote': batch, 'importadas': 1}
+        assert import_as(csv_payload)['duplicadas'] == [1]
+        assert Decimal(balance(source)['ARS']['saldo']) == source_before - Decimal('0.10')
+        assert Decimal(balance(savings)['ARS']['saldo']) == destination_before + Decimal('0.10')
+        assert balance()['ARS']['saldo'] == total_before
+        with runtime_transaction(runtime, usuario_id=owner, espacio_id=owner) as session:
+            assert recent_batches(session, owner, owner, source, 'transferencia', savings)['items'][0]['lote'] == batch
+            assert cancel_batch(session, owner, owner, source, batch, 'transferencia', empty) == {'anuladas': 0}
+            assert cancel_batch(session, owner, owner, source, batch, 'transferencia', savings) == {'anuladas': 1}
+            assert cancel_batch(session, owner, owner, source, batch, 'transferencia', savings) == {'anuladas': 0}
+            audit = list_movements(session, owner, owner, filters | {'texto': csv_row['descripcion'], 'anulados': True}, None)
+            assert len(audit['items']) == 1 and audit['items'][0]['tipo'] == 'transferencia'
+            assert audit['items'][0]['id'] != manual['id']
+        assert Decimal(balance(source)['ARS']['saldo']) == source_before
+        assert Decimal(balance(savings)['ARS']['saldo']) == destination_before
+        assert all(row['id'] != audit['items'][0]['id'] for row in page(account=source)['items'])
+
         with migrator.begin() as c:
             c.execute(text('DELETE FROM public.miembros_espacio WHERE usuario_id=:u AND espacio_id=:s'),{'u':editor,'s':owner})
         denied(lambda:transfer(editor,owner,body()),403)

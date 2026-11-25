@@ -1,15 +1,25 @@
 <fieldset [disabled]="busy()">
 <label>Tipo de movimiento
   <select [(ngModel)]="kind" (ngModelChange)="chooseAccount()">
-    <option value="gasto">Gastos</option><option value="ingreso">Ingresos</option>
+    <option value="gasto">Gastos</option><option value="ingreso">Ingresos</option><option value="transferencia">Transferencias</option>
   </select>
 </label>
-<label>Cuenta de los {{ movementLabel }}
+<label>{{ kind === 'transferencia' ? 'Cuenta de origen' : 'Cuenta de ' + movementLabel }}
   <select [(ngModel)]="account" (ngModelChange)="chooseAccount()">
     <option value="">Elegí una cuenta activa</option>
     @for (item of accounts(); track item.id) { <option [value]="item.id">{{ item.nombre }}</option> }
   </select>
 </label>
+@if (kind === 'transferencia') {
+  <label>Cuenta de destino
+    <select [(ngModel)]="destination" (ngModelChange)="chooseAccount()">
+      <option value="">Elegí una cuenta activa distinta a la de origen</option>
+      @for (item of accounts(); track item.id) {
+        <option [value]="item.id" [disabled]="item.id === account">{{ item.nombre }}</option>
+      }
+    </select>
+  </label>
+}
 @if (moreAccounts()) {
   <button type="button" class="secondary" (click)="loadAccounts.emit()">Cargar más cuentas</button>
 }
@@ -28,7 +38,7 @@
       </select>
     </label>
   }
-  <label>Moneda de los {{ movementLabel }}
+  <label>Moneda del lote
     <select [(ngModel)]="currency" (ngModelChange)="refresh()"><option>ARS</option><option>USD</option><option>EUR</option></select>
   </label>
   @if (rows().length) {
@@ -45,7 +55,7 @@
     <label><input type="checkbox" [(ngModel)]="skipInvalid" (ngModelChange)="checked.set(null)"> Omitir filas inválidas</label>
   }
   <button type="button" class="secondary" (click)="check()"
-    [disabled]="!account || !valid().length || (invalidCount() > 0 && !skipInvalid)">Revisar duplicados</button>
+    [disabled]="!accountsReady || !valid().length || (invalidCount() > 0 && !skipInvalid)">Revisar duplicados</button>
   @if (checked(); as preview) {
     <p>Movimientos a importar: {{ preview.nuevas }}.</p>
     @if (duplicates().length) { <p>Filas ya importadas que se omitirán: {{ duplicates().join(', ') }}.</p> }

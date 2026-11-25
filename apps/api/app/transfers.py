@@ -48,7 +48,7 @@ def list_transfers(session,user,space,account=None,offset=0):
     if account is None: require_member(session,user,space)
     else: require_account(session,user,space,account)
     clause=' AND (origen_id=:a OR destino_id=:a)' if account is not None else ''
-    rows=session.execute(text('SELECT * FROM public.transferencias WHERE espacio_id=:s'+clause+
+    rows=session.execute(text('SELECT * FROM public.transferencias WHERE espacio_id=:s AND anulado_en IS NULL'+clause+
         ' ORDER BY fecha DESC,id DESC LIMIT 101 OFFSET :offset'),
         {'s':space,'a':account,'offset':offset}).mappings().all()
     return {'items':[public_transfer(row) for row in rows[:100]],
