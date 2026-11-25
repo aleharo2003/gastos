@@ -248,6 +248,21 @@ export class Expenses implements OnInit {
     }
   }
 
+  readonly undoable = signal<{ account: string; id: string } | null>(null);
+  private undoExpiry?: ReturnType<typeof setTimeout>;
+
+  async undoSave(): Promise<void> {
+    const target = this.undoable();
+    if (!target || this.saving() || this.loading() || this.editing) return;
+    await this.voidExpense(target.account, target.id);
+  }
+
+  private offerUndo(item: Expense): void {
+    clearTimeout(this.undoExpiry);
+    this.undoable.set({ account: item.cuenta_id, id: item.id });
+    this.undoExpiry = setTimeout(() => this.undoable.set(null), 12_000);
+  }
+
   private async voidExpense(accountId: string, expenseId: string): Promise<void> {
     this.saving.set(true);
     this.error.set('');
@@ -259,6 +274,10 @@ export class Expenses implements OnInit {
       canceled = true;
       this.items.update(rows => rows.filter(row => row.id !== expenseId));
       this.recentPage.update(rows => rows.filter(row => row.id !== expenseId));
+      if (this.undoable()?.id === expenseId) {
+        clearTimeout(this.undoExpiry);
+        this.undoable.set(null);
+      }
       if (this.lastSaved() === expenseId) this.lastSaved.set(null);
       if (this.receiptExpense() === expenseId) this.receiptExpense.set(null);
       this.notice.set('Gasto anulado.');
@@ -279,6 +298,7 @@ export class Expenses implements OnInit {
     window.addEventListener('gastos-privacy', this.reportPrivacyListener);
     inject(DestroyRef).onDestroy(() => {
       this.alive = false;
+      clearTimeout(this.undoExpiry);
       window.removeEventListener('gastos-privacy', this.reportPrivacyListener);
     });
   }
@@ -348,6 +368,7 @@ export class Expenses implements OnInit {
       saved = true;
       this.similarExpense.set(null);
       this.lastSaved.set(row.id); this.savedAccount=row.cuenta_id;
+      if (!editing) this.offerUndo(row);
       this.summaryRevision.update(n=>n+1); this.summaryChanged.emit();
       if(this.appliedFilters()){this.notice.set('Guardado. La lista respeta los filtros; el gasto puede quedar fuera de los resultados.');}
     } catch (error) {

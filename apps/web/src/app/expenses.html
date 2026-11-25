@@ -2,6 +2,10 @@
   <div class="expense-entry">
   @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
   @if (notice()) { <p class="notice" role="status">{{ notice() }}</p> }
+  @if (undoable()) {
+    <button type="button" class="secondary" (click)="undoSave()"
+      [disabled]="saving() || loading() || !!editing">Deshacer registro</button>
+  }
   @if(lastSaved()){<button type="button" class="secondary" (click)="openReceipts(lastSaved())">Adjuntar comprobante al gasto guardado</button>}
   @if(receiptOutsideList()){
     @for(id of [receiptExpense()!]; track id){<app-receipts [id]="'receipts-'+id" [path]="receiptPath(id)" />}
