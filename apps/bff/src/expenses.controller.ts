@@ -6,7 +6,7 @@ import { boundedJson } from './token-verifier.js';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CATEGORIES = ["alimentos", "transporte", "vivienda", "servicios", "salud", "educacion", "ocio", "impuestos", "auto", "bancario", "ropa", "otros"];
 type ExpenseInput = { id: string; fecha: string; descripcion: string; moneda: string; importe: string; categoria?: string | null; nota?: string | null };
-type Expense = ExpenseInput & { espacio_id: string; cuenta_id: string; coincidencia_aproximada?: boolean; cuenta_nombre?: string };
+type Expense = ExpenseInput & { espacio_id: string; cuenta_id: string; coincidencia_aproximada?: boolean; cuenta_nombre?: string; pago_cuota?: boolean };
 type ExpenseEdit = { original: ExpenseInput; nuevo: ExpenseInput };
 function valid(value: unknown): value is ExpenseInput {
   const row = value as ExpenseInput;
@@ -19,9 +19,10 @@ function valid(value: unknown): value is ExpenseInput {
 function expense(value: unknown, space: string, account: string | undefined): Expense {
   const row = value as Expense;
   if (row?.coincidencia_aproximada !== undefined && typeof row.coincidencia_aproximada !== 'boolean') throw new Error();
+  if (row?.pago_cuota !== undefined && typeof row.pago_cuota !== 'boolean') throw new Error();
   if (row?.cuenta_nombre !== undefined && (typeof row.cuenta_nombre !== 'string' || row.cuenta_nombre.length < 1 || row.cuenta_nombre.length > 160)) throw new Error();
   if (!valid(row) || row.espacio_id !== space || (account !== undefined ? row.cuenta_id !== account : typeof row.cuenta_id !== 'string' || !UUID.test(row.cuenta_id))) throw new Error();
-  return { id: row.id, espacio_id: space, cuenta_id: row.cuenta_id, fecha: row.fecha, descripcion: row.descripcion, moneda: row.moneda, importe: row.importe, ...(row.cuenta_nombre !== undefined ? {cuenta_nombre:row.cuenta_nombre} : {}), ...(row.nota != null ? { nota: row.nota } : {}), ...(row.categoria !== undefined ? {categoria:row.categoria} : {}), ...(row.coincidencia_aproximada !== undefined ? {coincidencia_aproximada:row.coincidencia_aproximada} : {}) };
+  return { id: row.id, espacio_id: space, cuenta_id: row.cuenta_id, fecha: row.fecha, descripcion: row.descripcion, moneda: row.moneda, importe: row.importe, ...(row.cuenta_nombre !== undefined ? {cuenta_nombre:row.cuenta_nombre} : {}), ...(row.nota != null ? { nota: row.nota } : {}), ...(row.categoria !== undefined ? {categoria:row.categoria} : {}), ...(row.coincidencia_aproximada !== undefined ? {coincidencia_aproximada:row.coincidencia_aproximada} : {}), ...(row.pago_cuota ? { pago_cuota: true } : {}) };
 }
 
 @Controller('api/spaces/:space')
@@ -143,8 +144,18 @@ export class ExpensesController {
     return this.forward(token, space, account, body, 0, id.toLowerCase());
   }
 
-  private async forward(token: string, rawSpace: string, rawAccount: string | undefined, body?: ExpenseInput | ExpenseEdit, offset = 0, editId?: string, filters = new URLSearchParams(), suggestion = false, similarId?:string, summary: 'expense-summary' | 'expense-category-summary' | 'expense-trend' | false = false) {
-    if (!UUID.test(rawSpace) || (rawAccount !== undefined && !UUID.test(rawAccount)) || (rawAccount === undefined && !!(body || editId || suggestion || similarId))) throw new BadRequestException('Espacio invalido');
+  @Post('accounts/:account/expenses/:id/void')
+  @HttpCode(200)
+  async voidExpense(@Param('space') space: string, @Param('account') account: string, @Param('id') id: string, @Req() request: Request, @Res({ passthrough: true }) response: Response) {
+    response.setHeader('Cache-Control', 'no-store');
+    const token = await this.token(request, response);
+    if (!UUID.test(id)) throw new BadRequestException('Gasto invalido');
+    const target = { id: id.toLowerCase() };
+    return this.forward(token, space, account, undefined, 0, undefined, new URLSearchParams(), false, undefined, false, target);
+  }
+
+  private async forward(token: string, rawSpace: string, rawAccount: string | undefined, body?: ExpenseInput | ExpenseEdit, offset = 0, editId?: string, filters = new URLSearchParams(), suggestion = false, similarId?:string, summary: 'expense-summary' | 'expense-category-summary' | 'expense-trend' | false = false, voidTarget?: { id: string }) {
+    if (!UUID.test(rawSpace) || (rawAccount !== undefined && !UUID.test(rawAccount)) || (rawAccount === undefined && !!(body || editId || suggestion || similarId || voidTarget))) throw new BadRequestException('Espacio invalido');
     const space = rawSpace.toLowerCase();
     const account = rawAccount?.toLowerCase();
     try {
@@ -157,8 +168,8 @@ export class ExpensesController {
       if (!/^\d+$/.test(rawTimeout) || !Number.isSafeInteger(timeout) || timeout < 1 || timeout > 2147483647) throw new Error();
       const summaryParams = new URLSearchParams(filters);
       if (account) summaryParams.set('account', account);
-      const result = await fetch(new URL(summary ? `/spaces/${space}/${summary}${summaryParams.size ? '?' + summaryParams : ''}` : `/spaces/${space}${account ? '/accounts/'+account : ''}/expenses${similarId ? '/' + similarId + '/similar' : suggestion ? '/category-suggestion?' + filters.toString() : editId ? '/' + editId : '?offset=' + offset + (filters.size ? '&' + filters.toString() : '')}`, base), {
-        method: editId ? 'PATCH' : body ? 'POST' : 'GET', redirect: 'error', signal: AbortSignal.timeout(timeout),
+      const result = await fetch(new URL(summary ? `/spaces/${space}/${summary}${summaryParams.size ? '?' + summaryParams : ''}` : `/spaces/${space}${account ? '/accounts/'+account : ''}/expenses${voidTarget ? '/' + voidTarget.id + '/void' : similarId ? '/' + similarId + '/similar' : suggestion ? '/category-suggestion?' + filters.toString() : editId ? '/' + editId : '?offset=' + offset + (filters.size ? '&' + filters.toString() : '')}`, base), {
+        method: editId ? 'PATCH' : body || voidTarget ? 'POST' : 'GET', redirect: 'error', signal: AbortSignal.timeout(timeout),
         headers: { Accept: 'application/json', Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
         ...(body ? { body: JSON.stringify(body) } : {}),
       });
@@ -222,6 +233,11 @@ export class ExpensesController {
           if(value.coincidencias!==0 || value.total!==0)throw new Error();
         } else if(typeof value.categoria!=='string' || !CATEGORIES.includes(value.categoria) || value.coincidencias<2 || value.coincidencias*3<value.total*2)throw new Error();
         return {categoria:value.categoria,coincidencias:value.coincidencias,total:value.total};
+      }
+      if (voidTarget) {
+        const result = data as { id?: string; anulado?: boolean } | null;
+        if (result?.id !== voidTarget.id || result?.anulado !== true) throw new Error();
+        return { id: result.id, anulado: true };
       }
       if (body) return expense(data, space, account);
       const page = data as { items: unknown[]; next_offset: number | null };

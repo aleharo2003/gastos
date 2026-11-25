@@ -8,10 +8,10 @@ const day = /^\d{4}-\d{2}-\d{2}$/;
 const amount = /^(?:0|[1-9][0-9]*)\.[0-9]{2}$/;
 const kinds = ['gasto', 'ingreso', 'transferencia'];
 const currencies = ['ARS', 'USD', 'EUR'];
-const keys = ['desde', 'hasta', 'tipo', 'moneda', 'cuenta', 'texto', 'cursor', 'categoria'];
+const keys = ['desde', 'hasta', 'tipo', 'moneda', 'cuenta', 'texto', 'cursor', 'categoria', 'anulados'];
 const isName = (value: unknown) => value === null || (typeof value === 'string' && value.length <= 160);
 
-type Item = { id: string; fecha: string; tipo: string; descripcion: string; moneda: string; importe: string; origen: string | null; destino: string | null; categoria?: string | null };
+type Item = { id: string; fecha: string; tipo: string; descripcion: string; moneda: string; importe: string; origen: string | null; destino: string | null; categoria?: string | null; anulado?: boolean };
 type Totals = { moneda: string; ingresos: string; gastos: string; transferencias: string };
 type Page = { items: Item[]; totales: (Totals & { variacion_cuenta?: string })[]; next_cursor: string | null };
 
@@ -36,10 +36,11 @@ export class MovementsController {
         typeof value !== 'string' || [...value].length > 160 || /[\x00-\x1f\x7f]/.test(value))) {
       throw new BadRequestException('Filtros inválidos');
     }
-    const { desde, hasta, tipo, moneda, cuenta, cursor } = query as Record<string, string | undefined>;
+    const { desde, hasta, tipo, moneda, cuenta, cursor, anulados } = query as Record<string, string | undefined>;
     if ((desde && !day.test(desde)) || (hasta && !day.test(hasta)) || (desde && hasta && desde > hasta) ||
         (tipo && !kinds.includes(tipo)) || (moneda && !currencies.includes(moneda)) ||
-        (cuenta && !uuid.test(cuenta)) || (cursor && cursor.length > 70)) {
+        (cuenta && !uuid.test(cuenta)) || (cursor && cursor.length > 70) ||
+        (anulados !== undefined && anulados !== 'true' && anulados !== 'false')) {
       throw new BadRequestException('Filtros inválidos');
     }
 
@@ -67,9 +68,11 @@ export class MovementsController {
         if (!row || typeof row.id !== 'string' || !uuid.test(row.id) || typeof row.fecha !== 'string' || !day.test(row.fecha) ||
             !kinds.includes(row.tipo) || !currencies.includes(row.moneda) || typeof row.descripcion !== 'string' ||
             row.descripcion.length > 320 || typeof row.importe !== 'string' || !amount.test(row.importe) ||
-            !isName(row.origen) || !isName(row.destino) || (row.categoria !== undefined && !isName(row.categoria))) throw new Error();
+            !isName(row.origen) || !isName(row.destino) || (row.categoria !== undefined && !isName(row.categoria)) ||
+            (row.anulado !== undefined && typeof row.anulado !== 'boolean')) throw new Error();
         const { id, fecha, tipo, descripcion, moneda, importe, origen, destino, categoria } = row;
-        return { id, fecha, tipo, descripcion, moneda, importe, origen, destino, ...(categoria === undefined ? {} : { categoria }) };
+        return { id, fecha, tipo, descripcion, moneda, importe, origen, destino,
+          ...(categoria === undefined ? {} : { categoria }), ...(row.anulado ? { anulado: true } : {}) };
       });
       const totales = page.totales.map(row => {
         if (!row || !currencies.includes(row.moneda) ||
