@@ -10,11 +10,11 @@ import { SimilarExpenses } from './similar-expenses';
 import { cents } from './money-reference';
 import { progress } from './planning-math';
 
-type Expense = { id: string; espacio_id: string; cuenta_id: string; fecha: string; descripcion: string; moneda: string; importe: string; categoria?: string | null; coincidencia_aproximada?: boolean; cuenta_nombre?: string };
+type Expense = { id: string; espacio_id: string; cuenta_id: string; fecha: string; descripcion: string; moneda: string; importe: string; categoria?: string | null; nota?: string | null; coincidencia_aproximada?: boolean; cuenta_nombre?: string };
 type CategoryTotal = { moneda: string; categoria: string | null; total: string };
 type CategoryReport = { desde: string; hasta: string; items: CategoryTotal[] };
 type CategorySuggestion = {categoria:string|null;coincidencias:number;total:number};
-type Payload = Pick<Expense, 'id' | 'fecha' | 'descripcion' | 'moneda' | 'importe' | 'categoria'>;
+type Payload = Pick<Expense, 'id' | 'fecha' | 'descripcion' | 'moneda' | 'importe' | 'categoria' | 'nota'>;
 export function normalizeAmount(value: string): string | null {
   const text = value.trim().replace(',', '.');
   if (!/^(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,2})?$/.test(text) || !/[1-9]/.test(text)) return null;
@@ -58,6 +58,7 @@ export class Expenses implements OnInit {
   readonly next = signal<number | null>(null);
   readonly categories = [...EXPENSE_CATEGORIES];
   category = '';
+  note = '';
   readonly suggestion = signal<CategorySuggestion|null>(null);
   readonly suggesting = signal(false);
   readonly suggestionNote = signal('');
@@ -196,7 +197,7 @@ export class Expenses implements OnInit {
   @ViewChildren(Receipts) receiptPanels!: QueryList<Receipts>;
   editorOpen = true;
   hasPendingWork(): boolean {
-    return this.saving() || !!(this.editing || this.description || this.amount || this.category)
+    return this.saving() || !!(this.editing || this.description || this.amount || this.category || this.note)
       || !!this.receiptPanels?.some(panel => panel.busy() || !!panel.selected());
   }
   editing: Payload | null = null;
@@ -212,6 +213,7 @@ export class Expenses implements OnInit {
     this.createAccount = item.cuenta_id;
     this.date = today();
     this.description = item.descripcion;
+    this.note = '';
     this.currency = item.moneda;
     this.amount = item.importe;
     this.category = item.categoria ?? '';
@@ -221,12 +223,14 @@ export class Expenses implements OnInit {
 
   edit(item: Expense): void {
     if (this.saving() || this.loading()) return;
-    if ((this.editing || this.description || this.amount) && !window.confirm('¿Descartar el formulario actual y editar este gasto?')) return;
+    if ((this.editing || this.description || this.amount || this.note) && !window.confirm('¿Descartar el formulario actual y editar este gasto?')) return;
     this.clearSuggestion();
     this.editorOpen = true;
     this.similarExpense.set(null);
     this.editAccount = item.cuenta_id;
     this.editing = {id:item.id,fecha:item.fecha,descripcion:item.descripcion,moneda:item.moneda,importe:item.importe,categoria:item.categoria ?? null};
+    this.note = item.nota ?? '';
+    if (item.nota) this.editing.nota = item.nota;
     this.category=item.categoria ?? ''; this.date=item.fecha; this.description=item.descripcion; this.currency=item.moneda; this.amount=item.importe;
     this.pending=undefined; this.error.set(''); this.notice.set('Editando el gasto seleccionado.');
     setTimeout(() => { if (this.alive) document.getElementById('expense-date')?.focus(); });
@@ -234,7 +238,7 @@ export class Expenses implements OnInit {
   cancelEdit(): void {
     if (this.saving() || !window.confirm('¿Descartar los cambios de este gasto?')) return;
     this.clearSuggestion();
-    this.editing=null; this.category=''; this.date=today(); this.description=''; this.amount=''; this.error.set(''); this.notice.set('Edición cancelada.');
+    this.editing=null; this.category=''; this.date=today(); this.description=''; this.amount=''; this.note=''; this.error.set(''); this.notice.set('Edición cancelada.');
   }
   constructor() {
     try { this.reportAmountsHidden.set(localStorage.getItem('gastos.totals.hidden') === 'true'); } catch {}
@@ -281,7 +285,11 @@ export class Expenses implements OnInit {
     this.error.set(''); this.notice.set('');
     if (!amount) { this.error.set('Ingresá un importe mayor que cero, sin separador de miles y con hasta dos decimales.'); return; }
     if (!description || [...description].length > 160 || !this.date || !['ARS','USD','EUR'].includes(this.currency)) return;
-    const values = {fecha: this.date, descripcion: description, moneda: this.currency, importe: amount, categoria: this.category || null};
+    const note = this.note.trim() || null;
+    if (note && [...note].length > 500) { this.error.set('La nota admite hasta 500 caracteres.'); return; }
+    const noteChanged = this.editing && (this.editing.nota ?? null) !== note;
+    const values = {fecha: this.date, descripcion: description, moneda: this.currency, importe: amount, categoria: this.category || null,
+      ...((this.editing ? noteChanged : note || this.pending?.nota) ? { nota: note } : {})};
     if (!this.pending || Object.entries(values).some(([key,value]) => this.pending![key as keyof Payload] !== value)) this.pending = { id: crypto.randomUUID(), ...values };
     this.clearSuggestion();
     this.saving.set(true);
@@ -289,13 +297,17 @@ export class Expenses implements OnInit {
     try {
       const editing = this.editing;
       const row = editing
-        ? await this.auth.accountRequest<Expense>('PATCH', `${this.writePath}/${editing.id}`, {original:editing,nuevo:{id:editing.id,...values}})
+        ? await this.auth.accountRequest<Expense>('PATCH', `${this.writePath}/${editing.id}`, {
+          original: noteChanged ? { ...editing, nota: editing.nota ?? null } : editing,
+          nuevo: { id: editing.id, ...values },
+        })
         : await this.auth.accountRequest<Expense>('POST', this.writePath, this.pending);
       if (!this.alive) return;
       this.items.update(items => [row, ...items.filter(item => item.id !== row.id)].sort((a,b) => b.fecha.localeCompare(a.fecha) || b.id.localeCompare(a.id)));
       this.recentPage.update(items => [row, ...items.filter(item => item.id !== row.id)]
         .sort((a, b) => b.fecha.localeCompare(a.fecha) || b.id.localeCompare(a.id)));
       this.pending = undefined; this.description = ''; this.amount = '';
+      this.note = '';
       this.clearSuggestion();
       this.editing=null; this.category=''; this.date=today();
       this.notice.set(editing ? 'Cambios guardados.' : 'Gasto guardado.');

@@ -72,6 +72,11 @@
         </select>
       </div>
     </div>
+    <details class="expense-optional" [open]="!!editing">
+      <summary>Nota opcional</summary>
+      <label for="expense-note">Nota</label>
+      <input id="expense-note" name="note" [(ngModel)]="note" maxlength="500" [disabled]="saving()">
+    </details>
     <button class="save-expense" type="submit" [disabled]="expenseForm.invalid || saving() || loading()">{{ saving() ? 'Guardando…' : editing ? 'Guardar cambios' : 'Guardar gasto' }}</button>
     @if (editing) { <button type="button" class="secondary" (click)="cancelEdit()" [disabled]="saving()">Cancelar edición</button> }
   </form>
@@ -173,6 +178,7 @@
           </summary>
           <div class="expense-detail-content">
             <p><strong>Cuenta</strong> {{ accountName(item.cuenta_id) }}</p>
+            @if (item.nota) { <p><strong>Nota</strong> {{ item.nota }}</p> }
             <div class="row-actions">
               <button type="button" class="secondary" (click)="edit(item)" [disabled]="saving() || loading()"
                 [attr.aria-label]="'Editar ' + item.descripcion">Editar</button>

@@ -1,7 +1,7 @@
 <section class="workspace-panel expenses-panel" aria-labelledby="movement-title">
   <h3 id="movement-title">Movimientos</h3>
   <form (ngSubmit)="load()" class="movement-filters">
-    <label>Buscar por descripción <input name="texto" [(ngModel)]="filters.texto" maxlength="160"></label>
+    <label>Buscar por descripción o nota <input name="texto" [(ngModel)]="filters.texto" maxlength="160"></label>
     <label>Desde <input name="desde" type="date" [(ngModel)]="filters.desde"></label>
     <label>Hasta <input name="hasta" type="date" [(ngModel)]="filters.hasta"></label>
     <label>Tipo <select name="tipo" [(ngModel)]="filters.tipo">
