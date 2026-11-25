@@ -302,6 +302,14 @@ export class CommitmentsController{
   async installments(@Param('space') space:string,@Param('id') id:string,@Query() query:Record<string,unknown>,@Req() req:Request,@Res({passthrough:true}) res:Response){
     return this.read(space,'installments',id,query,req,res);
   }
+  @Get('commitments/:id/payment-trend')
+  async paymentTrend(@Param('space') space: string, @Param('id') id: string,
+    @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    res.setHeader('Cache-Control', 'no-store');
+    const token = await this.token(req, res);
+    if (!validId(id)) throw new BadRequestException('Compromiso invalido');
+    return this.forward(token, space, 'payment-trend', id.toLowerCase());
+  }
   @Get('installments/:id/payments')
   async payments(@Param('space') space:string,@Param('id') id:string,@Query() query:Record<string,unknown>,@Req() req:Request,@Res({passthrough:true}) res:Response){
     return this.read(space,'payments',id,query,req,res);
@@ -342,14 +350,14 @@ export class CommitmentsController{
 
 
 
-  private async forward(token:string,rawSpace:string,kind:'index-import'|'index-values'|'commitments'|'installments'|'payments'|'monthly'|'detail'|'pause'|'drafts'|'confirm'|'skip'|'overview',id:string|undefined,offset=0,body?:IndexCsv|IndexValue|Create|Pay|Confirm|{version:number}|{pausado:boolean;version:number},month?:string){
+  private async forward(token:string,rawSpace:string,kind:'index-import'|'index-values'|'commitments'|'installments'|'payments'|'payment-trend'|'monthly'|'detail'|'pause'|'drafts'|'confirm'|'skip'|'overview',id:string|undefined,offset=0,body?:IndexCsv|IndexValue|Create|Pay|Confirm|{version:number}|{pausado:boolean;version:number},month?:string){
     if(!UUID.test(rawSpace))throw new BadRequestException('Espacio invalido');const space=rawSpace.toLowerCase();
     try{
       const base=new URL(process.env.API_BASE_URL??'http://127.0.0.1:8000'),local=['localhost','127.0.0.1','[::1]','api'].includes(base.hostname);
       if(base.username||base.password||base.search||base.hash||base.pathname!=='/'||(base.protocol!=='https:'&&!(base.protocol==='http:'&&local)))throw new Error();
       const rawTimeout=process.env.API_TIMEOUT_MS??'5000',timeout=Number(rawTimeout);
       if(!/^\d+$/.test(rawTimeout)||!Number.isSafeInteger(timeout)||timeout<1||timeout>2147483647)throw new Error();
-      const suffix=kind==='index-import'?'index-values/import':kind==='index-values'?'index-values':kind==='overview'?'due-overview':kind==='skip'?`installments/${id}/skip`:kind==='drafts'?'installment-drafts':kind==='confirm'?'installment-confirmations':(kind==='detail'||kind==='pause')?`commitments/${id}`:kind==='monthly'?'installments':kind==='commitments'?'commitments':kind==='installments'?`commitments/${id}/installments`:`installments/${id}/payments`;
+      const suffix=kind==='payment-trend'?`commitments/${id}/payment-trend`:kind==='index-import'?'index-values/import':kind==='index-values'?'index-values':kind==='overview'?'due-overview':kind==='skip'?`installments/${id}/skip`:kind==='drafts'?'installment-drafts':kind==='confirm'?'installment-confirmations':(kind==='detail'||kind==='pause')?`commitments/${id}`:kind==='monthly'?'installments':kind==='commitments'?'commitments':kind==='installments'?`commitments/${id}/installments`:`installments/${id}/payments`;
       const result=await fetch(new URL(`/spaces/${space}/${suffix}?offset=${offset}${kind==='monthly'?'&month='+month:''}`,base),{method:kind==='pause'?'PATCH':body?'POST':'GET',redirect:'error',signal:AbortSignal.timeout(timeout),
         headers:{Accept:'application/json',Authorization:`Bearer ${token}`,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
       if (kind === 'index-import' && [409, 422].includes(result.status)) {
@@ -360,6 +368,15 @@ export class CommitmentsController{
       }
       if([400,401,403,404,409,422,503].includes(result.status))throw new HttpException('No se pudo completar la operacion',result.status);
       if(!result.ok)throw new Error();const data=await boundedJson(result,262144);
+      if (kind === 'payment-trend') {
+        const report = data as { items: { mes: string; total: string }[] } | null;
+        if (!report || !Array.isArray(report.items) || report.items.length !== 12 ||
+            report.items.some((row, index) => !row || !validMonth(row.mes) ||
+              !sum(row.total) || row.total.length > 34 || (index > 0 && row.mes <= report.items[index - 1].mes))) {
+          throw new Error();
+        }
+        return { items: report.items.map(({ mes, total }) => ({ mes, total })) };
+      }
       if (kind === 'index-import') {
         const summary = data as { importadas: number; existentes: number } | null;
         if (!summary || !Number.isInteger(summary.importadas) || !Number.isInteger(summary.existentes) ||

@@ -19,28 +19,68 @@ export class ExpenseTrend implements OnChanges {
   readonly data = signal<Trend | null>(null);
   readonly failed = signal(false);
   readonly currency = signal('ARS');
-  readonly category = signal('');
-  readonly span = signal(6);
+  readonly selectedCategories = signal<string[]>([]);
+  readonly from = signal('');
+  readonly to = signal('');
+  readonly months = computed(() => this.data()?.meses ?? []);
+  readonly end = computed(() => this.to() || this.months().at(-1) || '');
+  readonly start = computed(() => {
+    const start = this.from() || this.months().at(-6) || '';
+    return start > this.end() ? this.end() : start;
+  });
   private readonly catalog = inject(CategoryCatalog);
   get categories() { return this.catalog.expenseOptions(this.space); }
   readonly money = money;
   readonly chart = computed(() => {
     const data = this.data();
     if (!data) return [];
+    const categories = this.selectedCategories();
     const totals = new Map<string, bigint>();
+    const byCategory = new Map<string, bigint>();
     for (const item of data.items) {
-      if (item.moneda !== this.currency() || (this.category() && this.category() !== (item.categoria ?? 'sin_categoria'))) continue;
-      totals.set(item.mes, (totals.get(item.mes) ?? 0n) + cents(item.total));
+      const category = item.categoria ?? 'sin_categoria';
+      if (item.moneda !== this.currency() || (categories.length && !categories.includes(category))) continue;
+      const amount = cents(item.total);
+      totals.set(item.mes, (totals.get(item.mes) ?? 0n) + amount);
+      const key = item.mes + ':' + category;
+      byCategory.set(key, (byCategory.get(key) ?? 0n) + amount);
     }
-    const rows = data.meses.slice(-this.span()).map(month => ({ month, amount: totals.get(month) ?? 0n }));
+    const start = this.start();
+    const end = this.end();
+    const rows = data.meses.filter(month => month >= start && month <= end)
+      .map(month => ({ month, amount: totals.get(month) ?? 0n }));
     const max = rows.reduce((highest, row) => row.amount > highest ? row.amount : highest, 0n);
-    return rows.map(row => ({ ...row, width: max ? Number(row.amount * 1000n / max) / 10 : 0 }));
+    const width = (amount: bigint) => max ? Number(amount * 1000n / max) / 10 : 0;
+    const labels = new Map(this.categories.map(item => [item.id, item.label]));
+    labels.set('sin_categoria', 'Sin categoría');
+    return rows.map(row => ({
+      ...row,
+      width: width(row.amount),
+      breakdown: categories.length < 2 ? [] : categories.map(id => {
+        const amount = byCategory.get(row.month + ':' + id) ?? 0n;
+        return { id, label: labels.get(id) ?? id, amount, width: width(amount) };
+      }),
+    }));
   });
   private version = 0;
   private readonly auth = inject(AuthSession);
 
   constructor() { inject(DestroyRef).onDestroy(() => { this.version++; }); }
   ngOnChanges(): void { void this.load(); }
+
+  toggleCategory(category: string, selected: boolean): void {
+    this.selectedCategories.update(items => selected ? [...items, category] : items.filter(item => item !== category));
+  }
+
+  setStart(month: string): void {
+    if (month > this.end()) this.to.set(month);
+    this.from.set(month);
+  }
+
+  setEnd(month: string): void {
+    if (month < this.start()) this.from.set(month);
+    this.to.set(month);
+  }
 
   async load(): Promise<void> {
     const version = ++this.version;
@@ -51,7 +91,11 @@ export class ExpenseTrend implements OnChanges {
       const result = await this.auth.accountRequest<Trend>(
         'GET', `/api/spaces/${encodeURIComponent(this.space)}/expense-trend${query}`,
       );
-      if (this.version === version) this.data.set(result);
+      if (this.version === version) {
+        if (!result.meses.includes(this.from())) this.from.set('');
+        if (!result.meses.includes(this.to())) this.to.set('');
+        this.data.set(result);
+      }
     } catch {
       if (this.version === version) this.failed.set(true);
     }

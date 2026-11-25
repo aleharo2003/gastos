@@ -300,6 +300,30 @@ def list_payments(session,user,space,identifier,offset=0):
     return {'items':[public_payment(row) for row in rows[:100]],'next_offset':offset+100 if len(rows)>100 else None}
 
 
+def commitment_payment_trend(session, user, space, identifier, day=None):
+    require_commitment(session, user, space, identifier)
+    month = (day or commitment_local_date()).replace(day=1)
+    months = [monthly_due(month, offset) for offset in range(-11, 1)]
+    totals = dict(session.execute(text("""
+        SELECT to_char(g.fecha, 'YYYY-MM'), SUM(g.importe)
+        FROM public.cuotas q
+        JOIN public.pagos_cuota p ON p.espacio_id=q.espacio_id AND p.cuota_id=q.id
+        JOIN public.gastos g ON g.espacio_id=p.espacio_id AND g.id=p.id
+        WHERE q.espacio_id=:space AND q.compromiso_id=:identifier
+          AND g.anulado_en IS NULL AND g.fecha>=:start AND g.fecha<:end
+        GROUP BY 1
+    """), {'space': space, 'identifier': identifier, 'start': months[0],
+           'end': monthly_due(month, 1)}).all())
+    periods = [period.isoformat()[:7] for period in months]
+    return {'items': [{'mes': period, 'total': format(totals.get(period, 0), '.2f')} for period in periods]}
+
+
+@router.get('/spaces/{space}/commitments/{identifier}/payment-trend')
+def get_commitment_payment_trend(space: UUID, identifier: UUID, request: Request, response: Response):
+    return execute(request, response, space,
+                   lambda session, user: commitment_payment_trend(session, user, space, identifier))
+
+
 @router.post('/spaces/{space}/commitments')
 def post_commitment(space:UUID,body:CommitmentInput,request:Request,response:Response):
     return execute(request,response,space,lambda s,u:create_commitment(s,u,space,body))

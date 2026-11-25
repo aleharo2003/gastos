@@ -2,14 +2,29 @@
   <label>Moneda <select [ngModel]="currency()" (ngModelChange)="currency.set($event)">
     <option>ARS</option><option>USD</option><option>EUR</option>
   </select></label>
-  <label>Categoría <select [ngModel]="category()" (ngModelChange)="category.set($event)">
-    <option value="">Todas</option><option value="sin_categoria">Sin categoría</option>
-    @for (item of categories; track item.id) { <option [value]="item.id">{{ item.label }}</option> }
-  </select></label>
-  <label>Período <select [ngModel]="span()" (ngModelChange)="span.set($event)">
-    <option [ngValue]="6">6 meses</option><option [ngValue]="12">12 meses</option>
-  </select></label>
+  @if (months().length) {
+    <label>Desde <select [ngModel]="start()" (ngModelChange)="setStart($event)">
+      @for (month of months(); track month) { <option [value]="month">{{ month }}</option> }
+    </select></label>
+    <label>Hasta <select [ngModel]="end()" (ngModelChange)="setEnd($event)">
+      @for (month of months(); track month) { <option [value]="month">{{ month }}</option> }
+    </select></label>
+  }
 </div>
+<details class="trend-categories">
+  <summary>{{ selectedCategories().length ? 'Categorías (' + selectedCategories().length + ')' : 'Todas las categorías' }}</summary>
+  <div>
+    <label><input type="checkbox" [ngModel]="selectedCategories().includes('sin_categoria')"
+      (ngModelChange)="toggleCategory('sin_categoria', $event)"> Sin categoría</label>
+    @for (item of categories; track item.id) {
+      <label><input type="checkbox" [ngModel]="selectedCategories().includes(item.id)"
+        (ngModelChange)="toggleCategory(item.id, $event)"> {{ item.label }}</label>
+    }
+  </div>
+  @if (selectedCategories().length) {
+    <button class="secondary" type="button" (click)="selectedCategories.set([])">Mostrar todas</button>
+  }
+</details>
 @if (failed()) {
   <p role="alert">No pudimos cargar la evolución mensual.</p>
   <button type="button" class="secondary" (click)="load()">Reintentar</button>
@@ -20,6 +35,17 @@
         <span>{{ row.month }}</span>
         <span class="trend-track" aria-hidden="true"><span [style.width.%]="row.width"></span></span>
         <strong>{{ currency() }} {{ money(row.amount) }}</strong>
+        @if (row.breakdown.length) {
+          <ul class="trend-breakdown" aria-label="Desglose de {{ row.month }}">
+            @for (category of row.breakdown; track category.id) {
+              <li>
+                <span>{{ category.label }}</span>
+                <span class="trend-track" aria-hidden="true"><span [style.width.%]="category.width"></span></span>
+                <span>{{ currency() }} {{ money(category.amount) }}</span>
+              </li>
+            }
+          </ul>
+        }
       </li>
     }
   </ul>

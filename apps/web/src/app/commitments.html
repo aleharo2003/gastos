@@ -131,6 +131,13 @@
   @if(next()!==null){<button type="button" class="secondary" (click)="load(true)" [disabled]="loading()||saving()||paying()">Ver más deudas</button>}
   @if(selected();as debt){
     <h4>Cuotas · {{ debt.nombre }}</h4>
+    <details>
+      <summary #paymentHistory>Ver evolución de pagos</summary>
+      @defer (on interaction(paymentHistory)) {
+        <app-commitment-payment-trend [space]="space" [commitment]="debt.id" [currency]="debt.moneda"
+          [totalPaid]="debt.pagado" [hidden]="hidden()" />
+      }
+    </details>
     <p>{{ debt.moneda }} · Pagado: {{ hidden()?'••••':showAmount(debt.pagado) }} · Pendiente: {{ hidden()?'••••':showAmount(debt.pendiente) }}</p>
     @if(detailLoading()){<p role="status">Cargando cuotas…</p>}
     @if(!detailLoading()&&!installments().length){<p>Todavía no hay cuotas generadas para este plan.</p>}
