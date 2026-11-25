@@ -128,10 +128,10 @@ def list_goals(session,user,space,offset=0,include_archived=False):
           JOIN claves k ON k.cuenta_id=g.cuenta_id AND k.moneda=g.moneda WHERE g.espacio_id=:s AND g.anulado_en IS NULL
           UNION ALL
           SELECT t.destino_id,t.moneda,t.importe FROM public.transferencias t
-          JOIN claves k ON k.cuenta_id=t.destino_id AND k.moneda=t.moneda WHERE t.espacio_id=:s
+          JOIN claves k ON k.cuenta_id=t.destino_id AND k.moneda=t.moneda WHERE t.espacio_id=:s AND t.anulado_en IS NULL
           UNION ALL
           SELECT t.origen_id,t.moneda,-t.importe FROM public.transferencias t
-          JOIN claves k ON k.cuenta_id=t.origen_id AND k.moneda=t.moneda WHERE t.espacio_id=:s
+          JOIN claves k ON k.cuenta_id=t.origen_id AND k.moneda=t.moneda WHERE t.espacio_id=:s AND t.anulado_en IS NULL
         ), saldos AS (SELECT cuenta_id,moneda,SUM(importe) AS saldo FROM movimientos GROUP BY cuenta_id,moneda)
         SELECT p.*,COALESCE(s.saldo,0) AS saldo FROM pagina p LEFT JOIN saldos s
         ON s.cuenta_id=p.cuenta_id AND s.moneda=p.moneda ORDER BY p.archivada,p.id

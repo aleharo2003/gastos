@@ -23,7 +23,7 @@ HISTORY = text("""
         SELECT id, fecha, 'ingreso', descripcion, moneda, importe, NULL::uuid, cuenta_id, categoria, NULL::text, anulado_en IS NOT NULL
         FROM public.ingresos WHERE espacio_id=:space
         UNION ALL
-        SELECT id, fecha, 'transferencia', descripcion, moneda, importe, origen_id, destino_id, NULL::text, NULL::text, false
+        SELECT id, fecha, 'transferencia', descripcion, moneda, importe, origen_id, destino_id, NULL::text, NULL::text, anulado_en IS NOT NULL
         FROM public.transferencias WHERE espacio_id=:space
     ), filtrados AS (
         SELECT * FROM movimientos

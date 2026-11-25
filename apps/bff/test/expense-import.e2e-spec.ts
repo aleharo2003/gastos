@@ -39,7 +39,18 @@ describe('Importación de movimientos', () => {
   });
 
   it('rechaza un tipo desconocido antes de consultar el servicio', async () => {
-    await request(app.getHttpServer()).get(path + '?tipo=transferencia').set('Authorization', 'Bearer test').expect(400);
+    await request(app.getHttpServer()).get(path + '?tipo=otro').set('Authorization', 'Bearer test').expect(400);
     expect(upstream).not.toHaveBeenCalled();
+  });
+
+  it('requiere y reenvía la cuenta de destino de una transferencia', async () => {
+    const destination = randomUUID();
+    await request(app.getHttpServer()).get(path + '?tipo=transferencia').set('Authorization', 'Bearer test').expect(400);
+    await request(app.getHttpServer()).get(path + '?tipo=transferencia&destino=' + destination)
+      .set('Authorization', 'Bearer test').expect(200);
+    expect(upstream).toHaveBeenCalledTimes(1);
+    const url = new URL(String(upstream.mock.calls[0][0]));
+    expect(url.searchParams.get('tipo')).toBe('transferencia');
+    expect(url.searchParams.get('destino')).toBe(destination);
   });
 });

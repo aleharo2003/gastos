@@ -21,7 +21,7 @@ TABLES = (
     ('cuentas', 'id nombre activa', 'id'),
     ('ingresos', 'id cuenta_id fecha descripcion moneda importe categoria anulado_en', 'fecha, id'),
     ('gastos', 'id cuenta_id fecha descripcion moneda importe categoria nota anulado_en', 'fecha, id'),
-    ('transferencias', 'id origen_id destino_id fecha descripcion moneda importe', 'fecha, id'),
+    ('transferencias', 'id origen_id destino_id fecha descripcion moneda importe anulado_en', 'fecha, id'),
     ('compromisos', 'id cuenta_id nombre moneda importe categoria primer_vencimiento total_cuotas '
      'sistema_amortizacion tna indice_ajuste variable pausado version', 'id'),
     ('cuotas', 'id compromiso_id numero vencimiento periodo importe no_aplica estimado '
