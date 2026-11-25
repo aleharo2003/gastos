@@ -1,7 +1,7 @@
 import { Component, DestroyRef, Input, OnChanges, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { AuthSession } from './auth-session';
-import { EXPENSE_CATEGORIES } from './expense-categories';
+import { CategoryCatalog } from './category-catalog';
 import { cents, money } from './money-reference';
 
 type Trend = { meses: string[]; items: { mes: string; moneda: string; categoria: string | null; total: string }[] };
@@ -21,7 +21,8 @@ export class ExpenseTrend implements OnChanges {
   readonly currency = signal('ARS');
   readonly category = signal('');
   readonly span = signal(6);
-  readonly categories = EXPENSE_CATEGORIES;
+  private readonly catalog = inject(CategoryCatalog);
+  get categories() { return this.catalog.expenseOptions(this.space); }
   readonly money = money;
   readonly chart = computed(() => {
     const data = this.data();

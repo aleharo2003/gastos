@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response
 from sqlalchemy import text
 
 from app.accounts import execute, require_member, NO_STORE
-from app.expenses import CATEGORIES
+from app.movement_categories import ExpenseFilter
 
 router = APIRouter()
 Kind = Literal['gasto', 'ingreso', 'transferencia']
@@ -100,14 +100,12 @@ def movement_history(space: UUID, request: Request, response: Response,
                      desde: date | None = None, hasta: date | None = None,
                      tipo: Kind | None = None, moneda: Currency | None = None,
                      cuenta: UUID | None = None,
-                     categoria: str | None = Query(default=None, max_length=32),
+                     categoria: ExpenseFilter | None = None,
                      texto: str = Query(default='', max_length=160, pattern=r'^[^\x00-\x1f\x7f]*$'),
                      anulados: bool = False,
                      cursor: str | None = Query(default=None, max_length=70)):
     if desde and hasta and desde > hasta:
         raise HTTPException(422, 'El rango de fechas es inválido', headers=NO_STORE)
-    if categoria is not None and categoria not in (*CATEGORIES, 'sin_categoria'):
-        raise HTTPException(422, 'Categoría inválida', headers=NO_STORE)
     filters = {'categoria': categoria, 'desde': desde, 'hasta': hasta, 'tipo': tipo, 'moneda': moneda,
                'cuenta': cuenta, 'texto': texto.strip(), 'anulados': anulados}
     after = parse_cursor(cursor)

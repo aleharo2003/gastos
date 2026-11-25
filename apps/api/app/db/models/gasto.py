@@ -15,7 +15,7 @@ class Gasto(Base):
         CheckConstraint("moneda IN ('ARS','USD','EUR')", name='ck_gastos_moneda'),
         CheckConstraint('importe > 0 AND importe < 1000000000000', name='ck_gastos_importe'),
         CheckConstraint('char_length(btrim(descripcion)) BETWEEN 1 AND 160', name='ck_gastos_descripcion'),
-        CheckConstraint("categoria IS NULL OR categoria IN ('alimentos','transporte','vivienda','servicios','salud','educacion','ocio','impuestos','auto','bancario','ropa','otros')", name='ck_gastos_categoria'),
+        CheckConstraint("categoria IS NULL OR categoria IN ('alimentos','transporte','vivienda','servicios','salud','educacion','ocio','impuestos','auto','bancario','ropa','otros') OR categoria ~ '^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$'", name='ck_gastos_categoria'),
         CheckConstraint('nota IS NULL OR char_length(nota) BETWEEN 1 AND 500', name='ck_gastos_nota'),
         Index('ix_gastos_espacio_cuenta_fecha', 'espacio_id', 'cuenta_id', 'fecha'),
     )

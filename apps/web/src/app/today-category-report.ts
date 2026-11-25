@@ -1,6 +1,6 @@
 import { Component, DestroyRef, EventEmitter, Input, OnChanges, Output, inject, signal } from '@angular/core';
 import { AuthSession } from './auth-session';
-import { EXPENSE_CATEGORIES } from './expense-categories';
+import { CategoryCatalog } from './category-catalog';
 import { cents, money } from './money-reference';
 import { progress } from './planning-math';
 
@@ -28,12 +28,13 @@ export class TodayCategoryReport implements OnChanges {
   readonly cents = cents;
   private version = 0;
   private readonly auth = inject(AuthSession);
+  private readonly catalog = inject(CategoryCatalog);
 
   constructor() { inject(DestroyRef).onDestroy(() => { this.version++; }); }
   ngOnChanges(): void { void this.load(); }
 
   label(category: string | null): string {
-    return EXPENSE_CATEGORIES.find(row => row.id === category)?.label ?? 'Sin categoría';
+    return this.catalog.label(this.space, 'gasto', category);
   }
 
   share(amount: string, total: bigint): string {

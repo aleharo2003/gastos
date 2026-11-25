@@ -1,5 +1,5 @@
 import { Component, computed, DestroyRef, EventEmitter, Output, inject, Input, OnInit, signal, ViewChildren, QueryList } from '@angular/core';
-import { EXPENSE_CATEGORIES } from './expense-categories';
+import { CategoryCatalog } from './category-catalog';
 import { ExpenseTrend } from './expense-trend';
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -56,7 +56,11 @@ export class Expenses implements OnInit {
   readonly error = signal('');
   readonly notice = signal('');
   readonly next = signal<number | null>(null);
-  readonly categories = [...EXPENSE_CATEGORIES];
+  private readonly catalog = inject(CategoryCatalog);
+  get categories() { return this.catalog.expenseOptions(this.space); }
+  get selectableCategories() {
+    return this.catalog.expenseOptions(this.space, true, this.editing?.categoria ?? '');
+  }
   category = '';
   note = '';
   readonly suggestion = signal<CategorySuggestion|null>(null);
@@ -76,7 +80,7 @@ export class Expenses implements OnInit {
     try {
       const result=await this.auth.accountRequest<CategorySuggestion>('GET',`${this.writePath}/category-suggestion?${new URLSearchParams({descripcion:description})}`);
       if(!current())return;
-      if(result.categoria && this.categories.some(c=>c.id===result.categoria))this.suggestion.set(result);
+    if(result.categoria && this.selectableCategories.some(c=>c.id===result.categoria))this.suggestion.set(result);
       else this.suggestionNote.set('Todavía no hay antecedentes suficientes y consistentes en esta cuenta. Podés elegir la categoría.');
     } catch {
       if(current())this.suggestionNote.set('No pudimos buscar una sugerencia. Podés elegir la categoría y guardar igual.');
@@ -160,7 +164,7 @@ export class Expenses implements OnInit {
   filterApproximate = true;
   filterFrom = ''; filterTo = ''; filterCategory = ''; filterCurrency = ''; filterText = '';
   readonly appliedFilters = signal('');
-  categoryName(id?:string|null) { return this.categories.find(c=>c.id===id)?.label ?? 'Sin categoría'; }
+  categoryName(id?:string|null) { return this.catalog.label(this.space, 'gasto', id); }
   receiptOutsideList() { return !!this.receiptExpense() && !this.items().some(r=>r.id===this.receiptExpense()); }
   async applyFilters(clear = false) {
     if(this.loading() || this.saving())return;
@@ -216,7 +220,7 @@ export class Expenses implements OnInit {
     this.note = '';
     this.currency = item.moneda;
     this.amount = item.importe;
-    this.category = item.categoria ?? '';
+    this.category = this.selectableCategories.some(row => row.id === item.categoria) ? item.categoria ?? '' : '';
     this.error.set('');
     this.notice.set('Revisá el importe y guardá para registrar el nuevo gasto.');
   }

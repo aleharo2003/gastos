@@ -5,6 +5,7 @@ import { AuthSession } from './auth-session';
 import { CurrencyTotal,cents,money,rateUnits,reference } from './money-reference';
 import { emptyPlan,normalizedAmount,PlanData,PlanEnvelope,LimitPeriod,projected,progress,limitUsage,usageAgainstLimit } from './planning-math';
 import { EXPENSE_CATEGORIES } from './expense-categories';
+import { CategoryCatalog } from './category-catalog';
 
 type CategorySpending = { desde: string; hasta: string; items: { categoria: string | null; moneda: string; total: string }[] };
 type Summary={fecha:string;mes:string;semana_desde:string;semana_hasta:string;totales:CurrencyTotal[]};
@@ -74,6 +75,7 @@ export class Planning implements OnChanges {
   dirty=false;
   private alive=true;private generation=0;private usageGeneration=0;
   private readonly auth=inject(AuthSession);
+  private readonly catalog = inject(CategoryCatalog);
   private readonly rateListener=(event:Event)=>{const detail=(event as CustomEvent).detail;if(detail?.space===this.space && typeof detail.rate==='string')this.rate.set(detail.rate);};
   private readonly privacyListener=(event:Event)=>this.hidden.set((event as CustomEvent).detail===true);
   constructor(){
@@ -152,7 +154,7 @@ export class Planning implements OnChanges {
   }
 
   categoryLabel(id: string): string {
-    return EXPENSE_CATEGORIES.find(category => category.id === id)?.label ?? id;
+    return this.catalog.label(this.space, 'gasto', id);
   }
 
   addCategoryLimit(): void {
