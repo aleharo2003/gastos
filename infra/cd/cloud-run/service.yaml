@@ -1,0 +1,91 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: piggo-pilot
+  annotations:
+    run.googleapis.com/ingress: all
+    run.googleapis.com/minScale: "0"
+    run.googleapis.com/maxScale: "2"
+spec:
+  template:
+    metadata:
+      annotations:
+        run.googleapis.com/container-dependencies: '{"bff":["api"]}'
+        run.googleapis.com/cpu-throttling: "true"
+        run.googleapis.com/startup-cpu-boost: "true"
+    spec:
+      serviceAccountName: "PIGGO_RUNTIME_SERVICE_ACCOUNT"
+      containerConcurrency: 10
+      containers:
+        - name: bff
+          image: "PIGGO_BFF_IMAGE"
+          ports:
+            - containerPort: 3000
+          resources:
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            periodSeconds: 2
+            timeoutSeconds: 1
+            failureThreshold: 30
+          env:
+            - name: FRONTEND_ORIGIN
+              value: "PIGGO_FRONTEND_ORIGIN"
+            - name: API_BASE_URL
+              value: "http://127.0.0.1:8000"
+            - name: API_TIMEOUT_MS
+              value: "5000"
+            - name: AUTH_SUPABASE_PROJECT_REF
+              value: "PIGGO_SUPABASE_PROJECT_REF"
+            - name: RENDER_GIT_COMMIT
+              value: "PIGGO_GIT_COMMIT"
+        - name: api
+          image: "PIGGO_API_IMAGE"
+          resources:
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            periodSeconds: 2
+            timeoutSeconds: 1
+            failureThreshold: 30
+          env:
+            - name: AUTH_SUPABASE_PROJECT_REF
+              value: "PIGGO_SUPABASE_PROJECT_REF"
+            - name: RENDER_GIT_COMMIT
+              value: "PIGGO_GIT_COMMIT"
+            - name: APP_DB_ENABLED
+              value: "true"
+            - name: APP_DB_HOST
+              value: "PIGGO_DB_HOST"
+            - name: APP_DB_USER
+              value: "PIGGO_DB_USER"
+            - name: APP_DB_CA_FILE
+              value: "/var/run/piggo-db/supabase-ca.pem"
+            - name: APP_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: piggo-db-password
+                  key: "1"
+            - name: APP_STORAGE_SERVICE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: piggo-storage-service-key
+                  key: "1"
+          volumeMounts:
+            - name: supabase-ca
+              mountPath: /var/run/piggo-db
+      volumes:
+        - name: supabase-ca
+          secret:
+            secretName: piggo-supabase-ca
+            items:
+              - key: "1"
+                path: supabase-ca.pem
