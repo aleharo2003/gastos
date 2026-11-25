@@ -1,4 +1,4 @@
-import { Component, DestroyRef, inject, input, OnInit, output, signal } from '@angular/core';
+import { Component, DestroyRef, effect, ElementRef, inject, input, OnInit, output, signal, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { CategoryCatalog, CategoryKind } from './category-catalog';
 import { AuthSession } from './auth-session';
@@ -12,6 +12,19 @@ type Movement = {
 type Totals = { moneda: string; ingresos: string; gastos: string; transferencias: string; variacion_cuenta?: string };
 type Page = { items: Movement[]; totales: Totals[]; next_cursor: string | null };
 const emptyFilters = { desde: '', hasta: '', tipo: '', moneda: '', cuenta: '', texto: '', categoria: '', anulados: '' };
+
+function filterParams(filters: typeof emptyFilters): URLSearchParams {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value.trim()) params.set(key, value.trim());
+  }
+  const category = params.get('categoria');
+  if (category?.startsWith('ingreso:')) {
+    params.delete('categoria');
+    params.set('categoria_ingreso', category.slice('ingreso:'.length));
+  }
+  return params;
+}
 
 @Component({
   selector: 'app-movements',
@@ -54,6 +67,7 @@ export class Movements implements OnInit {
   readonly items = signal<Movement[]>([]);
   readonly totals = signal<Totals[]>([]);
   readonly next = signal<string | null>(null);
+  private readonly moreButton = viewChild<ElementRef<HTMLButtonElement>>('moreMovements');
   readonly loading = signal(false);
   readonly error = signal('');
   readonly exporting = signal(false);
@@ -68,14 +82,27 @@ export class Movements implements OnInit {
   readonly loaded = signal(false);
   private readonly catalog = inject(CategoryCatalog);
   get categories() { return this.catalog.expenseOptions(this.space()); }
+  get incomeCategories() { return this.catalog.categories(this.space(), 'ingreso'); }
   readonly labels = { gasto: 'Gasto', ingreso: 'Ingreso', transferencia: 'Transferencia' };
   filters = { ...emptyFilters };
   private applied = { ...emptyFilters };
   private request = 0;
   private readonly auth = inject(AuthSession);
+  private readonly destroy = inject(DestroyRef);
 
   constructor() {
-    inject(DestroyRef).onDestroy(() => { this.request++; });
+    this.destroy.onDestroy(() => { this.request++; });
+    effect(onCleanup => {
+      const button = this.moreButton()?.nativeElement;
+      const cursor = this.next();
+      if (!button || !cursor || typeof IntersectionObserver === 'undefined') return;
+      const observer = new IntersectionObserver(entries => {
+        if (!this.destroy.destroyed && entries.some(entry => entry.isIntersecting) && this.next() === cursor &&
+            !this.error() && !this.exporting()) void this.load(true);
+      });
+      observer.observe(button);
+      onCleanup(() => observer.disconnect());
+    });
   }
 
   accountAvailable(id: string): boolean {
@@ -165,8 +192,7 @@ export class Movements implements OnInit {
     const request = this.request;
     const exportVersion = ++this.exportVersion;
     this.exportedRows.set(0);
-    const params = new URLSearchParams();
-    for (const [key, value] of Object.entries(this.applied)) if (value.trim()) params.set(key, value.trim());
+    const params = filterParams(this.applied);
     this.exporting.set(true);
     this.exportError.set('');
     try {
@@ -203,15 +229,15 @@ export class Movements implements OnInit {
   }
 
   async load(more = false, remember = true): Promise<void> {
-    if (this.loading() || (more && !this.next())) return;
+    const cursor = more ? this.next() : null;
+    if (this.loading() || (more && (!cursor || this.exporting()))) return;
     if (!more && this.filters.desde && this.filters.hasta && this.filters.desde > this.filters.hasta) {
       this.error.set('La fecha inicial debe ser anterior o igual a la fecha final.');
       return;
     }
     const filters = more ? this.applied : { ...this.filters };
-    const params = new URLSearchParams();
-    for (const [key, value] of Object.entries(filters)) if (value.trim()) params.set(key, value.trim());
-    if (more) params.set('cursor', this.next()!);
+    const params = filterParams(filters);
+    if (cursor) params.set('cursor', cursor);
 
     const version = ++this.request;
     this.loading.set(true);
@@ -221,6 +247,7 @@ export class Movements implements OnInit {
         'GET', `/api/spaces/${encodeURIComponent(this.space())}/movements?${params}`,
       );
       if (version !== this.request) return;
+      if (cursor && page.next_cursor === cursor) throw new Error('Cursor repetido');
       const rows = more ? [...this.items(), ...page.items] : page.items;
       this.items.set([...new Map(rows.map(row => [row.tipo + row.id, row])).values()]);
       this.totals.set(page.totales);

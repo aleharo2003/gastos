@@ -19,6 +19,7 @@ class Transferencia(Base):
         CheckConstraint('char_length(btrim(descripcion)) BETWEEN 1 AND 160', name='ck_transferencias_descripcion'),
         Index('ix_transferencias_espacio_origen_fecha', 'espacio_id', 'origen_id', 'fecha'),
         Index('ix_transferencias_espacio_destino_fecha', 'espacio_id', 'destino_id', 'fecha'),
+        Index('ix_transferencias_espacio_fecha', 'espacio_id', 'fecha'),
     )
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     espacio_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)

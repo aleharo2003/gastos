@@ -11,11 +11,20 @@
     <label>Estado <select name="anulados" [(ngModel)]="filters.anulados">
       <option value="">Vigentes</option><option value="true">Anulados</option>
     </select></label>
-    <label>Categoría de gasto <select name="categoria" [(ngModel)]="filters.categoria">
-      <option value="">Todas</option><option value="sin_categoria">Sin categoría</option>
-      @for (category of categories; track category.id) {
-        <option [value]="category.id">{{ category.label }}</option>
-      }
+    <label>Categoría <select name="categoria" [(ngModel)]="filters.categoria">
+      <option value="">Todas</option>
+      <optgroup label="Gastos">
+        <option value="sin_categoria">Gastos sin categoría</option>
+        @for (category of categories; track category.id) {
+          <option [value]="category.id">{{ category.label }}</option>
+        }
+      </optgroup>
+      <optgroup label="Ingresos">
+        <option value="ingreso:sin_categoria">Ingresos sin categoría</option>
+        @for (category of incomeCategories; track category.id) {
+          <option [value]="'ingreso:' + category.id">{{ category.nombre }}</option>
+        }
+      </optgroup>
     </select></label>
     <label>Moneda <select name="moneda" [(ngModel)]="filters.moneda">
       <option value="">Todas</option><option>ARS</option><option>USD</option><option>EUR</option>
@@ -89,6 +98,6 @@
     }
   </ul>
   @if (next()) {
-    <button type="button" class="secondary" (click)="load(true)" [disabled]="loading()">Ver más movimientos</button>
+    <button #moreMovements type="button" class="secondary" (click)="load(true)" [disabled]="loading() || exporting()">Ver más movimientos</button>
   }
 </section>

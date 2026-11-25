@@ -8,7 +8,7 @@ const day = /^\d{4}-\d{2}-\d{2}$/;
 const amount = /^(?:0|[1-9][0-9]*)\.[0-9]{2}$/;
 const kinds = ['gasto', 'ingreso', 'transferencia'];
 const currencies = ['ARS', 'USD', 'EUR'];
-const keys = ['desde', 'hasta', 'tipo', 'moneda', 'cuenta', 'texto', 'cursor', 'categoria', 'anulados'];
+const keys = ['desde', 'hasta', 'tipo', 'moneda', 'cuenta', 'texto', 'cursor', 'categoria', 'categoria_ingreso', 'anulados'];
 const isName = (value: unknown) => value === null || (typeof value === 'string' && value.length <= 160);
 
 type Item = { id: string; fecha: string; tipo: string; descripcion: string; moneda: string; importe: string; origen: string | null; destino: string | null; categoria?: string | null; anulado?: boolean };

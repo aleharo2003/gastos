@@ -9,7 +9,7 @@ from app.incomes import IncomeInput, create_income, list_incomes, account_balanc
 from app.expenses import ExpenseInput, ExpenseEdit, create_expense, edit_expense
 from app.db.connection import create_runtime_engine, create_migration_engine
 from app.db.unit_of_work import runtime_transaction
-from app.movements import list_movements
+from app.movements import list_movements, parse_cursor
 
 
 def check_incomes(runtime_url, migration_url):
@@ -116,7 +116,15 @@ def check_incomes(runtime_url, migration_url):
         assert call(list_incomes, reader, owner, account)['items'][0]['categoria'] == 'sueldo'
         with runtime_transaction(runtime, usuario_id=reader, espacio_id=owner) as session:
             filters = dict(desde=None, hasta=None, tipo='ingreso', moneda='ARS', cuenta=account, texto='Ingreso categorizado')
-            history = list_movements(session, reader, owner, filters, None)
+            history = list_movements(session, reader, owner, filters | {'categoria_ingreso': 'sueldo'}, None)
+            assert not list_movements(session, reader, owner, filters | {'categoria_ingreso': 'sin_categoria'}, None)['items']
+            all_filters = filters | {'texto': ''}
+            first = list_movements(session, reader, owner, all_filters, None)
+            second = list_movements(session, reader, owner, all_filters, parse_cursor(first['next_cursor']))
+            third = list_movements(session, reader, owner, all_filters, parse_cursor(second['next_cursor']))
+            ids = [row['id'] for page in (first, second, third) for row in page['items']]
+            assert len(ids) > 100 and len(ids) == len(set(ids))
+            assert first['totales'] == second['totales'] == third['totales']
         assert [(row['id'], row['categoria']) for row in history['items']] == [(str(categorized.id), 'sueldo')]
 
         with migrator.begin() as c:
