@@ -5,7 +5,7 @@ import { AuthSession } from './auth-session';
 import { ImportMapping, ImportRow, MAX_CSV_BYTES, parseImportCsv, previewImport } from './expense-import-csv';
 
 type Batch = { lote: string; gastos: number; fecha: string };
-type Checked = { nuevas: number; duplicadas: number[]; revision: string };
+type Checked = { nuevas: number; duplicadas: number[]; coincidencias_manuales: number[]; revision: string };
 
 @Component({
   selector: 'app-expense-import',
@@ -28,10 +28,11 @@ export class ExpenseImport {
   readonly invalidCount = computed(() => this.rows().filter(row => row.error).length);
   readonly validRows = computed(() => this.rows().filter(row => !!row.expense));
   readonly valid = computed(() => this.validRows().map(row => row.expense!));
-  readonly duplicates = computed(() => this.checked()?.duplicadas.map(index => this.validRows()[index]?.line)
-    .filter(line => line !== undefined) ?? []);
+  readonly duplicates = computed(() => this.lineNumbers(this.checked()?.duplicadas));
+  readonly manualMatches = computed(() => this.lineNumbers(this.checked()?.coincidencias_manuales));
   account = '';
   skipInvalid = false;
+  includeManualMatches = false;
   private batch = '';
   private readonly auth = inject(AuthSession);
   private readonly destroy = inject(DestroyRef);
@@ -97,6 +98,11 @@ export class ExpenseImport {
     this.notice.set('');
     this.batch = '';
     this.skipInvalid = false;
+    this.includeManualMatches = false;
+  }
+
+  private lineNumbers(indices: number[] | undefined): number[] {
+    return indices?.map(index => this.validRows()[index]?.line).filter(line => line !== undefined) ?? [];
   }
 
   private get path(): string {
@@ -114,11 +120,14 @@ export class ExpenseImport {
     this.batches.set(page.items);
   }
 
-  async check(): Promise<void> {
+  async check(includeManualMatches = false): Promise<void> {
     if (!this.account || !this.valid().length || (this.invalidCount() && !this.skipInvalid)) return;
     await this.run(async () => {
-      const result = await this.auth.accountRequest<Checked>('POST', this.path + '/preview', { filas: this.valid() });
+      const result = await this.auth.accountRequest<Checked>('POST', this.path + '/preview', {
+        filas: this.valid(), incluir_coincidencias_manuales: includeManualMatches,
+      });
       this.batch = crypto.randomUUID();
+      this.includeManualMatches = includeManualMatches;
       this.checked.set(result);
     });
   }
@@ -126,7 +135,10 @@ export class ExpenseImport {
   async commit(): Promise<void> {
     const checked = this.checked();
     if (!checked?.nuevas || !this.batch) return;
-    const payload = { filas: this.valid(), lote: this.batch, revision: checked.revision };
+    const payload = {
+      filas: this.valid(), lote: this.batch, revision: checked.revision,
+      incluir_coincidencias_manuales: this.includeManualMatches,
+    };
     await this.run(async () => {
       const result = await this.auth.accountRequest<{ importadas: number }>('POST', this.path, payload);
       this.checked.set(null);

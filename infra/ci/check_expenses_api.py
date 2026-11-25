@@ -345,6 +345,25 @@ def check_expenses_api(runtime_url, migration_url):
         assert balance() == before_import
         assert import_as(preview_body)['nuevas'] == 2
 
+        manual = body(**import_data)
+        create(owner, owner, account, manual)
+        create(owner, owner, second, body(**import_data))
+        with_manual = import_as(preview_body)
+        assert with_manual['nuevas'] == 1 and with_manual['duplicadas'] == []
+        assert with_manual['coincidencias_manuales'] == [0]
+        include = preview_body.model_copy(update={'incluir_coincidencias_manuales': True})
+        assert import_as(include)['nuevas'] == 2
+        denied(lambda: import_as(confirm.model_copy(update={'lote': uuid4()}), write=True), 409)
+        extra_batch = uuid4()
+        extra = confirm.model_copy(update={'lote': extra_batch, 'revision': with_manual['revision']})
+        assert import_as(extra, write=True)['importadas'] == 1
+        both = import_as(preview_body)
+        assert both['nuevas'] == 0 and both['duplicadas'] == [1] and both['coincidencias_manuales'] == [0]
+        with runtime_transaction(runtime, usuario_id=owner, espacio_id=owner) as session:
+            assert cancel_batch(session, owner, owner, account, extra_batch) == {'anuladas': 1}
+            assert session.execute(text('SELECT anulado_en FROM public.gastos WHERE id=:id'),
+                                   {'id': manual.id}).scalar_one() is None
+
         with migrator.begin() as c: c.execute(text('DELETE FROM public.miembros_espacio WHERE usuario_id=:u AND espacio_id=:s'),{'u':editor,'s':owner})
         denied(lambda:create(editor,owner,account,body()),403)
         denied(lambda:similar(who=editor),403)

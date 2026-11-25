@@ -42,8 +42,15 @@
   <button type="button" class="secondary" (click)="check()"
     [disabled]="!account || !valid().length || (invalidCount() > 0 && !skipInvalid)">Revisar duplicados</button>
   @if (checked(); as preview) {
-    <p>Gastos nuevos: {{ preview.nuevas }}. Duplicados: {{ preview.duplicadas.length }}.</p>
-    @if (duplicates().length) { <p>Filas que se omitirán: {{ duplicates().join(', ') }}.</p> }
+    <p>Gastos a importar: {{ preview.nuevas }}.</p>
+    @if (duplicates().length) { <p>Filas ya importadas que se omitirán: {{ duplicates().join(', ') }}.</p> }
+    @if (manualMatches().length) {
+      <p>Filas que coinciden con gastos manuales: {{ manualMatches().join(', ') }}.</p>
+      <button type="button" class="secondary" (click)="check(!includeManualMatches)">
+        {{ includeManualMatches ? 'Omitir coincidencias con gastos manuales' : 'Incluir coincidencias con gastos manuales' }}
+      </button>
+      <p>{{ includeManualMatches ? 'Se incluirán las coincidencias con gastos manuales.' : 'Se omitirán las coincidencias con gastos manuales.' }}</p>
+    }
     <button type="button" (click)="commit()" [disabled]="!preview.nuevas">Confirmar importación</button>
   }
 }
