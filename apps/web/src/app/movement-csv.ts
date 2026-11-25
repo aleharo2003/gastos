@@ -1,4 +1,5 @@
 import { EXPENSE_CATEGORIES } from './expense-categories';
+import type { CategoryKind } from './category-catalog';
 
 type MovementRow = {
   fecha: string; tipo: string; descripcion: string; moneda: string; importe: string;
@@ -11,12 +12,13 @@ function cell(value: string | null): string {
   return '"' + safe.replaceAll('"', '""') + '"';
 }
 
-export function movementCsv(rows: readonly MovementRow[], categoryLabel: (id?: string | null) => string = id =>
-  EXPENSE_CATEGORIES.find(item => item.id === id)?.label ?? 'Sin categoría'): string {
+export function movementCsv(rows: readonly MovementRow[], categoryLabel: (id: string | null, kind: CategoryKind) => string =
+  (id, kind) => (kind === 'gasto' ? EXPENSE_CATEGORIES.find(item => item.id === id)?.label : id) ?? 'Sin categoría'): string {
   return '\ufeff' + ['Fecha,Tipo,Descripción,Moneda,Importe,Origen,Destino,Categoría',
     ...rows.map(row => {
       const category = row.tipo === 'gasto' && row.categoria !== undefined
-        ? categoryLabel(row.categoria) : '';
+        ? categoryLabel(row.categoria, 'gasto')
+        : row.tipo === 'ingreso' && row.categoria ? categoryLabel(row.categoria, 'ingreso') : '';
       const type = row.anulado ? `${row.tipo} anulado` : row.tipo;
       return [row.fecha, type, row.descripcion, row.moneda, row.importe, row.origen, row.destino, category].map(cell).join(',');
     }),

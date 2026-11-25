@@ -35,6 +35,11 @@
       <input id="income-date" name="incomeDate" type="date" [(ngModel)]="date" required [disabled]="saving()">
       <label for="income-description">Descripción</label>
       <input id="income-description" name="incomeDescription" [(ngModel)]="description" maxlength="160" required placeholder="Por ejemplo, sueldo o saldo inicial" [disabled]="saving()">
+      <label for="income-category">Categoría <small>(opcional)</small></label>
+      <select id="income-category" name="incomeCategory" [(ngModel)]="category" [disabled]="saving()">
+        <option value="">Sin categoría</option>
+        @for (item of categories; track item.id) { <option [value]="item.id">{{ item.nombre }}</option> }
+      </select>
       <label for="income-currency">Moneda</label>
       <select id="income-currency" name="incomeCurrency" [(ngModel)]="currency" [disabled]="saving()"><option>ARS</option><option>USD</option><option>EUR</option></select>
       <label for="income-amount">Importe</label>
@@ -49,6 +54,7 @@
     <ul>
       @for(item of items();track item.id){
         <li><strong>{{ item.descripcion }}</strong>
+          @if (item.categoria) { <span>{{ categoryName(item.categoria) }}</span> }
           @if(!account.id){<span>Cuenta: {{ accountName(item.cuenta_id, item.cuenta_nombre) }}</span>}
           <span>{{ item.fecha.split('-').reverse().join('/') }}</span>
           <b>{{ item.moneda }} {{ hidden() ? '••••' : showAmount(item.importe) }}</b>

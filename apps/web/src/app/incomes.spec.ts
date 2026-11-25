@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
 import { Incomes } from './incomes';
 import { AuthSession } from './auth-session';
+import { CategoryCatalog } from './category-catalog';
 describe('Ingresos por cuenta',()=>{
   afterEach(()=>{localStorage.clear();});
   async function setup(account='bank'){
@@ -35,6 +36,25 @@ describe('Ingresos por cuenta',()=>{
     window.dispatchEvent(new CustomEvent('gastos-privacy',{detail:true}));f.detectChanges();
     expect(f.nativeElement.textContent).not.toContain('-99,90');
     expect(f.nativeElement.textContent).not.toContain('100,10');
+  });
+  it('permite elegir solo categorías activas y conserva la selección en el ingreso', async () => {
+    const { f, c, request } = await setup();
+    request.mockResolvedValueOnce({ items: [
+      { id: 'sueldo', tipo: 'ingreso', nombre: 'Sueldo', activa: true, color: null },
+      { id: 'regalo', tipo: 'ingreso', nombre: 'Regalo', activa: false, color: null },
+    ] });
+    await TestBed.inject(CategoryCatalog).refresh('s');
+    f.detectChanges();
+    const select = f.nativeElement.querySelector('#income-category') as HTMLSelectElement;
+    expect(Array.from(select.options, option => option.value)).toEqual(['', 'sueldo']);
+    c.description = 'Pago mensual';
+    c.amount = '250';
+    select.value = 'sueldo';
+    select.dispatchEvent(new Event('change'));
+    await c.save();
+    const write = request.mock.calls.find(row => row[0] === 'POST');
+    expect(write?.[2]).toMatchObject({ categoria: 'sueldo' });
+    expect(c.category).toBe('');
   });
   it('no deja que una respuesta vieja reemplace el saldo actualizado',async()=>{
     const {c,request}=await setup();
