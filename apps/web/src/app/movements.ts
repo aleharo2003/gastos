@@ -1,6 +1,6 @@
 import { Component, DestroyRef, inject, input, OnInit, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { CategoryCatalog } from './category-catalog';
+import { CategoryCatalog, CategoryKind } from './category-catalog';
 import { AuthSession } from './auth-session';
 import { movementCsv } from './movement-csv';
 import { showAmount } from './expenses';
@@ -82,8 +82,8 @@ export class Movements implements OnInit {
     return [...this.accounts(), ...this.inactiveChoices()].some(account => account.id === id);
   }
 
-  categoryName(category?: string | null): string {
-    return this.catalog.label(this.space(), 'gasto', category);
+  categoryName(category?: string | null, type: CategoryKind = 'gasto'): string {
+    return this.catalog.label(this.space(), type, category);
   }
 
   ngOnInit(): void {
@@ -152,7 +152,7 @@ export class Movements implements OnInit {
         if (cursor) seen.add(cursor);
       } while (cursor);
 
-      const url = URL.createObjectURL(new Blob([movementCsv([...rows.values()], id => this.categoryName(id))],
+      const url = URL.createObjectURL(new Blob([movementCsv([...rows.values()], (id, type) => this.categoryName(id, type))],
         { type: 'text/csv;charset=utf-8' }));
       const link = document.createElement('a');
       link.href = url;

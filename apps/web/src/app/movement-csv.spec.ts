@@ -7,11 +7,14 @@ describe('CSV de movimientos', () => {
     expect(result).toContain('"\'=1+1, ""nota"""');
     expect(result).toContain('"ARS","20.00","Caja",""');
   });
-  it('incluye la categoría de un gasto y deja vacía la de un ingreso', () => {
+  it('incluye categorías de gastos e ingresos y deja vacías las categorías ausentes', () => {
     const row = { fecha: '2026-11-24', descripcion: 'Detalle', moneda: 'ARS', importe: '20.00',
       origen: 'Caja', destino: null, categoria: 'ocio' };
-    expect(movementCsv([{ ...row, tipo: 'gasto' }, { ...row, tipo: 'ingreso' }]).split('\r\n').slice(1, 3))
+    const label = (id: string | null, kind: string) => kind === 'ingreso' && id === 'sueldo' ? 'Sueldo' : 'Ocio';
+    expect(movementCsv([{ ...row, tipo: 'gasto' }, { ...row, tipo: 'ingreso', categoria: 'sueldo' },
+      { ...row, tipo: 'ingreso', categoria: null }], label).split('\r\n').slice(1, 4))
       .toEqual(['"2026-11-24","gasto","Detalle","ARS","20.00","Caja","","Ocio"',
+        '"2026-11-24","ingreso","Detalle","ARS","20.00","Caja","","Sueldo"',
         '"2026-11-24","ingreso","Detalle","ARS","20.00","Caja","",""']);
   });
 });

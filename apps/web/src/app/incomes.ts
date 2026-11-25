@@ -2,9 +2,10 @@ import { Component, DestroyRef, EventEmitter, inject, Input, OnChanges, Output, 
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { AuthSession } from './auth-session';
+import { CategoryCatalog } from './category-catalog';
 import { normalizeAmount, showAmount } from './expenses';
 
-type Payload={id:string;fecha:string;descripcion:string;moneda:string;importe:string};
+type Payload={id:string;fecha:string;descripcion:string;moneda:string;importe:string;categoria?:string|null};
 type Income=Payload & {espacio_id:string;cuenta_id:string; cuenta_nombre?: string };
 type Page={items:Income[];next_offset:number|null};
 type Balance={totales:{moneda:string;ingresos:string;gastos:string;saldo:string;transferencias_entrada?:string;transferencias_salida?:string}[]};
@@ -25,9 +26,11 @@ export class Incomes implements OnChanges {
   readonly notice=signal('');
   readonly hidden=signal(false);
   createAccount='';description='';amount='';currency='ARS';
+  category = '';
   date=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Argentina/Buenos_Aires',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
   readonly showAmount=showAmount;
   private readonly auth=inject(AuthSession);
+  private readonly catalog = inject(CategoryCatalog);
   private alive=true;
   private generation=0;
   private balanceGeneration=0;
@@ -41,13 +44,15 @@ export class Incomes implements OnChanges {
   ngOnChanges(changes:SimpleChanges){
     if(changes['space']||changes['account']){
       this.generation++;this.loading.set(false);this.saving.set(false);this.items.set([]);this.next.set(null);
-      this.pending=undefined;this.description='';this.amount='';this.createAccount='';this.notice.set('');
+      this.pending=undefined;this.description='';this.amount='';this.category='';this.createAccount='';this.notice.set('');
       void this.load();
     }
     if(changes['space']||changes['account']||changes['revision'])void this.loadBalance();
   }
-  hasPendingWork(){return this.saving() || !!(this.description || this.amount);}
-  cancel(){if(this.saving())return;this.description='';this.amount='';this.pending=undefined;this.error.set('');}
+  hasPendingWork(){return this.saving() || !!(this.description || this.amount || this.category);}
+  cancel(){if(this.saving())return;this.description='';this.amount='';this.category='';this.pending=undefined;this.error.set('');}
+  get categories() { return this.catalog.categories(this.space, 'ingreso').filter(row => row.activa); }
+  categoryName(id: string) { return this.catalog.label(this.space, 'ingreso', id); }
   accountName(id:string, historicalName?: string){return this.accounts.find(row=>row.id===id)?.nombre??historicalName??'Cuenta';}
   private get path(){return `/api/spaces/${encodeURIComponent(this.space)}`;}
   private get listPath(){return this.path+(this.account.id?'/accounts/'+encodeURIComponent(this.account.id):'')+'/incomes';}
@@ -79,7 +84,8 @@ export class Incomes implements OnChanges {
     if(!account || !this.accounts.some(row=>row.id===account) || !amount || !description || [...description].length>160 || !this.date){
       this.error.set('Elegí una cuenta y completá fecha, descripción e importe positivo, con hasta dos decimales.');return;
     }
-    const value={fecha:this.date,descripcion:description,moneda:this.currency,importe:amount};
+    const value={fecha:this.date,descripcion:description,moneda:this.currency,importe:amount,
+      ...((this.category || this.pending?.payload.categoria) ? { categoria: this.category || null } : {})};
     if(!this.pending || this.pending.account!==account || Object.entries(value).some(([key,v])=>this.pending!.payload[key as keyof Payload]!==v)){
       this.pending={account,payload:{id:crypto.randomUUID(),...value}};
     }
@@ -87,11 +93,12 @@ export class Incomes implements OnChanges {
     try{
       await this.auth.accountRequest<Income>('POST',this.path+'/accounts/'+encodeURIComponent(account)+'/incomes',this.pending.payload);
       if(!this.alive||generation!==this.generation)return;
-      this.pending=undefined;this.description='';this.amount='';this.notice.set('Ingreso registrado.');this.changed.emit();
+      this.pending=undefined;this.description='';this.amount='';this.category='';this.notice.set('Ingreso registrado.');this.changed.emit();
     }catch(error){
       if(this.alive&&generation===this.generation)this.error.set(error instanceof HttpErrorResponse&&error.status===403
         ?'No tenés permiso para registrar ingresos.'
         :error instanceof HttpErrorResponse&&error.status===409?'La solicitud cambió. Actualizá los ingresos para revisar lo registrado.'
+        :error instanceof HttpErrorResponse&&error.status===422&&this.category?'Revisá los datos y elegí una categoría activa o dejala vacía.'
         :'No pudimos confirmar el guardado. Reintentá con los mismos datos; la solicitud no se duplicará.');
     }finally{if(this.alive&&generation===this.generation)this.saving.set(false);}
     if(this.alive&&generation===this.generation&&!this.pending){await this.load();await this.loadBalance();}
