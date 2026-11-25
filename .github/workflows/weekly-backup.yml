@@ -1,0 +1,87 @@
+name: Resguardo semanal de Piggo
+
+on:
+  schedule:
+    - cron: '23 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: piggo-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || vars.PIGGO_BACKUP_ENABLED == 'true')
+    environment: backup
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      artifact_id: ${{ steps.upload.outputs.artifact-id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14.4'
+      - run: python -m pip install psycopg==3.3.6 psycopg-binary==3.3.6 cryptography==50.0.2
+      - name: Crear copia cifrada
+        env:
+          PIGGO_BACKUP_SPACE_ID: ${{ vars.PIGGO_BACKUP_SPACE_ID }}
+          PIGGO_BACKUP_DATABASE_URL: ${{ secrets.PIGGO_BACKUP_DATABASE_URL }}
+          PIGGO_BACKUP_KEY: ${{ secrets.PIGGO_BACKUP_KEY }}
+          PIGGO_BACKUP_DB_CA: ${{ secrets.PIGGO_BACKUP_DB_CA }}
+        run: |
+          umask 077
+          export PGSSLROOTCERT="$RUNNER_TEMP/piggo-db-ca.pem"
+          printf '%s\n' "$PIGGO_BACKUP_DB_CA" > "$PGSSLROOTCERT"
+          python infra/jobs/backup_space.py snapshot "$RUNNER_TEMP/piggo-backup.enc"
+          printf 'archive_name=piggo-postgres-%s-r%s\n' "$(date -u +%G-W%V)" "$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"
+      - id: upload
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ env.archive_name }}
+          path: ${{ runner.temp }}/piggo-backup.enc
+          if-no-files-found: error
+          retention-days: 90
+
+  retention:
+    needs: backup
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Conservar las ocho semanas más recientes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PIGGO_ARTIFACT_ID: ${{ needs.backup.outputs.artifact_id }}
+        run: python3 infra/jobs/retain_backups.py "$PIGGO_ARTIFACT_ID"
+
+  alert:
+    needs: [backup, retention]
+    if: ${{ always() && (needs.backup.result == 'failure' || needs.retention.result == 'failure') }}
+    environment: backup
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14.4'
+      - run: python -m pip install psycopg==3.3.6 psycopg-binary==3.3.6
+      - name: Enviar aviso al titular
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          PIGGO_BACKUP_ALERT_EMAIL: ${{ secrets.PIGGO_BACKUP_ALERT_EMAIL }}
+          PIGGO_BACKUP_FROM_EMAIL: ${{ vars.PIGGO_BACKUP_FROM_EMAIL }}
+        run: python infra/jobs/notify_backup_failure.py
