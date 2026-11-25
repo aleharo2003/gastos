@@ -23,6 +23,11 @@
         @if (!accountAvailable(initial.id)) { <option [value]="initial.id">{{ initial.nombre }}</option> }
       }
       @for (account of accounts(); track account.id) { <option [value]="account.id">{{ account.nombre }}</option> }
+      @if (inactiveChoices().length) {
+        <optgroup label="Cuentas inactivas">
+          @for (account of inactiveChoices(); track account.id) { <option [value]="account.id">{{ account.nombre }}</option> }
+        </optgroup>
+      }
     </select></label>
     <div class="movement-actions">
       <button type="button" class="secondary" (click)="datePreset('today')" [disabled]="loading()">Hoy</button>
@@ -31,10 +36,16 @@
       @if (moreAccounts()) {
         <button type="button" class="secondary" (click)="loadAccounts.emit()" [disabled]="accountsLoading()">Más cuentas</button>
       }
+      @if (nextInactive() !== null) {
+        <button type="button" class="secondary" (click)="loadInactiveChoices()" [disabled]="inactiveLoading()">
+          {{ inactiveChoices().length ? 'Más cuentas inactivas' : 'Cargar cuentas inactivas' }}
+        </button>
+      }
       <button type="submit" [disabled]="loading()">Filtrar</button>
       <button type="button" class="secondary" (click)="reset()" [disabled]="loading()">Limpiar</button>
     </div>
   </form>
+  @if (inactiveError()) { <p role="alert">No pudimos cargar las cuentas inactivas.</p> }
   @if (loading()) { <p role="status">Cargando movimientos…</p> }
   @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
   @if (loaded() && !amountsHidden()) {
