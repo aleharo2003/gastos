@@ -28,6 +28,7 @@ class ImportRequest(BaseModel):
     filas: Annotated[list[CsvExpense], Field(min_length=1, max_length=1000)]
     lote: UUID | None = None
     revision: Annotated[str, Field(pattern=r'^[0-9a-f]{64}$')] | None = None
+    incluir_coincidencias_manuales: bool = Field(default=False, strict=True)
 
 
 def lock_import(session, space):
@@ -46,6 +47,33 @@ def normalized_rows(space, account, values):
                                format(row.importe, '.2f')), ensure_ascii=False)
         seen[identity] += 1
         yield uuid5(space, identity + '#' + str(seen[identity])), row
+
+
+def match_manual_rows(session, params, rows, imported):
+    candidates = [row.model_dump(mode='json', include={'fecha', 'descripcion', 'moneda', 'importe'})
+                  for key, row in rows if key not in imported]
+    if not candidates:
+        return []
+    matches = session.execute(text('''
+        WITH candidatos AS (
+            SELECT DISTINCT fecha, descripcion, moneda, importe
+            FROM jsonb_to_recordset(CAST(:candidates AS jsonb))
+                AS r(fecha date, descripcion text, moneda text, importe numeric)
+        )
+        SELECT g.fecha, g.descripcion, g.moneda, g.importe, count(*) AS cantidad
+        FROM public.gastos g JOIN candidatos c USING (fecha, descripcion, moneda, importe)
+        WHERE g.espacio_id=:s AND g.cuenta_id=:a AND g.anulado_en IS NULL AND g.clave_importacion IS NULL
+          AND NOT EXISTS (SELECT 1 FROM public.pagos_cuota p WHERE p.espacio_id=g.espacio_id AND p.id=g.id)
+        GROUP BY g.fecha, g.descripcion, g.moneda, g.importe
+    '''), params | {'candidates': json.dumps(candidates)}).mappings()
+    counts = {(row['fecha'], row['descripcion'], row['moneda'], row['importe']): row['cantidad'] for row in matches}
+    duplicates = []
+    for position, (key, row) in enumerate(rows):
+        identity = (row.fecha, row.descripcion, row.moneda, row.importe)
+        if key not in imported and counts.get(identity, 0) > 0:
+            duplicates.append(position)
+            counts[identity] -= 1
+    return duplicates
 
 
 def import_rows(session, user, space, account, body, *, commit):
@@ -71,11 +99,14 @@ def import_rows(session, user, space, account, body, *, commit):
         SELECT clave_importacion FROM public.gastos WHERE espacio_id=:s
           AND clave_importacion=ANY(CAST(:keys AS uuid[])) AND anulado_en IS NULL
     '''), params | {'keys': [key for key, _ in rows]}).scalars())
-    fresh = [(key, row) for key, row in rows if key not in existing]
+    manual = match_manual_rows(session, params, rows, existing)
+    excluded_manual = set() if body.incluir_coincidencias_manuales else set(manual)
+    fresh = [(key, row) for position, (key, row) in enumerate(rows)
+             if key not in existing and position not in excluded_manual]
     revision = sha256(b''.join(key.bytes for key, _ in fresh)).hexdigest()
     if not commit:
         duplicates = [position for position, (key, _) in enumerate(rows) if key in existing]
-        return {'nuevas': len(fresh), 'duplicadas': duplicates, 'revision': revision}
+        return {'nuevas': len(fresh), 'duplicadas': duplicates, 'coincidencias_manuales': manual, 'revision': revision}
     if not fresh or revision != body.revision:
         raise HTTPException(409, 'Volvé a revisar los duplicados', headers=NO_STORE)
     session.execute(text('''
