@@ -29,6 +29,15 @@ describe('Ingresos y saldos HTTP',()=>{
     }
     expect(remote).not.toHaveBeenCalled();
   });
+  it('envía categorías de ingresos precargadas y personalizadas', async () => {
+    for (const categoria of ['sueldo', randomUUID()]) {
+      const categorized = { ...row, categoria };
+      remote.mockResolvedValueOnce(new Response(JSON.stringify(categorized)));
+      await request(app.getHttpServer()).post(path).set('Authorization', 'Bearer token')
+        .send({ ...payload, categoria }).expect(200).expect(categorized);
+      expect(JSON.parse(remote.mock.calls.at(-1)![1].body).categoria).toBe(categoria);
+    }
+  });
   it('lista por cuenta o todas, valida pertenencia y conserva errores',async()=>{
     remote.mockImplementation(async()=>new Response(JSON.stringify({items:[row],next_offset:null})));
     await request(app.getHttpServer()).get(path).set('Authorization','Bearer token').expect(200);
