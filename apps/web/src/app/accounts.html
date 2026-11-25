@@ -203,6 +203,12 @@
 
 @if (tab() === 'accounts' && !amountsHidden()) {
   <app-space-export [space]="space" />
+  <details class="workspace-panel" #expenseImport>
+    <summary>Importar gastos desde CSV</summary>
+    @defer (on interaction(expenseImport)) {
+      <app-expense-import />
+    }
+  </details>
 }
 
 <app-commitments class="workspace-panel debts-panel"
