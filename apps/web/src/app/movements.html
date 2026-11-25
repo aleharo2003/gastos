@@ -41,6 +41,10 @@
     <button type="button" class="secondary" (click)="exportCsv()" [disabled]="exporting() || loading()">
       {{ exporting() ? 'Exportando…' : 'Exportar resultados a CSV' }}
     </button>
+    @if (exporting()) {
+      <p role="status">Movimientos preparados {{ exportedRows() }}</p>
+      <button type="button" class="secondary" (click)="cancelExport()">Cancelar exportación</button>
+    }
     @if (exportError()) { <p role="alert">{{ exportError() }}</p> }
   }
   @if (totals().length) {
