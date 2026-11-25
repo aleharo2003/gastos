@@ -36,17 +36,31 @@ export class ExpenseTrend implements OnChanges {
     if (!data) return [];
     const categories = this.selectedCategories();
     const totals = new Map<string, bigint>();
+    const byCategory = new Map<string, bigint>();
     for (const item of data.items) {
-      if (item.moneda !== this.currency() ||
-          (categories.length && !categories.includes(item.categoria ?? 'sin_categoria'))) continue;
-      totals.set(item.mes, (totals.get(item.mes) ?? 0n) + cents(item.total));
+      const category = item.categoria ?? 'sin_categoria';
+      if (item.moneda !== this.currency() || (categories.length && !categories.includes(category))) continue;
+      const amount = cents(item.total);
+      totals.set(item.mes, (totals.get(item.mes) ?? 0n) + amount);
+      const key = item.mes + ':' + category;
+      byCategory.set(key, (byCategory.get(key) ?? 0n) + amount);
     }
     const start = this.start();
     const end = this.end();
     const rows = data.meses.filter(month => month >= start && month <= end)
       .map(month => ({ month, amount: totals.get(month) ?? 0n }));
     const max = rows.reduce((highest, row) => row.amount > highest ? row.amount : highest, 0n);
-    return rows.map(row => ({ ...row, width: max ? Number(row.amount * 1000n / max) / 10 : 0 }));
+    const width = (amount: bigint) => max ? Number(amount * 1000n / max) / 10 : 0;
+    const labels = new Map(this.categories.map(item => [item.id, item.label]));
+    labels.set('sin_categoria', 'Sin categoría');
+    return rows.map(row => ({
+      ...row,
+      width: width(row.amount),
+      breakdown: categories.length < 2 ? [] : categories.map(id => {
+        const amount = byCategory.get(row.month + ':' + id) ?? 0n;
+        return { id, label: labels.get(id) ?? id, amount, width: width(amount) };
+      }),
+    }));
   });
   private version = 0;
   private readonly auth = inject(AuthSession);

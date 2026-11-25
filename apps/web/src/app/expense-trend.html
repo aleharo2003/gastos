@@ -35,6 +35,17 @@
         <span>{{ row.month }}</span>
         <span class="trend-track" aria-hidden="true"><span [style.width.%]="row.width"></span></span>
         <strong>{{ currency() }} {{ money(row.amount) }}</strong>
+        @if (row.breakdown.length) {
+          <ul class="trend-breakdown" aria-label="Desglose de {{ row.month }}">
+            @for (category of row.breakdown; track category.id) {
+              <li>
+                <span>{{ category.label }}</span>
+                <span class="trend-track" aria-hidden="true"><span [style.width.%]="category.width"></span></span>
+                <span>{{ currency() }} {{ money(category.amount) }}</span>
+              </li>
+            }
+          </ul>
+        }
       </li>
     }
   </ul>
