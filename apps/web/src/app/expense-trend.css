@@ -1,5 +1,8 @@
 .trend-filters { display: flex; flex-wrap: wrap; gap: .75rem; }
 .trend-filters label { display: grid; gap: .25rem; }
+.trend-categories { margin-block: .75rem; }
+.trend-categories div { display: flex; flex-wrap: wrap; gap: .5rem 1rem; padding-block: .5rem; }
+.trend-categories input { width: auto; }
 .trend-chart { list-style: none; padding: 0; display: grid; gap: .5rem; }
 .trend-chart li { display: grid; grid-template-columns: 4.5rem minmax(0, 1fr) auto; gap: .6rem; align-items: center; }
 .trend-track { background: var(--g-bg); border-radius: .25rem; height: .55rem; overflow: hidden; }

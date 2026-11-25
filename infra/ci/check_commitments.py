@@ -10,6 +10,7 @@ from app.accounts import AccountInput,create_account
 from app.incomes import IncomeInput,create_income,account_balance
 from app.expenses import ExpenseInput,ExpenseEdit,create_expense,edit_expense
 from app.commitments import CommitmentInput,PaymentInput,create_commitment,list_commitments,list_installments,pay_installment,list_payments,monthly_installments,due_overview,skip_installment,today_overview
+from app.commitments import commitment_payment_trend
 from app.db.connection import create_runtime_engine,create_migration_engine
 from app.db.unit_of_work import runtime_transaction
 
@@ -112,10 +113,21 @@ def check_commitments(runtime_url,migration_url):
                 raise RuntimeError('rollback de prueba')
         except RuntimeError:pass
         assert balance()=='899.00' and cuotas(debt['id'])['items'][1]['pagado']=='0.00'
-        pay(q2,payment(importe='100'));pay(q3,payment(importe='100'))
+        pay(q2,payment(importe='100'));pay(q3,payment(fecha='2026-09-20',importe='100'))
         finished=next(r for r in listed() if r['id']==debt['id'])
         assert finished['cuotas_pagadas']==3 and finished['pendiente']=='0.00' and finished['proximo_vencimiento'] is None
         assert balance()=='699.00'
+        def trend(session, user, space):
+            return commitment_payment_trend(session, user, space, debt['id'], date(2026, 11, 30))
+        report = call(trend, reader)
+        assert len(report['items']) == 12 and report['items'][0] == {'mes': '2025-12', 'total': '0.00'}
+        assert report['items'][-3:] == [
+            {'mes': '2026-09', 'total': '100.00'},
+            {'mes': '2026-10', 'total': '0.00'},
+            {'mes': '2026-11', 'total': '200.00'},
+        ]
+        denied(lambda: call(trend, other), 403)
+        denied(lambda: call(lambda s,u,w: commitment_payment_trend(s,u,w,outside['id'])), 404)
         settled=call(lambda s,u,w:monthly_installments(s,u,w,'2024-01'))
         assert settled['totales'][0]['cuotas_pagadas']==1 and settled['totales'][0]['vencido']=='0.00'
         assert settled['totales'][0]['pendiente']=='0.00'
