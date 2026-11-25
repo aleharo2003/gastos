@@ -118,13 +118,14 @@ def set_account_state(session, user, space, account, active):
     return dict(row)
 
 
-def execute(request, response, space, operation):
+def execute(request, response, space, operation, *, repeatable_read=False):
     identity = me(request, response)
     engine = getattr(request.app.state, 'runtime_engine', None)
     if engine is None:
         raise HTTPException(503, 'Base no disponible', headers=NO_STORE)
     try:
-        with runtime_transaction(engine, usuario_id=identity['usuario_id'], espacio_id=space) as session:
+        with runtime_transaction(engine, usuario_id=identity['usuario_id'], espacio_id=space,
+                                 repeatable_read=repeatable_read) as session:
             return operation(session, identity['usuario_id'])
     except SQLAlchemyError as error:
         if isinstance(error, DBAPIError) and getattr(getattr(error.orig, 'diag', None), 'constraint_name', None) == 'cuenta_activa_para_movimientos':

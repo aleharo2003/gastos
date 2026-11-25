@@ -29,6 +29,7 @@ def _uuid(value: UUID | str, field: str) -> str:
 @contextmanager
 def runtime_transaction(
     engine: Engine, *, usuario_id: UUID | str, espacio_id: UUID | str | None = None,
+    repeatable_read: bool = False,
 ) -> Iterator[Session]:
     """Recibe identidad ya autenticada; no autentica ni comprueba membresías.
 
@@ -40,7 +41,8 @@ def runtime_transaction(
     workspace = "" if espacio_id is None else _uuid(espacio_id, "espacio_id")
     with Session(engine, autobegin=False, close_resets_only=False) as session:
         with session.begin():
-            validate_connection(session.connection(), RUNTIME)
+            options = {"isolation_level": "REPEATABLE READ"} if repeatable_read else None
+            validate_connection(session.connection(execution_options=options), RUNTIME)
             session.execute(text("""
                 SELECT set_config('app.user_id', :usuario_id, true),
                        set_config('app.workspace_id', :espacio_id, true)
