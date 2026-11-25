@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
-from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, ForeignKeyConstraint, Index, Numeric, Text, Uuid, UniqueConstraint
+from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, ForeignKeyConstraint, Index, Numeric, Text, Uuid, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base
 
@@ -19,6 +19,10 @@ class Gasto(Base):
         CheckConstraint('nota IS NULL OR char_length(nota) BETWEEN 1 AND 500', name='ck_gastos_nota'),
         Index('ix_gastos_espacio_cuenta_fecha', 'espacio_id', 'cuenta_id', 'fecha'),
         Index('ix_gastos_espacio_fecha', 'espacio_id', 'fecha'),
+        Index('ix_gastos_espacio_lote', 'espacio_id', 'lote_importacion',
+              postgresql_where=text('lote_importacion IS NOT NULL')),
+        Index('uq_gastos_importacion_vigente', 'espacio_id', 'clave_importacion', unique=True,
+              postgresql_where=text('clave_importacion IS NOT NULL AND anulado_en IS NULL')),
     )
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     espacio_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
@@ -30,5 +34,8 @@ class Gasto(Base):
     importe: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
 
     anulado_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    lote_importacion: Mapped[UUID | None] = mapped_column(Uuid)
+    clave_importacion: Mapped[UUID | None] = mapped_column(Uuid)
+    importado_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     nota: Mapped[str | None] = mapped_column(Text, nullable=True)
     categoria: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -1,10 +1,19 @@
+<fieldset [disabled]="busy()">
+<label>Cuenta de los gastos
+  <select [(ngModel)]="account" (ngModelChange)="chooseAccount()">
+    <option value="">Elegí una cuenta activa</option>
+    @for (item of accounts(); track item.id) { <option [value]="item.id">{{ item.nombre }}</option> }
+  </select>
+</label>
+@if (moreAccounts()) {
+  <button type="button" class="secondary" (click)="loadAccounts.emit()">Cargar más cuentas</button>
+}
 <label>Separador
   <select [(ngModel)]="separator" (ngModelChange)="parse()">
     <option value=";">Punto y coma</option><option value=",">Coma</option>
   </select>
 </label>
 <label>Archivo CSV de gastos <input type="file" accept=".csv,text/csv" (change)="select($event)"></label>
-@if (error()) { <p role="alert">{{ error() }}</p> }
 @if (headers().length) {
   @for (field of fields; track field.key) {
     <label>{{ field.label }}
@@ -27,4 +36,28 @@
       }
     </ul>
   } @else { <p>Elegí tres columnas distintas y verificá que el CSV tenga filas con datos.</p> }
+  @if (invalidCount()) {
+    <label><input type="checkbox" [(ngModel)]="skipInvalid" (ngModelChange)="checked.set(null)"> Omitir filas inválidas</label>
+  }
+  <button type="button" class="secondary" (click)="check()"
+    [disabled]="!account || !valid().length || (invalidCount() > 0 && !skipInvalid)">Revisar duplicados</button>
+  @if (checked(); as preview) {
+    <p>Gastos nuevos: {{ preview.nuevas }}. Duplicados: {{ preview.duplicadas.length }}.</p>
+    @if (duplicates().length) { <p>Filas que se omitirán: {{ duplicates().join(', ') }}.</p> }
+    <button type="button" (click)="commit()" [disabled]="!preview.nuevas">Confirmar importación</button>
+  }
 }
+@if (batches().length) {
+  <h4>Últimos lotes para revertir</h4>
+  <ul>
+    @for (batch of batches(); track batch.lote) {
+      <li>{{ batch.gastos }} gastos · {{ batch.fecha.slice(0, 10).split('-').reverse().join('/') }}
+        <button type="button" class="secondary" (click)="undo(batch)">Revertir lote</button>
+      </li>
+    }
+  </ul>
+}
+</fieldset>
+@if (busy()) { <p role="status">Procesando la importación.</p> }
+@if (notice()) { <p role="status">{{ notice() }}</p> }
+@if (error()) { <p role="alert">{{ error() }}</p> }

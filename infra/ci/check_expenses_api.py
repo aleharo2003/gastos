@@ -12,6 +12,7 @@ from sqlalchemy.exc import DBAPIError
 from app.accounts import AccountInput, create_account
 from app.expenses import expense_category_summary, expense_summary, expense_trend, list_similar_expenses, category_suggestion, ExpenseFilters, ExpenseInput, ExpenseEdit, edit_expense, create_expense, list_expenses
 from app.expenses import void_expense
+from app.expense_import import ImportRequest, cancel_batch, import_rows, recent_batches
 from app.incomes import account_balance
 from app.movements import list_movements
 from app.movement_categories import CategoryCreate, CategoryUpdate, list_categories, save_category
@@ -315,6 +316,34 @@ def check_expenses_api(runtime_url, migration_url):
             catalog = list(csv.DictReader(io.StringIO(archive.read('categorias.csv').decode('utf-8-sig'))))
             assert any(row['id'] == custom.id and row['nombre'] == 'Comida hogar' and row['activa'] == 'False' for row in catalog)
             assert 'ruta' not in archive.read('comprobantes.csv').decode('utf-8-sig')
+
+        import_data = dict(fecha='2024-02-20', descripcion='Importación de prueba', moneda='ARS', importe='0.10')
+        preview_body = ImportRequest(filas=[import_data, import_data])
+
+        def import_as(request, write=False, who=owner):
+            with runtime_transaction(runtime, usuario_id=who, espacio_id=owner) as session:
+                return import_rows(session, who, owner, account, request, commit=write)
+
+        before_import = balance()
+        denied(lambda: import_as(preview_body, who=reader), 403)
+        invalid = ImportRequest(filas=[import_data | {'fecha': '2024-02-30'}])
+        denied(lambda: import_as(invalid), 422)
+        preview = import_as(preview_body)
+        assert preview['nuevas'] == 2 and preview['duplicadas'] == []
+        assert balance() == before_import
+        batch = uuid4()
+        confirm = ImportRequest(filas=[import_data, import_data], lote=batch, revision=preview['revision'])
+        assert import_as(confirm, write=True) == import_as(confirm, write=True) == {'lote': batch, 'importadas': 2}
+        assert Decimal(before_import) - Decimal(balance()) == Decimal('0.20')
+        assert import_as(preview_body)['duplicadas'] == [0, 1]
+        denied(lambda: import_as(confirm.model_copy(update={'lote': uuid4()}), write=True), 409)
+        with runtime_transaction(runtime, usuario_id=owner, espacio_id=owner) as session:
+            assert recent_batches(session, owner, owner, account)['items'][0]['lote'] == batch
+            assert cancel_batch(session, owner, owner, second, batch) == {'anuladas': 0}
+            assert cancel_batch(session, owner, owner, account, batch) == {'anuladas': 2}
+            assert cancel_batch(session, owner, owner, account, batch) == {'anuladas': 0}
+        assert balance() == before_import
+        assert import_as(preview_body)['nuevas'] == 2
 
         with migrator.begin() as c: c.execute(text('DELETE FROM public.miembros_espacio WHERE usuario_id=:u AND espacio_id=:s'),{'u':editor,'s':owner})
         denied(lambda:create(editor,owner,account,body()),403)
