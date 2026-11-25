@@ -4,11 +4,13 @@ import { AuthService } from './auth.service.js';
 import { boundedJson } from './token-verifier.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const INCOME_CATEGORIES = new Set(['sueldo', 'honorarios', 'venta', 'regalo', 'reintegro', 'otros_ingresos']);
 type IncomeInput = { id:string; fecha:string; descripcion:string; moneda:string; importe:string; categoria?: string | null };
 type Income = IncomeInput & {espacio_id:string; cuenta_id:string; cuenta_nombre?: string };
 function valid(value: unknown): value is IncomeInput {
   const row = value as IncomeInput;
-  return !!row && (row.categoria == null || (typeof row.categoria === 'string' && /^[a-z0-9_-]{1,36}$/.test(row.categoria))) &&
+  return !!row && (row.categoria == null || (typeof row.categoria === 'string' &&
+    (INCOME_CATEGORIES.has(row.categoria) || UUID.test(row.categoria)))) &&
     typeof row.id === 'string' && UUID.test(row.id) && !/^0{8}-0{4}-0{4}-0{4}-0{12}$/.test(row.id) &&
     typeof row.fecha === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(row.fecha) &&
     typeof row.descripcion === 'string' && [...row.descripcion.trim()].length >= 1 && [...row.descripcion.trim()].length <= 160 &&
