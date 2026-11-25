@@ -1,0 +1,30 @@
+<label>Separador
+  <select [(ngModel)]="separator" (ngModelChange)="parse()">
+    <option value=";">Punto y coma</option><option value=",">Coma</option>
+  </select>
+</label>
+<label>Archivo CSV de gastos <input type="file" accept=".csv,text/csv" (change)="select($event)"></label>
+@if (error()) { <p role="alert">{{ error() }}</p> }
+@if (headers().length) {
+  @for (field of fields; track field.key) {
+    <label>{{ field.label }}
+      <select [(ngModel)]="mapping[field.key]" (ngModelChange)="refresh()">
+        <option [ngValue]="-1">Elegí la columna</option>
+        @for (header of headers(); track $index) { <option [ngValue]="$index">{{ $index + 1 }}. {{ header }}</option> }
+      </select>
+    </label>
+  }
+  <label>Moneda de los gastos
+    <select [(ngModel)]="currency" (ngModelChange)="refresh()"><option>ARS</option><option>USD</option><option>EUR</option></select>
+  </label>
+  @if (rows().length) {
+    <p>Filas de datos: {{ rows().length }}</p>
+    <ul>
+      @for (row of rows(); track row.line) {
+        @if (row.expense; as expense) {
+          @if ($index < 10) { <li>{{ row.line }}. {{ expense.fecha }} · {{ expense.descripcion }} · {{ expense.moneda }} {{ expense.importe }}</li> }
+        } @else { <li>{{ row.line }}. {{ row.error }}</li> }
+      }
+    </ul>
+  } @else { <p>Elegí tres columnas distintas y verificá que el CSV tenga filas con datos.</p> }
+}
