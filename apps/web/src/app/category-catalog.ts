@@ -23,7 +23,7 @@ export class CategoryCatalog {
   private version = 0;
 
   private key(space: string): string {
-    return (this.auth.userId ?? '') + ':' + space;
+    return (this.auth.email?.() ?? '') + ':' + space;
   }
 
   categories(space: string, kind?: CategoryKind): readonly MovementCategory[] {
@@ -44,7 +44,7 @@ export class CategoryCatalog {
 
   ensure(space: string): void {
     const key = this.key(space);
-    if (!space || !this.auth.userId || this.snapshots().has(key) || this.requests.has(key)) return;
+    if (!space || !this.auth.verified?.() || this.snapshots().has(key) || this.requests.has(key)) return;
     void this.refresh(space).catch(() => {});
   }
 
