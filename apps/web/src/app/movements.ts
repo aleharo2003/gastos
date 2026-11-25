@@ -62,10 +62,19 @@ export class Movements implements OnInit {
     void this.load();
   }
 
-  datePreset(period: 'today' | 'month'): void {
+  datePreset(period: 'today' | 'month' | 'previous'): void {
     const today = new Intl.DateTimeFormat('en-CA', {
       timeZone: 'America/Argentina/Buenos_Aires', year: 'numeric', month: '2-digit', day: '2-digit',
     }).format(new Date());
+    if (period === 'previous') {
+      const first = new Date(today.slice(0, 7) + '-01T00:00:00Z');
+      first.setUTCDate(0);
+      const last = first.toISOString().slice(0, 10);
+      this.filters.desde = last.slice(0, 7) + '-01';
+      this.filters.hasta = last;
+      void this.load();
+      return;
+    }
     this.filters.desde = period === 'month' ? today.slice(0, 7) + '-01' : today;
     this.filters.hasta = today;
     void this.load();

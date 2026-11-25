@@ -27,6 +27,7 @@
     <div class="movement-actions">
       <button type="button" class="secondary" (click)="datePreset('today')" [disabled]="loading()">Hoy</button>
       <button type="button" class="secondary" (click)="datePreset('month')" [disabled]="loading()">Mes hasta hoy</button>
+      <button type="button" class="secondary" (click)="datePreset('previous')" [disabled]="loading()">Mes anterior</button>
       @if (moreAccounts()) {
         <button type="button" class="secondary" (click)="loadAccounts.emit()" [disabled]="accountsLoading()">Más cuentas</button>
       }
