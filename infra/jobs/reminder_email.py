@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal, ROUND_HALF_UP
 from itertools import groupby
-from urllib.parse import urlsplit
+from urllib.parse import urlencode, urlsplit
 from uuid import UUID
 
 from psycopg import Connection
@@ -66,11 +66,21 @@ def prepare_reminder_emails(
             label = 'Vencida' if item['evento'] == 'vencida' else 'Vence'
             due = item['vencimiento'].strftime('%d/%m/%Y')
             name = ' '.join(item['nombre'].split())
-            entry = f"- {label} {due} · {name} · Cuota {item['numero']} · Pendiente: {currency} {format_amount(amount)}"
-            if item['estimado']:
-                entry += ' (importe estimado)'
+            params = {'espacio': str(space), 'mes': item['vencimiento'].strftime('%Y-%m')}
             if item['pendiente_ajuste']:
-                entry += ' (pendiente de ajuste)'
+                state = 'Pendiente de ajuste'
+                action = 'Ver cuota en Piggo'
+                params['aviso'] = 'ajuste'
+            elif item['estimado']:
+                state = 'Importe por confirmar'
+                action = 'Revisar importes del mes'
+                params['aviso'] = 'importe'
+            else:
+                state = 'Pendiente de pago'
+                action = 'Registrar pago'
+                params.update(aviso='pago', cuota=str(item['cuota_id']))
+            entry = f"- {label} {due} · {name} · Cuota {item['numero']} · {state}"
+            entry += f" · {'Estimado' if item['estimado'] or item['pendiente_ajuste'] else 'Saldo'} {currency} {format_amount(amount)}"
             if currency == 'USD':
                 rate = rates.get(space)
                 if rate is None:
@@ -81,6 +91,7 @@ def prepare_reminder_emails(
                     equivalent = (amount * rate).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
                     entry += f' · Estimado en ARS: {format_amount(equivalent)} (1 USD = ARS {format_rate(rate)})'
             lines.append(entry)
+            lines.append(f"  {action}: {target._replace(query=urlencode(params)).geturl()}")
 
         text = '\n'.join(['Tenés cuotas pendientes en Piggo.', '', *lines, '', f'Ver en Piggo: {app_url}'])
         subject = f'Piggo · Recordatorio de cuotas del {day:%d/%m/%Y}'

@@ -1,19 +1,30 @@
 import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
-import { Commitments,type Commitment,type Installment } from './commitments';
+import { Commitments,type Commitment,type Installment,type InstallmentReminder } from './commitments';
 import { AuthSession } from './auth-session';
 describe('Deudas fijas',()=>{
   afterEach(()=>{localStorage.clear();});
-  async function setup(){
+  async function setup(reminder?: InstallmentReminder){
     const debt:Commitment={id:'debt',espacio_id:'s',cuenta_id:'bank',nombre:'Casa',moneda:'ARS',importe:'100.00',categoria:null,primer_vencimiento:'2026-11-30',total_cuotas:2,cuotas_pagadas:0,total:'200.00',pagado:'0.00',pendiente:'200.00',proximo_vencimiento:'2026-11-30'};
     const quota:Installment={id:'quota',espacio_id:'s',compromiso_id:'debt',numero:1,vencimiento:'2026-11-30',importe:'100.00',pagado:'0.00',pendiente:'100.00',estado:'pendiente',vencida:false};
     const request=vi.fn().mockImplementation(async(method,path,body)=>method==='POST'?path.includes('/payments')?{...body,espacio_id:'s',cuota_id:'quota',moneda:'ARS'}:debt:
       path.includes('/installment-drafts?')?{borradores:0,items:[],next_offset:null}:path.includes('/installments?month=')?{mes:new URL('https://local'+path).searchParams.get('month'),items:[],totales:[],next_offset:null}:
+      path.endsWith('/installments/quota')?{...quota,nombre:'Casa',moneda:'ARS',cuenta_id:'bank'}:
       path.endsWith('/commitments/debt')?debt:path.includes('/installments?')?{items:[quota],next_offset:null}:path.includes('/payments?')?{items:[],next_offset:null}:{items:[debt],next_offset:null});
     TestBed.configureTestingModule({imports:[Commitments],providers:[{provide:AuthSession,useValue:{accountRequest:request}}]});
     const f=TestBed.createComponent(Commitments);f.componentRef.setInput('space','s');f.componentRef.setInput('accounts',[{id:'bank',nombre:'Banco'}]);
+    if (reminder) f.componentRef.setInput('reminder', reminder);
     f.detectChanges();await f.whenStable();f.detectChanges();return {f,c:f.componentInstance,request,debt,quota};
   }
+  it('abre el formulario de la cuota del aviso sin enviar un pago', async () => {
+    const {f, c, request} = await setup({ action: 'pago', quota: 'quota', month: '2026-11' });
+    await vi.waitFor(() => expect(c.quota()?.id).toBe('quota'));
+    f.detectChanges();
+    await f.whenStable();
+    expect(c.appliedMonth()).toBe('2026-11');
+    expect(f.nativeElement.querySelector('#payment-amount').value).toBe('100.00');
+    expect(request.mock.calls.every(([method]) => method === 'GET')).toBe(true);
+  });
   it('muestra saldos globales y actualiza el detalle fuera de la página visible', async () => {
     const {f,c,request,debt}=await setup();
     await c.choose(debt);

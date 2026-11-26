@@ -351,6 +351,15 @@ export class CommitmentsController{
     if (!validId(id)) throw new BadRequestException('Compromiso invalido');
     return this.forward(token, space, 'payment-trend', id.toLowerCase());
   }
+  @Get('installments/:id')
+  async installmentDetail(@Param('space') space: string, @Param('id') id: string,
+    @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    res.setHeader('Cache-Control', 'no-store');
+    const token = await this.token(req, res);
+    if (!validId(id)) throw new BadRequestException('Cuota inválida');
+    return this.forward(token, space, 'installment-detail', id.toLowerCase());
+  }
+
   @Get('installments/:id/payments')
   async payments(@Param('space') space:string,@Param('id') id:string,@Query() query:Record<string,unknown>,@Req() req:Request,@Res({passthrough:true}) res:Response){
     return this.read(space,'payments',id,query,req,res);
@@ -391,14 +400,14 @@ export class CommitmentsController{
 
 
 
-  private async forward(token:string,rawSpace:string,kind:'index-import'|'index-values'|'commitments'|'installments'|'payments'|'payment-trend'|'monthly'|'detail'|'pause'|'drafts'|'confirm'|'skip'|'overview'|'amount'|'open-month',id:string|undefined,offset=0,body?:IndexCsv|IndexValue|Create|Pay|Confirm|{version:number}|{pausado:boolean;version:number}|AmountCorrection,month?:string){
+  private async forward(token:string,rawSpace:string,kind:'index-import'|'index-values'|'commitments'|'installments'|'payments'|'payment-trend'|'monthly'|'detail'|'pause'|'drafts'|'confirm'|'skip'|'overview'|'amount'|'open-month'|'installment-detail',id:string|undefined,offset=0,body?:IndexCsv|IndexValue|Create|Pay|Confirm|{version:number}|{pausado:boolean;version:number}|AmountCorrection,month?:string){
     if(!UUID.test(rawSpace))throw new BadRequestException('Espacio invalido');const space=rawSpace.toLowerCase();
     try{
       const base=new URL(process.env.API_BASE_URL??'http://127.0.0.1:8000'),local=['localhost','127.0.0.1','[::1]','api'].includes(base.hostname);
       if(base.username||base.password||base.search||base.hash||base.pathname!=='/'||(base.protocol!=='https:'&&!(base.protocol==='http:'&&local)))throw new Error();
       const rawTimeout=process.env.API_TIMEOUT_MS??'5000',timeout=Number(rawTimeout);
       if(!/^\d+$/.test(rawTimeout)||!Number.isSafeInteger(timeout)||timeout<1||timeout>2147483647)throw new Error();
-      const suffix=kind==='open-month'?'installment-months/open':kind==='amount'?`installments/${id}/amount`:kind==='payment-trend'?`commitments/${id}/payment-trend`:kind==='index-import'?'index-values/import':kind==='index-values'?'index-values':kind==='overview'?'due-overview':kind==='skip'?`installments/${id}/skip`:kind==='drafts'?'installment-drafts':kind==='confirm'?'installment-confirmations':(kind==='detail'||kind==='pause')?`commitments/${id}`:kind==='monthly'?'installments':kind==='commitments'?'commitments':kind==='installments'?`commitments/${id}/installments`:`installments/${id}/payments`;
+      const suffix=kind==='installment-detail'?`installments/${id}`:kind==='open-month'?'installment-months/open':kind==='amount'?`installments/${id}/amount`:kind==='payment-trend'?`commitments/${id}/payment-trend`:kind==='index-import'?'index-values/import':kind==='index-values'?'index-values':kind==='overview'?'due-overview':kind==='skip'?`installments/${id}/skip`:kind==='drafts'?'installment-drafts':kind==='confirm'?'installment-confirmations':(kind==='detail'||kind==='pause')?`commitments/${id}`:kind==='monthly'?'installments':kind==='commitments'?'commitments':kind==='installments'?`commitments/${id}/installments`:`installments/${id}/payments`;
       const params = new URLSearchParams();
       if (kind !== 'open-month') params.set('offset', String(offset));
       if (month !== undefined) params.set('month', month);
@@ -466,6 +475,14 @@ export class CommitmentsController{
         const ids=(data as {confirmadas:string[]})?.confirmadas,input=body as Confirm;
         if(!Array.isArray(ids)||ids.length!==input.items.length||ids.some((id,index)=>id!==input.items[index].id))throw new Error();
         return {confirmadas:ids};
+      }
+      if (kind === 'installment-detail') {
+        const row = data as MonthlyItem | null;
+        if (!row || row.id !== id || !validId(row.compromiso_id) || !validId(row.cuenta_id) ||
+            typeof row.nombre !== 'string' || !row.nombre.trim() || [...row.nombre].length > 160 ||
+            !currencies.includes(row.moneda)) throw new Error();
+        return { ...installment(row, space, row.compromiso_id), nombre: row.nombre,
+          moneda: row.moneda, cuenta_id: row.cuenta_id };
       }
       if (kind === 'open-month') {
         const result = data as {mes: string; creadas: number} | null;

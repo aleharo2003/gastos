@@ -35,6 +35,30 @@ describe('Navegación del espacio', () => {
     panel.querySelector('section > button').click();
     expect(component.tab()).toBe('debts');
   });
+  it('abre el mes del aviso cuando coincide con el espacio autenticado', async () => {
+    const previous = location.pathname + location.search + location.hash;
+    try {
+      history.replaceState(null, '', '?espacio=s&mes=2026-10&aviso=importe');
+      const { fixture, component } = await setup();
+      expect(component.tab()).toBe('debts');
+      expect(component.commitments?.appliedMonth()).toBe('2026-10');
+      expect(component.commitments?.draftMonth()).toBe('2026-10');
+      fixture.destroy();
+    } finally {
+      history.replaceState(null, '', previous);
+    }
+  });
+  it('no aplica un enlace dirigido a otro espacio', async () => {
+    const previous = location.pathname + location.search + location.hash;
+    try {
+      history.replaceState(null, '', '?espacio=otro&mes=2026-10&aviso=importe');
+      const { component } = await setup();
+      expect(component.tab()).toBe('today');
+      expect(component.installmentReminder()).toBeNull();
+    } finally {
+      history.replaceState(null, '', previous);
+    }
+  });
   it('muestra en Hoy los límites alcanzados, respeta la privacidad y abre el presupuesto', async () => {
     const { fixture, component } = await setup(true);
     window.dispatchEvent(new CustomEvent('gastos-privacy', { detail: false }));
