@@ -28,7 +28,8 @@ function rateUnits(value: string): bigint {
 type Create={sistema_amortizacion?:'frances'|'aleman'|null;tna?:string|null;indice_ajuste?:string|null;variable?:boolean;id:string;cuenta_id:string;nombre:string;moneda:string;importe:string;categoria?:string|null;primer_vencimiento:string;total_cuotas:number|null};
 type Confirm={items:{id:string;importe:string;version:number}[]};
 type Pay={id:string;cuenta_id:string;fecha:string;importe:string};
-type Commitment=Create & {variable:boolean;pausado:boolean;version:number;espacio_id:string;cuotas_pagadas:number;cuotas_no_aplican:number;total:string;pagado:string;pendiente:string;proximo_vencimiento:string|null};
+type AmountCorrection = { version: number; importe: string };
+type Commitment=Create & {variable:boolean;pausado:boolean;version:number;espacio_id:string;cuotas_pagadas:number;cuotas_no_aplican:number;cuotas_ajustadas?:number;total:string;pagado:string;pendiente:string;proximo_vencimiento:string|null};
 type Installment={capital?:string;interes?:string;saldo_capital?:string;pendiente_ajuste?:boolean;estimado:boolean;version:number;id:string;espacio_id:string;compromiso_id:string;numero:number;vencimiento:string;importe:string;pagado:string;pendiente:string;estado:string;vencida:boolean};
 type Payment=Pay & {espacio_id:string;cuota_id:string;moneda:string};
 function validCreate(v:unknown):v is Create{
@@ -47,13 +48,20 @@ function validPay(v:unknown):v is Pay{
 }
 function commitment(v:unknown,space:string):Commitment{
   const r=v as Commitment;
+  const adjusted = r?.cuotas_ajustadas;
+  if (adjusted !== undefined &&
+      (!Number.isSafeInteger(adjusted) || adjusted < 1 || r.variable || r.indice_ajuste != null ||
+       r.sistema_amortizacion != null || (r.total_cuotas !== null && adjusted > r.total_cuotas - r.cuotas_no_aplican))) {
+    throw new Error();
+  }
   if(!validCreate(r)||r.espacio_id!==space||!Number.isInteger(r.cuotas_pagadas)||r.cuotas_pagadas<0||(r.total_cuotas!==null&&r.cuotas_pagadas+r.cuotas_no_aplican>r.total_cuotas)||!Number.isSafeInteger(r.cuotas_no_aplican)||r.cuotas_no_aplican<0||typeof r.variable!=='boolean'||typeof r.pausado!=='boolean'||!Number.isSafeInteger(r.version)||r.version<1||
-    !sum(r.total)||!sum(r.pagado)||!sum(r.pendiente)||(r.sistema_amortizacion==null&&r.indice_ajuste==null&&r.total_cuotas!==null&&cents(r.total)!==cents(r.importe)*BigInt(r.total_cuotas-r.cuotas_no_aplican))||
+    !sum(r.total)||!sum(r.pagado)||!sum(r.pendiente)||(!adjusted&&r.sistema_amortizacion==null&&r.indice_ajuste==null&&r.total_cuotas!==null&&cents(r.total)!==cents(r.importe)*BigInt(r.total_cuotas-r.cuotas_no_aplican))||
     (r.sistema_amortizacion!=null&&(r.cuotas_no_aplican!==0||cents(r.total)<cents(r.importe)))||
     cents(r.pagado)+cents(r.pendiente)!==cents(r.total)||!(r.proximo_vencimiento===null||date(r.proximo_vencimiento))||
-    (cents(r.pendiente)===0n)!==(r.proximo_vencimiento===null)||(r.sistema_amortizacion==null&&r.indice_ajuste==null&&!r.variable&&BigInt(r.cuotas_pagadas)*cents(r.importe)>cents(r.pagado)))throw new Error();
+    (cents(r.pendiente)===0n)!==(r.proximo_vencimiento===null)||(!adjusted&&r.sistema_amortizacion==null&&r.indice_ajuste==null&&!r.variable&&BigInt(r.cuotas_pagadas)*cents(r.importe)>cents(r.pagado)))throw new Error();
   return {...(r.sistema_amortizacion==null?{}:{sistema_amortizacion:r.sistema_amortizacion,tna:r.tna}),
-    ...(r.indice_ajuste==null?{}:{indice_ajuste:r.indice_ajuste}),variable:r.variable,id:r.id,espacio_id:space,cuenta_id:r.cuenta_id,nombre:r.nombre,moneda:r.moneda,importe:r.importe,categoria:r.categoria??null,
+    ...(r.indice_ajuste==null?{}:{indice_ajuste:r.indice_ajuste}),...(adjusted === undefined ? {} : { cuotas_ajustadas: adjusted }),
+    variable:r.variable,id:r.id,espacio_id:space,cuenta_id:r.cuenta_id,nombre:r.nombre,moneda:r.moneda,importe:r.importe,categoria:r.categoria??null,
     primer_vencimiento:r.primer_vencimiento,total_cuotas:r.total_cuotas,pausado:r.pausado,version:r.version,cuotas_no_aplican:r.cuotas_no_aplican,cuotas_pagadas:r.cuotas_pagadas,total:r.total,pagado:r.pagado,pendiente:r.pendiente,proximo_vencimiento:r.proximo_vencimiento};
 }
 function installment(v:unknown,space:string,id:string):Installment{
@@ -249,6 +257,21 @@ export class CommitmentsController{
     return this.forward(token,space,'skip',id.toLowerCase(),0,{version:value.version});
   }
 
+  @Post('installments/:id/amount')
+  @HttpCode(200)
+  async correctAmount(@Param('space') space: string, @Param('id') id: string, @Body() body: unknown,
+    @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    res.setHeader('Cache-Control', 'no-store');
+    const token = await this.token(req, res);
+    const value = body as AmountCorrection | null;
+    if (!validId(id) || !value || !amount(value.importe) || !Number.isInteger(value.version) ||
+        value.version < 1 || value.version > 2147483646 || Object.keys(value).length !== 2) {
+      throw new BadRequestException('Importe o versión inválidos');
+    }
+    return this.forward(token, space, 'amount', id.toLowerCase(), 0,
+      { importe: value.importe, version: value.version });
+  }
+
   @Get('due-overview')
   async overview(@Param('space') space:string,@Query() query:Record<string,unknown>,
                  @Req() req:Request,@Res({passthrough:true}) res:Response){
@@ -353,14 +376,14 @@ export class CommitmentsController{
 
 
 
-  private async forward(token:string,rawSpace:string,kind:'index-import'|'index-values'|'commitments'|'installments'|'payments'|'payment-trend'|'monthly'|'detail'|'pause'|'drafts'|'confirm'|'skip'|'overview',id:string|undefined,offset=0,body?:IndexCsv|IndexValue|Create|Pay|Confirm|{version:number}|{pausado:boolean;version:number},month?:string){
+  private async forward(token:string,rawSpace:string,kind:'index-import'|'index-values'|'commitments'|'installments'|'payments'|'payment-trend'|'monthly'|'detail'|'pause'|'drafts'|'confirm'|'skip'|'overview'|'amount',id:string|undefined,offset=0,body?:IndexCsv|IndexValue|Create|Pay|Confirm|{version:number}|{pausado:boolean;version:number}|AmountCorrection,month?:string){
     if(!UUID.test(rawSpace))throw new BadRequestException('Espacio invalido');const space=rawSpace.toLowerCase();
     try{
       const base=new URL(process.env.API_BASE_URL??'http://127.0.0.1:8000'),local=['localhost','127.0.0.1','[::1]','api'].includes(base.hostname);
       if(base.username||base.password||base.search||base.hash||base.pathname!=='/'||(base.protocol!=='https:'&&!(base.protocol==='http:'&&local)))throw new Error();
       const rawTimeout=process.env.API_TIMEOUT_MS??'5000',timeout=Number(rawTimeout);
       if(!/^\d+$/.test(rawTimeout)||!Number.isSafeInteger(timeout)||timeout<1||timeout>2147483647)throw new Error();
-      const suffix=kind==='payment-trend'?`commitments/${id}/payment-trend`:kind==='index-import'?'index-values/import':kind==='index-values'?'index-values':kind==='overview'?'due-overview':kind==='skip'?`installments/${id}/skip`:kind==='drafts'?'installment-drafts':kind==='confirm'?'installment-confirmations':(kind==='detail'||kind==='pause')?`commitments/${id}`:kind==='monthly'?'installments':kind==='commitments'?'commitments':kind==='installments'?`commitments/${id}/installments`:`installments/${id}/payments`;
+      const suffix=kind==='amount'?`installments/${id}/amount`:kind==='payment-trend'?`commitments/${id}/payment-trend`:kind==='index-import'?'index-values/import':kind==='index-values'?'index-values':kind==='overview'?'due-overview':kind==='skip'?`installments/${id}/skip`:kind==='drafts'?'installment-drafts':kind==='confirm'?'installment-confirmations':(kind==='detail'||kind==='pause')?`commitments/${id}`:kind==='monthly'?'installments':kind==='commitments'?'commitments':kind==='installments'?`commitments/${id}/installments`:`installments/${id}/payments`;
       const result=await fetch(new URL(`/spaces/${space}/${suffix}?offset=${offset}${kind==='monthly'?'&month='+month:''}`,base),{method:kind==='pause'?'PATCH':body?'POST':'GET',redirect:'error',signal:AbortSignal.timeout(timeout),
         headers:{Accept:'application/json',Authorization:`Bearer ${token}`,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
       if (kind === 'index-import' && [409, 422].includes(result.status)) {
@@ -408,6 +431,13 @@ export class CommitmentsController{
           return { indice, periodo, variacion };
         });
         return { items, next_offset: page.next_offset };
+      }
+      if (kind === 'amount') {
+        const row = data as (AmountCorrection & { id: string }) | null;
+        const input = body as AmountCorrection;
+        if (row?.id !== id || !row || !amount(row.importe) || cents(row.importe) !== cents(input.importe) ||
+            ![input.version, input.version + 1].includes(row.version)) throw new Error();
+        return { id: row.id, importe: row.importe, version: row.version };
       }
       if(kind==='skip'){
         const row=data as {id:string;estado:string;version:number};

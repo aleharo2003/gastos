@@ -26,6 +26,23 @@ describe('Deudas fijas',()=>{
     expect(f.nativeElement.textContent).toContain('Pendiente: 170,00');
     expect(request.mock.calls.at(-1)).toEqual(['GET','/api/spaces/s/commitments/debt']);
   });
+  it('envía la corrección con la versión de la cuota y actualiza el resumen', async () => {
+    const {f, c, request, debt, quota} = await setup();
+    await c.choose(debt);
+    await c.selectQuota({ ...quota, version: 3 });
+    c.startAmountCorrection({ ...quota, version: 3 });
+    f.detectChanges();
+    expect(f.nativeElement.querySelector('#corrected-quota-amount')).not.toBeNull();
+    c.correctedAmount = '0';
+    const before = request.mock.calls.length;
+    await c.saveAmountCorrection();
+    expect(request).toHaveBeenCalledTimes(before);
+    c.correctedAmount = '75,25';
+    await c.saveAmountCorrection();
+    expect(request).toHaveBeenCalledWith('POST', '/api/spaces/s/installments/quota/amount',
+      { importe: '75.25', version: 3 });
+    expect(c.correcting()).toBeNull();
+  });
   it('calcula el total como centavos exactos y conserva UUID al reintentar el alta',async()=>{
     const {c,request}=await setup();c.name='Casa';c.account='bank';c.amount='250,10';c.count=10;
     expect(c.total()).toBe('2.501,00');request.mockRejectedValue(new Error());await c.save();await c.save();
