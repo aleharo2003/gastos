@@ -1,6 +1,7 @@
 import { Component, computed, DestroyRef, EventEmitter, inject, Input, OnChanges, Output, signal, SimpleChanges } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
+import { UsdReference } from './usd-reference';
 import { AuthSession } from './auth-session';
 import { CurrencyTotal,cents,money,rateUnits,reference } from './money-reference';
 import { emptyPlan,normalizedAmount,PlanData,PlanEnvelope,LimitPeriod,projected,progress,limitUsage,usageAgainstLimit } from './planning-math';
@@ -28,6 +29,7 @@ export class Planning implements OnChanges {
   readonly notice=signal('');
   readonly hidden=signal(false);
   readonly rate=signal('');
+  private readonly usdReference = inject(UsdReference);
   readonly categorySpending = signal<CategorySpending | null>(null);
   readonly categoryError = signal(false);
   readonly categoryMonth = signal('');
@@ -108,7 +110,7 @@ export class Planning implements OnChanges {
       this.categoryMonth.set('');
       this.historicalLimits.set(null);
       this.categoryToAdd = '';
-      try{const value=JSON.parse(localStorage.getItem('gastos.reference.'+this.space)??'null');if(typeof value?.rate==='string'&&rateUnits(value.rate))this.rate.set(value.rate);}catch{}
+      this.rate.set(this.usdReference.current(this.space)?.rate ?? '');
       void this.load();
     }
     if(changes['space']||changes['revision'])void this.loadUsage();

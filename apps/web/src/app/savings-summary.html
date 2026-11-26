@@ -15,15 +15,10 @@
           <button type="submit" [disabled]="loading()">Consultar</button>
         </div>
       </form>
-      <form (ngSubmit)="saveRate()">
-        <label for="savings-rate">Cotización de referencia · ARS por 1 USD</label>
-        <div class="controls">
-          <input id="savings-rate" name="rate" [(ngModel)]="draftRate" inputmode="decimal" placeholder="1700">
-          <button type="submit">Guardar</button>
-        </div>
-        @if (rateDate()) { <small>Actualizada el {{ rateDate().split('-').reverse().join('/') }}</small> }
-        @if (rateError()) { <p role="status">{{ rateError() }}</p> }
-      </form>
+      <div>
+        @if (rate()) { <p>1 USD = ARS {{ rate() }} · {{ rateDate().split('-').reverse().join('/') }}</p> }
+        <app-usd-reference-editor [space]="space" id="savings-reference" />
+      </div>
     </div>
     @if (rate()) {
       <label class="equivalence">

@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { installmentLocalDate, prepareInstallmentPayment, submitInstallmentPayment, type InstallmentPayment } from './installment-payment';
 import { watchInstallmentDay } from './installment-date';
 import { accountCurrency, compatibleAccounts, type AccountOption } from './account-currency';
+import { UsdReference } from './usd-reference';
 import { AuthSession } from './auth-session';
 import { showAmount } from './expenses';
 import { money, rateUnits, reference, type CurrencyTotal } from './money-reference';
@@ -45,6 +46,7 @@ export class DueOverview implements OnChanges {
   readonly error = signal(false);
   readonly hidden = signal(false);
   readonly rate = signal('');
+  private readonly usdReference = inject(UsdReference);
   readonly netCurrency = signal<'ARS' | 'USD'>('ARS');
   readonly netWorth = computed(() => {
     const overview = this.overview();
@@ -131,10 +133,7 @@ export class DueOverview implements OnChanges {
     }
     if (this.active && (changes['space'] || changes['active'])) {
       this.rate.set('');
-      try {
-        const saved = JSON.parse(localStorage.getItem('gastos.reference.' + this.space) ?? 'null');
-        if (typeof saved?.rate === 'string' && rateUnits(saved.rate)) this.rate.set(saved.rate);
-      } catch {}
+      this.rate.set(this.usdReference.current(this.space)?.rate ?? '');
       void this.load();
     }
   }

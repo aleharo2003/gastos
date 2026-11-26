@@ -19,13 +19,14 @@ TABLES = (
     'perfiles', 'espacios', 'miembros_espacio', 'cuentas', 'categorias_movimientos',
     'variaciones_indice', 'compromisos', 'cuotas', 'ingresos', 'gastos', 'transferencias',
     'pagos_cuota', 'metas_ahorro', 'planes_gasto', 'comprobantes', 'preferencias_avisos', 'gastos_pendientes',
+    'cotizaciones_manuales',
 )
 
 
 def tables_for(revisions):
-    if any(revision >= '0040' for revision in revisions):
-        return TABLES
-    return tuple(table for table in TABLES if table != 'gastos_pendientes')
+    head = max(revisions, default='')
+    introduced = {'gastos_pendientes': '0040', 'cotizaciones_manuales': '0044'}
+    return tuple(table for table in TABLES if table not in introduced or head >= introduced[table])
 
 
 def snapshot(connection, space: UUID) -> bytes:

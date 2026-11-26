@@ -1,10 +1,12 @@
 import { Component, DestroyRef, inject, Input, OnChanges, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { UsdReference } from './usd-reference';
+import { UsdReferenceEditor } from './usd-reference-editor';
 import { AuthSession } from './auth-session';
 import { CurrencyTotal, cents, money, rateUnits, reference } from './money-reference';
 type Summary={fecha:string;mes:string;totales:CurrencyTotal[]};
 function argentinaDay() { return new Intl.DateTimeFormat('en-CA',{timeZone:'America/Argentina/Buenos_Aires',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()); }
-@Component({selector:'app-expense-totals',imports:[FormsModule],templateUrl:'./expense-totals.html',styleUrl:'./expense-totals.css'})
+@Component({selector:'app-expense-totals',imports:[FormsModule, UsdReferenceEditor],templateUrl:'./expense-totals.html',styleUrl:'./expense-totals.css'})
 export class ExpenseTotals implements OnChanges {
   @Input({required:true}) space='';
   @Input() account='';
@@ -13,7 +15,8 @@ export class ExpenseTotals implements OnChanges {
   readonly error=signal('');
   readonly hidden=signal(false);
   currency:'ARS'|'USD'='USD';
-  rate=''; rateDate=''; draftRate=''; rateError='';
+  rate=''; rateDate='';
+  private readonly usdReference = inject(UsdReference);
   private readonly auth=inject(AuthSession);
   private generation=0;
   private storedSpace='';
@@ -25,9 +28,8 @@ export class ExpenseTotals implements OnChanges {
     inject(DestroyRef).onDestroy(()=>window.removeEventListener('gastos-privacy',privacy));
     const referenceChanged = (event: Event) => {
       const detail = (event as CustomEvent).detail;
-      if (detail?.space !== this.space || typeof detail.rate !== 'string' || !rateUnits(detail.rate)) return;
+      if (detail?.space !== this.space || typeof detail.rate !== 'string') return;
       this.rate = detail.rate;
-      this.draftRate = detail.rate;
       this.rateDate = typeof detail.date === 'string' ? detail.date : argentinaDay();
     };
     window.addEventListener('gastos-reference', referenceChanged);
@@ -39,13 +41,10 @@ export class ExpenseTotals implements OnChanges {
   }
   ngOnChanges() {
     if(this.storedSpace!==this.space) {
-      this.storedSpace=this.space;this.rate='';this.rateDate='';this.draftRate='';
-      try {
-        const saved=JSON.parse(localStorage.getItem('gastos.reference.'+this.space) ?? 'null');
-        if(saved && typeof saved.rate==='string' && rateUnits(saved.rate) && /^\d{4}-\d{2}-\d{2}$/.test(saved.date)) {
-          this.rate=saved.rate;this.draftRate=saved.rate;this.rateDate=saved.date;
-        }
-      } catch {}
+      this.storedSpace = this.space;
+      const reference = this.usdReference.current(this.space);
+      this.rate = reference?.rate ?? '';
+      this.rateDate = reference?.date ?? '';
     }
     void this.load();
   }
@@ -70,11 +69,5 @@ export class ExpenseTotals implements OnChanges {
     try { localStorage.setItem('gastos.totals.hidden',String(this.hidden())); } catch {}
     window.dispatchEvent(new CustomEvent('gastos-privacy',{detail:this.hidden()}));
   }
-  saveRate() {
-    if(!rateUnits(this.draftRate)) { this.rateError='Ingresá pesos por 1 USD, mayor que cero y hasta 4 decimales.';return; }
-    this.rate=this.draftRate.trim().replace(',','.');this.rateDate=argentinaDay();this.rateError='';
-    try { localStorage.setItem('gastos.reference.'+this.space,JSON.stringify({rate:this.rate,date:this.rateDate})); }
-    catch { this.rateError='La referencia se aplicó, pero este navegador no permite guardarla.'; }
-    window.dispatchEvent(new CustomEvent('gastos-reference',{detail:{space:this.space,rate:this.rate,date:this.rateDate}}));
-  }
+
 }

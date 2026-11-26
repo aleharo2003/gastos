@@ -14,14 +14,9 @@
 @if(!hidden()) {
   <details class="reference">
     <summary>Cotización y desglose</summary>
-    <p>Referencia actual: {{ rate ? '1 USD = ARS ' + rate + ' · Actualizada ' + rateDate : 'Sin cotización' }}.</p>
-    <form (ngSubmit)="saveRate()">
-      <label for="reference-rate">Pesos por 1 USD</label>
-      <input id="reference-rate" name="referenceRate" [(ngModel)]="draftRate" inputmode="decimal" required maxlength="13" placeholder="Por ejemplo, 1585">
-      <button type="submit">Aplicar referencia</button>
-    </form>
-    @if(rateError) { <p role="alert">{{ rateError }}</p> }
-    <p>Se guarda en este navegador para este espacio. No modifica los gastos ni su moneda original. No es una cotización histórica.</p>
+    <p>Referencia actual: {{ rate ? '1 USD = ARS ' + rate + ' · Vigente desde ' + rateDate : 'Sin cotización' }}.</p>
+    <app-usd-reference-editor [space]="space" id="expense-reference" />
+    <p>Las cotizaciones nuevas se comparten en el espacio. Las conversiones son estimadas.</p>
     @if(data(); as summary) {
       <p>Día: {{ summary.fecha }} · Mes: {{ summary.mes }}.</p>
       <ul>@for(row of summary.totales;track row.moneda) { <li>{{ row.moneda }} · Hoy {{ native(row.dia) }} · Mes {{ native(row.mes) }}</li> }</ul>

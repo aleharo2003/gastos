@@ -18,6 +18,7 @@ import { ChangeDetectorRef, Component, computed, DestroyRef, effect, inject, Inp
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { DOCUMENT } from '@angular/common';
+import { UsdReference } from './usd-reference';
 import { AuthSession } from './auth-session';
 
 const accountTypes = {
@@ -35,6 +36,7 @@ type AccountBalance = { totales: { moneda: string; saldo: string }[] };
 
 @Component({
   selector: 'app-accounts', imports: [FormsModule, CategorySettings, SpaceExport, ExpenseImport, TodayCategoryReport, Movements, Expenses, Planning, Incomes, Transfers, SavingsGoals, SavingsSummary, Commitments, DueOverview, ReminderPreferences],
+  providers: [UsdReference],
   templateUrl: './accounts.html', styleUrl: './accounts.css',
 })
 export class Accounts implements OnInit {
@@ -188,6 +190,7 @@ export class Accounts implements OnInit {
   readonly renaming = signal(false);
   editedName = '';
   private readonly auth = inject(AuthSession);
+  private readonly usdReference = inject(UsdReference);
   private alive = true;
   private pending?: NewAccount;
   private balanceRequest = 0;
@@ -286,10 +289,8 @@ export class Accounts implements OnInit {
       if (this.installmentReminder()) this.tab.set('debts');
     }
     this.categoryCatalog.ensure(this.space);
-    try {
-      const saved = JSON.parse(localStorage.getItem('gastos.reference.' + this.space) ?? 'null');
-      if (typeof saved?.rate === 'string') this.referenceRate.set(saved.rate);
-    } catch {}
+    this.referenceRate.set(this.usdReference.current(this.space)?.rate ?? '');
+    void this.usdReference.refresh(this.space).catch(() => {});
     void this.load();
   }
   private get path() { return `/api/spaces/${encodeURIComponent(this.space)}/accounts`; }
