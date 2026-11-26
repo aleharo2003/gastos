@@ -6,7 +6,7 @@ import re
 from typing import Literal
 from uuid import UUID
 from fastapi import APIRouter, HTTPException, Request, Response, Query
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import text
 from app.accounts import execute, require_member, NO_STORE
 from app.expense_search import ExpenseSearch
@@ -23,10 +23,9 @@ DETAIL_DATES = ('fecha_devengamiento', 'fecha_vencimiento')
 OPTIONAL_EXPENSE_FIELDS = ('categoria', 'nota', *DETAIL_DATES)
 
 
-class ExpenseInput(BaseModel):
+class ExpenseDetailsInput(BaseModel):
     model_config = ConfigDict(extra='forbid')
     id: UUID
-    fecha: date
     descripcion: str
     moneda: Literal['ARS','USD','EUR']
     importe: Decimal
@@ -51,17 +50,10 @@ class ExpenseInput(BaseModel):
         if value.int == 0: raise ValueError('Identificador invalido')
         return value
 
-    @field_validator('fecha', mode='before')
-    @classmethod
-    def iso_date(cls, value):
-        if not isinstance(value, str) or not re.fullmatch(r'[0-9]{4}-[0-9]{2}-[0-9]{2}', value):
-            raise ValueError('Usar fecha ISO')
-        return value
-
     @field_validator(*DETAIL_DATES, mode='before')
     @classmethod
     def optional_iso_date(cls, value):
-        return None if value is None else cls.iso_date(value)
+        return None if value is None else iso_expense_date(value)
 
     @field_validator('descripcion')
     @classmethod
@@ -78,6 +70,35 @@ class ExpenseInput(BaseModel):
         if not isinstance(value, str) or not AMOUNT.fullmatch(value) or Decimal(value) <= 0:
             raise ValueError('Importe positivo, hasta 12 enteros y dos decimales, como texto')
         return Decimal(value)
+
+
+def iso_expense_date(value):
+    if not isinstance(value, str) or not re.fullmatch(r'[0-9]{4}-[0-9]{2}-[0-9]{2}', value):
+        raise ValueError('Usar fecha ISO')
+    return value
+
+
+class ExpenseInput(ExpenseDetailsInput):
+    fecha: date
+
+    @field_validator('fecha', mode='before')
+    @classmethod
+    def iso_date(cls, value):
+        return iso_expense_date(value)
+
+
+class PendingExpenseInput(ExpenseDetailsInput):
+    fecha_vencimiento: date = Field(...)
+
+
+class PendingExpensePayment(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    fecha: date
+
+    @field_validator('fecha', mode='before')
+    @classmethod
+    def iso_date(cls, value):
+        return iso_expense_date(value)
 
 
 def require_account(session, user, space, account, write=False):
@@ -250,27 +271,102 @@ def list_expenses(session, user, space, account, offset=0, filters=None):
     return {'items':items,'next_offset':None}
 
 
-def create_expense(session, user, space, account, body):
+def create_expense(session, user, space, account, body, *, from_pending=False):
     require_account(session, user, space, account, write=True)
     params = {'id':body.id,'s':space,'a':account,'u':user,'f':body.fecha,
               'd':body.descripcion,'m':body.moneda,'i':body.importe,
               **{key: getattr(body, key) for key in OPTIONAL_EXPENSE_FIELDS}}
-    if body.categoria is not None:
+    if body.categoria is not None and not from_pending:
         lock_catalog(session, space)
         existing = session.execute(text('SELECT id FROM public.gastos WHERE id=:id AND espacio_id=:s AND cuenta_id=:a'),
                                    params).scalar_one_or_none()
         if existing is None:
             require_active_category(session, space, 'gasto', body.categoria)
-    session.execute(text('''INSERT INTO public.gastos(id,espacio_id,cuenta_id,usuario_id,fecha,descripcion,moneda,importe,
+    inserted = session.execute(text('''INSERT INTO public.gastos(id,espacio_id,cuenta_id,usuario_id,fecha,descripcion,moneda,importe,
                               categoria,nota,fecha_devengamiento,fecha_vencimiento)
                             VALUES (:id,:s,:a,:u,:f,:d,:m,:i,:categoria,:nota,:fecha_devengamiento,:fecha_vencimiento)
                             ON CONFLICT (id) DO NOTHING'''),params)
+    if from_pending and inserted.rowcount != 1:
+        raise HTTPException(409, 'Identificador usado para otro gasto', headers=NO_STORE)
     row = session.execute(text('SELECT * FROM public.gastos WHERE id=:id AND espacio_id=:s AND cuenta_id=:a'),
                           params).mappings().one_or_none()
     if (row is None or str(row['usuario_id']) != str(user) or
             any(row[key] != getattr(body, key) for key in ('fecha','descripcion','moneda','importe',*OPTIONAL_EXPENSE_FIELDS))):
         raise HTTPException(409, 'Identificador usado para otro gasto', headers=NO_STORE)
     return public_expense(row)
+
+
+def create_pending_expense(session, user, space, account, body):
+    require_account(session, user, space, account, write=True)
+    fields = ('descripcion', 'moneda', 'importe', *OPTIONAL_EXPENSE_FIELDS)
+    params = {'id': body.id, 'space': space, 'account': account, 'user': user,
+              **{field: getattr(body, field) for field in fields}}
+    if body.categoria is not None:
+        lock_catalog(session, space)
+    active = session.execute(text('SELECT activa FROM public.cuentas WHERE espacio_id=:space AND id=:account'),
+                             params).scalar_one()
+    existing = session.execute(text('SELECT id FROM public.gastos_pendientes WHERE id=:id AND espacio_id=:space'),
+                               params).scalar_one_or_none()
+    if existing is None:
+        if not active:
+            raise HTTPException(409, 'La cuenta está archivada', headers=NO_STORE)
+        require_active_category(session, space, 'gasto', body.categoria)
+    session.execute(text("""
+        INSERT INTO public.gastos_pendientes (id, espacio_id, cuenta_id, usuario_id, descripcion, moneda, importe,
+            categoria, nota, fecha_devengamiento, fecha_vencimiento)
+        VALUES (:id,:space,:account,:user,:descripcion,:moneda,:importe,:categoria,:nota,:fecha_devengamiento,:fecha_vencimiento)
+        ON CONFLICT (id) DO NOTHING
+    """), params)
+    row = session.execute(text("""
+        SELECT * FROM public.gastos_pendientes WHERE id=:id AND espacio_id=:space AND cuenta_id=:account
+    """), params).mappings().one_or_none()
+    if row is None or str(row['usuario_id']) != str(user) or any(row[key] != params[key] for key in fields):
+        raise HTTPException(409, 'Identificador usado para otro gasto pendiente', headers=NO_STORE)
+    return {'id': str(body.id), 'pendiente': row['gasto_id'] is None}
+
+
+def pay_pending_expense(session, user, space, account, expense_id, payment):
+    require_account(session, user, space, account, write=True)
+    params = {'id': expense_id, 'space': space, 'account': account}
+    session.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))"),
+                    {'key': f'gasto-pendiente:{space}:{expense_id}'})
+    row = session.execute(text("""
+        SELECT * FROM public.gastos_pendientes WHERE id=:id AND espacio_id=:space AND cuenta_id=:account
+    """), params).mappings().one_or_none()
+    if row is None:
+        raise HTTPException(404, 'Gasto pendiente no disponible', headers=NO_STORE)
+    if row['gasto_id'] is not None:
+        existing = session.execute(text("""
+            SELECT * FROM public.gastos WHERE id=:id AND espacio_id=:space AND cuenta_id=:account
+        """), params).mappings().one()
+        if existing['fecha'] != payment.fecha or existing['anulado_en'] is not None:
+            raise HTTPException(409, 'El gasto ya fue procesado', headers=NO_STORE)
+        return public_expense(existing)
+    body = ExpenseInput(
+        id=expense_id, fecha=payment.fecha.isoformat(), descripcion=row['descripcion'],
+        moneda=row['moneda'], importe=format(row['importe'], '.2f'), categoria=row['categoria'], nota=row['nota'],
+        fecha_devengamiento=row['fecha_devengamiento'].isoformat() if row['fecha_devengamiento'] else None,
+        fecha_vencimiento=row['fecha_vencimiento'].isoformat(),
+    )
+    result = create_expense(session, user, space, account, body, from_pending=True)
+    linked = session.execute(text("""
+        UPDATE public.gastos_pendientes SET gasto_id=:id WHERE id=:id AND espacio_id=:space AND cuenta_id=:account
+    """), params)
+    if linked.rowcount != 1:
+        raise HTTPException(409, 'El gasto pendiente cambió', headers=NO_STORE)
+    return result
+
+
+@router.post('/spaces/{space}/accounts/{account}/expenses/pending')
+def post_pending_expense(space: UUID, account: UUID, body: PendingExpenseInput, request: Request, response: Response):
+    return execute(request, response, space, lambda session, user: create_pending_expense(session, user, space, account, body))
+
+
+@router.post('/spaces/{space}/accounts/{account}/expenses/{expense_id}/pay-pending')
+def post_pending_payment(space: UUID, account: UUID, expense_id: UUID, body: PendingExpensePayment,
+                         request: Request, response: Response):
+    return execute(request, response, space,
+                   lambda session, user: pay_pending_expense(session, user, space, account, expense_id, body))
 
 
 @router.get('/spaces/{space}/accounts/{account}/expenses')

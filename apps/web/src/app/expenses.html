@@ -65,10 +65,10 @@
       @if(suggestionNote()){<small role="status">{{ suggestionNote() }}</small>}
     }
     <div class="expense-date-currency">
-      <div>
+      @if (!unpaid) { <div>
         <label for="expense-date">Fecha de pago</label>
         <input id="expense-date" name="date" type="date" [(ngModel)]="date" required [disabled]="saving()">
-      </div>
+      </div> }
       <div>
         <label for="expense-currency">Moneda</label>
         <select id="expense-currency" name="currency" [(ngModel)]="currency" [disabled]="saving()">
@@ -76,8 +76,11 @@
         </select>
       </div>
     </div>
-    <details class="expense-optional" [open]="!!editing">
-      <summary>Fechas y nota opcionales</summary>
+    @if (!editing) {
+      <label><input type="checkbox" name="unpaid" [(ngModel)]="unpaid" [disabled]="saving()"> Todavía no lo pagué</label>
+    }
+    <details class="expense-optional" [open]="!!editing || unpaid">
+      <summary>{{ unpaid ? 'Vencimiento, fecha del gasto y nota' : 'Fechas y nota opcionales' }}</summary>
       <div class="expense-date-currency">
         <div>
           <label for="expense-incurred-date">Fecha del gasto</label>
@@ -85,13 +88,13 @@
         </div>
         <div>
           <label for="expense-due-date">Vencimiento</label>
-          <input id="expense-due-date" name="dueDate" type="date" [(ngModel)]="dueDate" [disabled]="saving()">
+          <input id="expense-due-date" name="dueDate" type="date" [(ngModel)]="dueDate" [required]="unpaid" [disabled]="saving()">
         </div>
       </div>
       <label for="expense-note">Nota</label>
       <input id="expense-note" name="note" [(ngModel)]="note" maxlength="500" [disabled]="saving()">
     </details>
-    <button class="save-expense" type="submit" [disabled]="expenseForm.invalid || saving() || loading()">{{ saving() ? 'Guardando…' : editing ? 'Guardar cambios' : 'Guardar gasto' }}</button>
+    <button class="save-expense" type="submit" [disabled]="expenseForm.invalid || saving() || loading()">{{ saving() ? 'Guardando…' : editing ? 'Guardar cambios' : unpaid ? 'Guardar gasto pendiente' : 'Guardar gasto' }}</button>
     @if (editing) { <button type="button" class="secondary" (click)="cancelEdit()" [disabled]="saving()">Cancelar edición</button> }
   </form>
   </details>

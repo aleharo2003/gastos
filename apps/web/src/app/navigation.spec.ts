@@ -30,7 +30,7 @@ describe('Navegación del espacio', () => {
     const {fixture,component}=await setup();
     expect(component.tab()).toBe('today');
     const panel=fixture.nativeElement.querySelector('app-due-overview');
-    expect(panel.textContent).toContain('No tenés cuotas vencidas ni pendientes');
+    expect(panel.textContent).toContain('No tenés vencimientos pendientes');
     expect(panel.textContent).toContain('Resumen de cuotas del mes');
     panel.querySelector('section > button').click();
     expect(component.tab()).toBe('debts');

@@ -18,8 +18,14 @@ MAX_BYTES = 64 * 1024 * 1024
 TABLES = (
     'perfiles', 'espacios', 'miembros_espacio', 'cuentas', 'categorias_movimientos',
     'variaciones_indice', 'compromisos', 'cuotas', 'ingresos', 'gastos', 'transferencias',
-    'pagos_cuota', 'metas_ahorro', 'planes_gasto', 'comprobantes', 'preferencias_avisos',
+    'pagos_cuota', 'metas_ahorro', 'planes_gasto', 'comprobantes', 'preferencias_avisos', 'gastos_pendientes',
 )
+
+
+def tables_for(revisions):
+    if any(revision >= '0040' for revision in revisions):
+        return TABLES
+    return tuple(table for table in TABLES if table != 'gastos_pendientes')
 
 
 def snapshot(connection, space: UUID) -> bytes:
@@ -52,7 +58,7 @@ def snapshot(connection, space: UUID) -> bytes:
             content.write(data)
 
         write(json.dumps(header)[:-1] + ',"tables":{')
-        for index, table in enumerate(TABLES):
+        for index, table in enumerate(tables_for(revisions)):
             write((',' if index else '') + json.dumps(table) + ':[')
             # Cursor del servidor: el límite no depende de materializar la tabla completa.
             with connection.cursor(name='piggo_backup_rows') as rows:
@@ -79,13 +85,14 @@ def decrypt_archive(token: bytes, key: str) -> bytes:
 def restore(connection, data: bytes) -> None:
     """Restaurar solo en una base vacía con las mismas revisiones de esquema."""
     archive = json.loads(data, parse_float=Decimal)
-    if archive['format'] != FORMAT or set(archive['tables']) != set(TABLES):
+    expected_tables = tables_for(archive['revisions'])
+    if archive['format'] != FORMAT or set(archive['tables']) != set(expected_tables):
         raise ValueError('Formato de respaldo incompatible')
     space = str(UUID(archive['space']))
     tables = archive['tables']
     if len(tables['espacios']) != 1 or tables['espacios'][0]['id'] != space:
         raise ValueError('El archivo debe contener un solo espacio')
-    if any(row['espacio_id'] != space for table in TABLES if table not in ('espacios', 'perfiles')
+    if any(row['espacio_id'] != space for table in expected_tables if table not in ('espacios', 'perfiles')
            for row in tables[table]):
         raise ValueError('El archivo mezcla datos de espacios distintos')
 
@@ -99,7 +106,7 @@ def restore(connection, data: bytes) -> None:
             raise ValueError('Usá una base vacía y desechable para restaurar')
         # PostgreSQL interpreta el JSON original y conserva numéricos y ACL de las filas.
         raw = data.decode('utf-8')
-        for table in TABLES:
+        for table in expected_tables:
             cursor.execute("""
                 SELECT attname FROM pg_attribute
                 WHERE attrelid=to_regclass(%s) AND attnum>0 AND NOT attisdropped AND attgenerated=''

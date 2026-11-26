@@ -14,6 +14,8 @@ const expenseFields = ['id', 'fecha', 'descripcion', 'moneda', 'importe', 'categ
 const isoDate = (value: unknown): value is string => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
 type Expense = ExpenseInput & { espacio_id: string; cuenta_id: string; coincidencia_aproximada?: boolean; cuenta_nombre?: string; pago_cuota?: boolean };
 type ExpenseEdit = { original: ExpenseInput; nuevo: ExpenseInput };
+type PendingExpense = Omit<ExpenseInput, 'fecha'>;
+type PendingPayment = Pick<ExpenseInput, 'fecha'>;
 function valid(value: unknown): value is ExpenseInput {
   const row = value as ExpenseInput;
   return !!row && (row.nota == null || (typeof row.nota === 'string' && [...row.nota.trim()].length <= 500 && !/[\x00-\x1f\x7f]/.test(row.nota.trim()))) && (row.categoria == null || isExpenseCategory(row.categoria)) && typeof row.id === 'string' && UUID.test(row.id) && !/^0{8}-0{4}-0{4}-0{4}-0{12}$/.test(row.id) &&
@@ -128,6 +130,33 @@ export class ExpensesController {
     return this.forward(token, space, account, { ...body, id: body.id.toLowerCase(), descripcion: body.descripcion.trim() });
   }
 
+  @Post('accounts/:account/expenses/pending')
+  @HttpCode(200)
+  async createPending(@Param('space') space: string, @Param('account') account: string, @Body() body: PendingExpense,
+    @Req() request: Request, @Res({ passthrough: true }) response: Response) {
+    response.setHeader('Cache-Control', 'no-store');
+    const token = await this.token(request, response);
+    if (!body || !valid({ ...body, fecha: body.fecha_vencimiento }) ||
+        Object.keys(body).some(key => key === 'fecha' || !expenseFields.includes(key))) {
+      throw new BadRequestException('Gasto pendiente invalido');
+    }
+    return this.forward(token, space, account, { ...body, id: body.id.toLowerCase(), descripcion: body.descripcion.trim() },
+      0, undefined, new URLSearchParams(), false, undefined, false, undefined, 'pending');
+  }
+
+  @Post('accounts/:account/expenses/:id/pay-pending')
+  @HttpCode(200)
+  async payPending(@Param('space') space: string, @Param('account') account: string, @Param('id') id: string,
+    @Body() body: PendingPayment, @Req() request: Request, @Res({ passthrough: true }) response: Response) {
+    response.setHeader('Cache-Control', 'no-store');
+    const token = await this.token(request, response);
+    if (!UUID.test(id) || !body || !isoDate(body.fecha) || Object.keys(body).length !== 1) {
+      throw new BadRequestException('Pago invalido');
+    }
+    return this.forward(token, space, account, body, 0, undefined, new URLSearchParams(),
+      false, undefined, false, undefined, id.toLowerCase());
+  }
+
   private async token(request: Request, response: Response) {
     const count = request.rawHeaders.filter((v, i) => i % 2 === 0 && v.toLowerCase() === 'authorization').length;
     const parts = request.headers.authorization?.trim().split(/\s+/) ?? [];
@@ -163,7 +192,7 @@ export class ExpensesController {
     return this.forward(token, space, account, undefined, 0, undefined, new URLSearchParams(), false, undefined, false, target);
   }
 
-  private async forward(token: string, rawSpace: string, rawAccount: string | undefined, body?: ExpenseInput | ExpenseEdit, offset = 0, editId?: string, filters = new URLSearchParams(), suggestion = false, similarId?:string, summary: 'expense-summary' | 'expense-category-summary' | 'expense-trend' | false = false, voidTarget?: { id: string }) {
+  private async forward(token: string, rawSpace: string, rawAccount: string | undefined, body?: ExpenseInput | ExpenseEdit | PendingExpense | PendingPayment, offset = 0, editId?: string, filters = new URLSearchParams(), suggestion = false, similarId?:string, summary: 'expense-summary' | 'expense-category-summary' | 'expense-trend' | false = false, voidTarget?: { id: string }, pending?: string) {
     if (!UUID.test(rawSpace) || (rawAccount !== undefined && !UUID.test(rawAccount)) || (rawAccount === undefined && !!(body || editId || suggestion || similarId || voidTarget))) throw new BadRequestException('Espacio invalido');
     const space = rawSpace.toLowerCase();
     const account = rawAccount?.toLowerCase();
@@ -177,7 +206,8 @@ export class ExpensesController {
       if (!/^\d+$/.test(rawTimeout) || !Number.isSafeInteger(timeout) || timeout < 1 || timeout > 2147483647) throw new Error();
       const summaryParams = new URLSearchParams(filters);
       if (account) summaryParams.set('account', account);
-      const result = await fetch(new URL(summary ? `/spaces/${space}/${summary}${summaryParams.size ? '?' + summaryParams : ''}` : `/spaces/${space}${account ? '/accounts/'+account : ''}/expenses${voidTarget ? '/' + voidTarget.id + '/void' : similarId ? '/' + similarId + '/similar' : suggestion ? '/category-suggestion?' + filters.toString() : editId ? '/' + editId : '?offset=' + offset + (filters.size ? '&' + filters.toString() : '')}`, base), {
+      const pendingPath = pending === 'pending' ? '/pending' : pending ? `/${pending}/pay-pending` : '';
+      const result = await fetch(new URL(summary ? `/spaces/${space}/${summary}${summaryParams.size ? '?' + summaryParams : ''}` : `/spaces/${space}${account ? '/accounts/'+account : ''}/expenses${pendingPath || (voidTarget ? '/' + voidTarget.id + '/void' : similarId ? '/' + similarId + '/similar' : suggestion ? '/category-suggestion?' + filters.toString() : editId ? '/' + editId : '?offset=' + offset + (filters.size ? '&' + filters.toString() : ''))}`, base), {
         method: editId ? 'PATCH' : body || voidTarget ? 'POST' : 'GET', redirect: 'error', signal: AbortSignal.timeout(timeout),
         headers: { Accept: 'application/json', Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
         ...(body ? { body: JSON.stringify(body) } : {}),
@@ -185,6 +215,16 @@ export class ExpensesController {
       if ([400, 401, 403, 404, 409, 422, 503].includes(result.status)) throw new HttpException('No se pudo completar la operacion', result.status);
       if (!result.ok) throw new Error();
       const data = await boundedJson(result, 131072);
+      if (pending === 'pending') {
+        const result = data as { id: string; pendiente: boolean } | null;
+        if (result?.id !== (body as PendingExpense).id || typeof result.pendiente !== 'boolean') throw new Error();
+        return { id: result.id, pendiente: result.pendiente };
+      }
+      if (pending) {
+        const result = expense(data, space, account);
+        if (result.id !== pending || result.fecha !== (body as PendingPayment).fecha) throw new Error();
+        return result;
+      }
       if (summary === 'expense-trend') {
         const report = data as { meses: string[]; items: { mes: string; moneda: string; categoria: string | null; total: string }[] };
         if (!report || !Array.isArray(report.meses) || report.meses.length !== 12 ||

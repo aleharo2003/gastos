@@ -12,6 +12,8 @@ from sqlalchemy.exc import DBAPIError
 from app.accounts import AccountInput, create_account
 from app.expenses import expense_category_summary, expense_summary, expense_trend, list_similar_expenses, category_suggestion, ExpenseFilters, ExpenseInput, ExpenseEdit, edit_expense, create_expense, list_expenses
 from app.expenses import void_expense
+from app.expenses import PendingExpenseInput, PendingExpensePayment, create_pending_expense, pay_pending_expense
+from app.commitments import today_overview
 from app.expense_import import ImportRequest, cancel_batch, import_rows, recent_batches
 from app.incomes import account_balance
 from app.movements import list_movements
@@ -386,13 +388,50 @@ def check_expenses_api(runtime_url, migration_url):
             assert session.execute(text('SELECT anulado_en FROM public.gastos WHERE id=:id'),
                                    {'id': manual.id}).scalar_one() is None
 
+        pending = PendingExpenseInput(id=uuid4(), descripcion='Luz pendiente', moneda='ARS', importe='42.10',
+                                      fecha_vencimiento='2026-11-17', fecha_devengamiento='2026-11-01', nota='Factura')
+        upcoming = pending.model_copy(update={'id': uuid4(), 'fecha_vencimiento': date(2026, 12, 15)})
+
+        def register_pending(value, who=owner):
+            with runtime_transaction(runtime, usuario_id=who, espacio_id=owner) as session:
+                return create_pending_expense(session, who, owner, account, value)
+
+        def pay_pending(who=owner, day='2026-11-18'):
+            with runtime_transaction(runtime, usuario_id=who, espacio_id=owner) as session:
+                return pay_pending_expense(session, who, owner, account, pending.id, PendingExpensePayment(fecha=day))
+
+        def today_report():
+            with runtime_transaction(runtime, usuario_id=reader, espacio_id=owner) as session:
+                return today_overview(session, reader, owner, today=date(2026, 11, 17))
+
+        before_pending = balance()
+        denied(lambda: register_pending(pending, reader), 403)
+        denied(lambda: register_pending(pending, other), 403)
+        assert register_pending(pending) == register_pending(pending) == {'id': str(pending.id), 'pendiente': True}
+        register_pending(upcoming)
+        assert balance() == before_pending
+        assert not filtered(texto='Luz pendiente')['items']
+        groups = today_report()['grupos']
+        assert groups['hoy']['items'][0]['id'] == str(pending.id)
+        assert groups['hoy']['items'][0]['cuenta_id'] == str(account)
+        assert groups['proximos']['items'][0]['id'] == str(upcoming.id)
+        denied(lambda: pay_pending(reader), 403)
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            first, retry = pool.map(lambda _: pay_pending(editor), range(2))
+        assert first == retry and first['fecha'] == '2026-11-18' and first['fecha_vencimiento'] == '2026-11-17'
+        assert first['fecha_devengamiento'] == '2026-11-01' and first['nota'] == 'Factura'
+        assert Decimal(before_pending) - Decimal(balance()) == Decimal('42.10')
+        assert not today_report()['grupos']['hoy']['items']
+        assert len(filtered(texto='Luz pendiente')['items']) == 1
+        denied(lambda: pay_pending(day='2026-11-19'), 409)
+
         with migrator.begin() as c: c.execute(text('DELETE FROM public.miembros_espacio WHERE usuario_id=:u AND espacio_id=:s'),{'u':editor,'s':owner})
         denied(lambda:create(editor,owner,account,body()),403)
         denied(lambda:similar(who=editor),403)
         print('OK: gastos multimoneda, precision, reintentos, roles, FK por espacio y paginacion.',flush=True)
     finally:
         with migrator.begin() as c:
-            for table in ['gastos','cuentas']:
+            for table in ['gastos_pendientes','gastos','cuentas']:
                 for user in users: c.execute(text(f'DELETE FROM public.{table} WHERE espacio_id=:u'),{'u':user})
             for user in users: c.execute(text('DELETE FROM public.miembros_espacio WHERE usuario_id=:u OR espacio_id=:u'),{'u':user})
             for user in users:

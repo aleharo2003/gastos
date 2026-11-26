@@ -11,9 +11,12 @@ DECLARE
     related text[] := ARRAY[
         'miembros_espacio', 'cuentas', 'ingresos', 'gastos', 'transferencias',
         'compromisos', 'cuotas', 'pagos_cuota', 'variaciones_indice', 'metas_ahorro',
-        'planes_gasto', 'comprobantes', 'categorias_movimientos', 'preferencias_avisos'
+        'planes_gasto', 'comprobantes', 'categorias_movimientos', 'preferencias_avisos', 'gastos_pendientes'
     ];
 BEGIN
+    IF to_regclass('public.gastos_pendientes') IS NULL THEN
+        related := array_remove(related, 'gastos_pendientes');
+    END IF;
     IF current_user <> 'app_migrator' OR session_user <> 'app_migrator' OR
        NOT EXISTS (SELECT FROM pg_roles r WHERE r.rolname='app_backup' AND r.rolcanlogin
            AND NOT (r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolinherit)
