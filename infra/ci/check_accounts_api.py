@@ -7,6 +7,9 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from app.accounts import AccountInput, AccountRename, create_account, list_accounts, rename_account, set_account_state
 from app.expenses import ExpenseInput, create_expense, void_expense
+from app.expense_import import ImportRequest, import_rows
+from app.transfers import TransferInput, create_transfer
+from app.savings_goals import GoalInput, create_goal, list_goals
 from app.incomes import account_balance, savings_summary
 from app.db.connection import create_runtime_engine, create_migration_engine
 from app.db.unit_of_work import runtime_transaction
@@ -102,10 +105,36 @@ def check_accounts_api(runtime_url, migration_url):
             assert not any(item['moneda'] == 'USD' for item in report['ingresos'])
             void_expense(s, owner, owner, opening.id, paid.id)
             assert by_currency(account_balance(s, owner, owner, opening.id)['totales'])['USD']['saldo'] == '250.25'
+        wrong = paid.model_copy(update={'id': uuid4(), 'moneda': 'ARS'})
+        transfer = TransferInput(id=uuid4(), origen_id=account.id, destino_id=opening.id,
+                                 fecha=paid.fecha.isoformat(), descripcion='Transferencia en pesos',
+                                 moneda='ARS', importe='1.00')
+        for attempt in (
+            lambda s: create_expense(s, owner, owner, opening.id, wrong),
+            lambda s: create_transfer(s, owner, owner, transfer),
+        ):
+            try:
+                with runtime_transaction(runtime, usuario_id=owner, espacio_id=owner) as s:
+                    attempt(s)
+            except IntegrityError as error:
+                assert error.orig.diag.constraint_name == 'moneda_de_cuenta'
+            else:
+                raise AssertionError('Se aceptó un movimiento en otra moneda')
+
+        with runtime_transaction(runtime, usuario_id=owner, espacio_id=owner) as s:
+            batch = ImportRequest(filas=[{'fecha': paid.fecha.isoformat(), 'descripcion': 'Prueba',
+                                         'moneda': 'ARS', 'importe': '1.00'}])
+            denied(lambda: import_rows(s, owner, owner, opening.id, batch, commit=False), 422)
+            goal = GoalInput(id=uuid4(), cuenta_id=opening.id, nombre='Ahorro USD',
+                             moneda='USD', objetivo='300.00')
+            created = create_goal(s, owner, owner, goal)
+            assert created['saldo'] == '250.25'
+            assert list_goals(s, owner, owner)['items'][0]['saldo'] == created['saldo']
         print('OK: cuentas API, reintento concurrente, roles, aislamiento y paginacion.', flush=True)
     finally:
         with migrator.begin() as c:
             for user in users:
+                c.execute(text('DELETE FROM public.metas_ahorro WHERE espacio_id=:u'), {'u':user})
                 c.execute(text('DELETE FROM public.gastos WHERE espacio_id=:u'), {'u':user})
                 c.execute(text('DELETE FROM public.cuentas WHERE espacio_id=:u'), {'u':user})
             for user in users:

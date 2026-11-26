@@ -116,12 +116,15 @@ def import_rows(session, user, space, account, body, *, commit, kind: Kind = 'ga
                 raise HTTPException(409, 'El identificador ya se usó', headers=NO_STORE)
             return {'lote': body.lote, 'importadas': previous['total']}
     accounts = [account] if destination is None else [account, destination]
-    active_count = session.execute(text("""
-        SELECT count(*) FROM public.cuentas WHERE espacio_id=:s AND id=ANY(CAST(:accounts AS uuid[])) AND activa
-    """), {'s': space, 'accounts': accounts}).scalar_one()
-    if active_count != len(accounts):
+    currencies = session.execute(text("""
+        SELECT moneda FROM public.cuentas WHERE espacio_id=:s AND id=ANY(CAST(:accounts AS uuid[])) AND activa
+    """), {'s': space, 'accounts': accounts}).scalars().all()
+    if len(currencies) != len(accounts):
         raise HTTPException(409, 'Elegí cuentas activas', headers=NO_STORE)
     rows = list(normalized_rows(space, account, body.filas, kind, destination))
+    for position, (_, row) in enumerate(rows, start=1):
+        if any(currency is not None and currency != row.moneda for currency in currencies):
+            raise HTTPException(422, f'La moneda de la fila {position} no coincide con la cuenta', headers=NO_STORE)
     existing = set(session.execute(text(f'''
         SELECT clave_importacion FROM public.{table} WHERE espacio_id=:s
           AND clave_importacion=ANY(CAST(:keys AS uuid[])) AND anulado_en IS NULL

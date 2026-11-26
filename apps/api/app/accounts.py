@@ -189,7 +189,12 @@ def execute(request, response, space, operation, *, repeatable_read=False):
                                  repeatable_read=repeatable_read) as session:
             return operation(session, identity['usuario_id'])
     except SQLAlchemyError as error:
-        if isinstance(error, DBAPIError) and getattr(getattr(error.orig, 'diag', None), 'constraint_name', None) == 'cuenta_activa_para_movimientos':
+        constraint = (getattr(getattr(error.orig, 'diag', None), 'constraint_name', None)
+                      if isinstance(error, DBAPIError) else None)
+        if constraint == 'moneda_de_cuenta':
+            raise HTTPException(422, 'La moneda del movimiento debe coincidir con la de la cuenta',
+                                headers=NO_STORE) from None
+        if constraint == 'cuenta_activa_para_movimientos':
             raise HTTPException(409, 'La cuenta está inactiva', headers=NO_STORE) from None
         raise HTTPException(503, 'No se pudo completar la operacion', headers=NO_STORE) from None
 

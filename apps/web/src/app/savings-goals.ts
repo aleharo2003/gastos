@@ -1,6 +1,7 @@
 import { Component,DestroyRef,EventEmitter,inject,Input,OnChanges,Output,signal,SimpleChanges } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
+import { accountCurrency, type AccountOption } from './account-currency';
 import { AuthSession } from './auth-session';
 import { normalizeAmount,showAmount } from './expenses';
 
@@ -11,7 +12,7 @@ type Create={id:string;cuenta_id:string;nombre:string;moneda:string;objetivo:str
 @Component({selector:'app-savings-goals',imports:[FormsModule],templateUrl:'./savings-goals.html',styleUrl:'./savings-goals.css'})
 export class SavingsGoals implements OnChanges {
   @Input({required:true}) space='';
-  @Input() accounts:{id:string;nombre:string}[]=[];
+  @Input() accounts: AccountOption[] = [];
   @Input() moreAccounts=false;
   @Input() accountsLoading=false;
   @Input() revision=0;
@@ -81,6 +82,9 @@ export class SavingsGoals implements OnChanges {
     }catch{if(this.alive&&version===this.readVersion)this.error.set('No pudimos actualizar las metas. Los datos anteriores pueden haber cambiado.');}
     finally{if(this.alive&&version===this.readVersion)this.loading.set(false);}
   }
+  get fixedCurrency() { return accountCurrency(this.accounts, this.account); }
+  get movementCurrency() { return this.fixedCurrency ?? this.currency; }
+
   async save(){
     if(this.saving()||this.loading())return;
     const nombre=this.name.trim(),objetivo=normalizeAmount(this.target);
@@ -93,7 +97,7 @@ export class SavingsGoals implements OnChanges {
       method='PATCH';path+='/'+encodeURIComponent(this.editing.id);
       body={...values,version:this.editing.version,archivada:this.archived};
     }else{
-      const value={...values,cuenta_id:this.account,moneda:this.currency};
+      const value={...values,cuenta_id:this.account,moneda:this.movementCurrency};
       if(!this.pending||Object.entries(value).some(([key,v])=>this.pending![key as keyof Create]!==v))this.pending={id:crypto.randomUUID(),...value};
       body=this.pending;
     }

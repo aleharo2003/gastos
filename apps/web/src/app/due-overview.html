@@ -17,14 +17,16 @@
         <fieldset [disabled]="saving() || uncertain()">
           @if (item.cuenta_id) {
             @if (accountName(item.cuenta_id); as name) { <p>Cuenta del gasto {{ name }}</p> }
+            @if (pendingCurrencyConflict(item)) { <p role="status">La moneda del gasto es distinta de la moneda de la cuenta.</p> }
           } @else {
           <label for="due-pay-account">Cuenta</label>
           <select id="due-pay-account" name="dueAccount" [(ngModel)]="account" required>
             <option value="">Elegí una cuenta</option>
-            @for (entry of accounts; track entry.id) {
+            @for (entry of paymentAccounts(item.moneda); track entry.id) {
               <option [value]="entry.id">{{ entry.nombre }}</option>
             }
           </select>
+          @if (!paymentAccounts(item.moneda).length) { <p>Necesitás una cuenta que opere en {{ item.moneda }}.</p> }
           @if (moreAccounts) {
             <button type="button" (click)="loadAccounts.emit()" [disabled]="accountsLoading">Cargar más cuentas</button>
           }
@@ -37,7 +39,7 @@
           }
         </fieldset>
         <div class="payment-actions">
-          <button type="submit" [disabled]="saving()">{{ saving() ? 'Registrando…' : uncertain() ? 'Reintentar pago' : 'Registrar pago' }}</button>
+          <button type="submit" [disabled]="saving() || pendingCurrencyConflict(item) || (!item.cuenta_id && !account)">{{ saving() ? 'Registrando…' : uncertain() ? 'Reintentar pago' : 'Registrar pago' }}</button>
           @if (!uncertain()) {
             <button type="button" (click)="cancelPayment()" [disabled]="saving()">Cancelar</button>
           }

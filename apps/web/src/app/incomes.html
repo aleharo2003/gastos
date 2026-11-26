@@ -22,7 +22,7 @@
         @for (item of categories; track item.id) { <option [value]="item.id">{{ item.nombre }}</option> }
       </select>
       <label for="income-currency">Moneda</label>
-      <select id="income-currency" name="incomeCurrency" [(ngModel)]="currency" [disabled]="saving()"><option>ARS</option><option>USD</option><option>EUR</option></select>
+      <select id="income-currency" name="incomeCurrency" [ngModel]="movementCurrency" (ngModelChange)="currency = $event" [disabled]="saving() || !!fixedCurrency"><option>ARS</option><option>USD</option><option>EUR</option></select>
       <label for="income-amount">Importe</label>
       <input id="income-amount" name="incomeAmount" inputmode="decimal" [(ngModel)]="amount" required placeholder="100000,00" aria-describedby="income-amount-help" [disabled]="saving()">
       <small id="income-amount-help">Sin separador de miles; coma o punto para los decimales.</small>

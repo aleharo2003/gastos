@@ -29,7 +29,7 @@
         <label for="debt-name">Nombre</label><input id="debt-name" name="debtName" [(ngModel)]="name" required maxlength="160" placeholder="Por ejemplo, pagarés de la casa" [disabled]="saving()">
         <label for="debt-account">Cuenta sugerida para pagar</label>
         <select id="debt-account" name="debtAccount" [(ngModel)]="account" required [disabled]="saving()"><option value="">Elegí una cuenta</option>@for(a of accounts;track a.id){<option [value]="a.id">{{ a.nombre }}</option>}</select>
-        <label for="debt-currency">Moneda</label><select id="debt-currency" name="debtCurrency" [(ngModel)]="currency" [disabled]="saving()"><option>ARS</option><option>USD</option><option>EUR</option></select>
+        <label for="debt-currency">Moneda</label><select id="debt-currency" name="debtCurrency" [ngModel]="movementCurrency" (ngModelChange)="currency = $event" [disabled]="saving() || !!fixedCurrency"><option>ARS</option><option>USD</option><option>EUR</option></select>
         @if(!indefinite){
           @if(!indexed){
             <label for="debt-loan-system">Sistema de amortización</label>
@@ -62,7 +62,7 @@
         <label for="debt-first">Primer vencimiento</label><input id="debt-first" name="debtFirst" type="date" [(ngModel)]="first" required [disabled]="saving()">
         <small>Si el día no existe en otro mes, vence el último día de ese mes. Los gastos mensuales sin fin deben empezar este mes o en uno futuro.</small>
         <label for="debt-category">Categoría (opcional)</label><select id="debt-category" name="debtCategory" [(ngModel)]="category" [disabled]="saving()"><option value="">Sin categoría</option>@for(c of categories;track c[0]){<option [value]="c[0]">{{ c[1] }}</option>}</select>
-        @if(total();as total){<p>Total del plan: <strong>{{ currency }} {{ total }}</strong></p>}
+        @if(total();as total){<p>Total del plan: <strong>{{ movementCurrency }} {{ total }}</strong></p>}
         <button type="submit" [disabled]="debtForm.invalid||saving()||loading()||paying()">{{ saving()?'Guardando…':(indefinite?'Crear gasto mensual':'Crear deuda y cuotas') }}</button>
         <button type="button" class="secondary" (click)="clear()" [disabled]="saving()">Limpiar formulario</button>
         @if (moreAccounts) {
@@ -218,14 +218,15 @@
       @if(!correcting()&&!installment.estimado&&!installment.pendiente_ajuste&&installment.estado!=='pagada'&&installment.estado!=='no_aplica'&&!hidden()){
         <p>Pendiente: {{ debt.moneda }} {{ showAmount(installment.pendiente) }}. Podés pagar una parte o completar la cuota.</p>
         <form #paymentForm="ngForm" (ngSubmit)="pay()">
-          <label for="payment-account">Cuenta desde la que pagaste</label><select id="payment-account" name="paymentAccount" [(ngModel)]="payAccount" (ngModelChange)="payDirty=true" required [disabled]="paying()"><option value="">Elegí una cuenta</option>@for(a of accounts;track a.id){<option [value]="a.id">{{ a.nombre }}</option>}</select>
+          <label for="payment-account">Cuenta desde la que pagaste</label><select id="payment-account" name="paymentAccount" [(ngModel)]="payAccount" (ngModelChange)="payDirty=true" required [disabled]="paying()"><option value="">Elegí una cuenta</option>@for(a of paymentAccounts();track a.id){<option [value]="a.id">{{ a.nombre }}</option>}</select>
           @if (moreAccounts) {
             <button type="button" class="secondary" (click)="loadAccounts.emit()" [disabled]="accountsLoading || paying()">Cargar más cuentas</button>
           }
+          @if (!paymentAccounts().length) { <p>Necesitás una cuenta que opere en {{ debt.moneda }}.</p> }
           <label for="payment-date">Fecha de pago</label><input id="payment-date" name="paymentDate" type="date" [(ngModel)]="payDate" (ngModelChange)="payDirty=true" required [disabled]="paying()">
           <label for="payment-amount">Importe pagado en {{ debt.moneda }}</label><input id="payment-amount" name="paymentAmount" inputmode="decimal" [(ngModel)]="payAmount" (ngModelChange)="payDirty=true" required [disabled]="paying()">
           <small>El pago crea un gasto y descuenta saldo. No cargues ese mismo pago otra vez desde Gastos. No se convierte moneda.</small>
-          <button type="submit" [disabled]="paymentForm.invalid||paying()||saving()||detailLoading()">{{ paying()?'Registrando…':'Registrar pago' }}</button>
+          <button type="submit" [disabled]="paymentForm.invalid||!paymentAccounts().length||paying()||saving()||detailLoading()">{{ paying()?'Registrando…':'Registrar pago' }}</button>
         </form>
       }
       <button type="button" class="secondary" (click)="cancelPayment()" [disabled]="paying()">Cerrar / cancelar formulario de pago</button>

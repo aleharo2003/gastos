@@ -1,6 +1,7 @@
 import { Component, DestroyRef, EventEmitter, inject, Input, OnChanges, Output, signal, SimpleChanges } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
+import { accountCurrency, type AccountOption } from './account-currency';
 import { AuthSession } from './auth-session';
 import { normalizeAmount, showAmount } from './expenses';
 
@@ -10,7 +11,7 @@ type Page={items:Transfer[];next_offset:number|null};
 @Component({selector:'app-transfers',imports:[FormsModule],templateUrl:'./transfers.html',styleUrl:'./transfers.css'})
 export class Transfers implements OnChanges {
   @Input({required:true}) space='';
-  @Input() accounts:{id:string;nombre:string}[]=[];
+  @Input() accounts: AccountOption[] = [];
   @Input() moreAccounts=false;
   @Input() accountsLoading=false;
   @Output() loadAccounts=new EventEmitter<void>();
@@ -46,6 +47,11 @@ export class Transfers implements OnChanges {
   }
   prepareGoal(goal:{cuenta_id:string;nombre:string;moneda:string;retirar:boolean}){
     if(this.saving()||this.description||this.amount){this.error.set('Terminá o limpiá la transferencia pendiente antes de preparar otra.');return;}
+    const fixed = accountCurrency(this.accounts, goal.cuenta_id);
+    if (fixed && fixed !== goal.moneda) {
+      this.error.set('La moneda de la meta es distinta de la moneda de la cuenta.');
+      return;
+    }
     this.origin=goal.retirar?goal.cuenta_id:'';
     this.destination=goal.retirar?'':goal.cuenta_id;
     this.currency=goal.moneda;this.description=[...((goal.retirar?'Retiro: ':'Aporte: ')+goal.nombre)].slice(0,160).join('');
@@ -54,6 +60,17 @@ export class Transfers implements OnChanges {
   }
   accountName(id:string){return this.accounts.find(row=>row.id===id)?.nombre??id;}
   destinations(){return this.accounts.filter(row=>row.id!==this.origin);}
+  get fixedCurrency() {
+    return accountCurrency(this.accounts, this.origin) ?? accountCurrency(this.accounts, this.destination);
+  }
+
+  get currencyConflict(): boolean {
+    const origin = accountCurrency(this.accounts, this.origin);
+    const destination = accountCurrency(this.accounts, this.destination);
+    return !!origin && !!destination && origin !== destination;
+  }
+
+  get movementCurrency() { return this.fixedCurrency ?? this.currency; }
   originChanged(){if(this.origin===this.destination)this.destination='';}
   clear(){if(this.saving())return;this.pending=undefined;this.amount='';this.description='';this.error.set('');}
   private get path(){return `/api/spaces/${encodeURIComponent(this.space)}/transfers`;}
@@ -84,7 +101,11 @@ export class Transfers implements OnChanges {
         !amount||!description||[...description].length>160||!this.date){
       this.error.set('Elegí dos cuentas distintas y completá fecha, descripción e importe positivo, con hasta dos decimales.');return;
     }
-    const value={origen_id:this.origin,destino_id:this.destination,fecha:this.date,descripcion:description,moneda:this.currency,importe:amount};
+    if (this.currencyConflict) {
+      this.error.set('Elegí cuentas que puedan operar en la misma moneda.');
+      return;
+    }
+    const value={origen_id:this.origin,destino_id:this.destination,fecha:this.date,descripcion:description,moneda:this.movementCurrency,importe:amount};
     if(!this.pending||Object.entries(value).some(([key,v])=>this.pending![key as keyof Payload]!==v))this.pending={id:crypto.randomUUID(),...value};
     const payload=this.pending,generation=this.generation;
     this.saving.set(true);this.error.set('');this.notice.set('');
@@ -98,6 +119,7 @@ export class Transfers implements OnChanges {
       if(this.alive&&generation===this.generation)this.error.set(error instanceof HttpErrorResponse&&error.status===403
         ?'No tenés permiso para registrar transferencias.'
         :error instanceof HttpErrorResponse&&error.status===409?'El identificador corresponde a otra transferencia. Actualizá el historial para revisar lo registrado.'
+        :error instanceof HttpErrorResponse&&error.status===422?'Revisá que las dos cuentas puedan operar en la moneda elegida.'
         :'No pudimos confirmar el guardado. Reintentá con los mismos datos; esta solicitud no se duplicará.');
     }finally{if(this.alive&&generation===this.generation)this.saving.set(false);}
     if(this.alive&&generation===this.generation&&!this.pending)await this.load();

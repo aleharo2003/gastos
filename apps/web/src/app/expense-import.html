@@ -20,6 +20,7 @@
     </select>
   </label>
 }
+@if (currencyConflict) { <p role="status">Elegí cuentas que puedan operar en la misma moneda.</p> }
 @if (moreAccounts()) {
   <button type="button" class="secondary" (click)="loadAccounts.emit()">Cargar más cuentas</button>
 }
@@ -39,7 +40,7 @@
     </label>
   }
   <label>Moneda del lote
-    <select [(ngModel)]="currency" (ngModelChange)="refresh()"><option>ARS</option><option>USD</option><option>EUR</option></select>
+    <select [ngModel]="movementCurrency" (ngModelChange)="currency = $event; refresh()" [disabled]="!!fixedCurrency"><option>ARS</option><option>USD</option><option>EUR</option></select>
   </label>
   @if (rows().length) {
     <p>Filas de datos: {{ rows().length }}</p>
@@ -55,7 +56,7 @@
     <label><input type="checkbox" [(ngModel)]="skipInvalid" (ngModelChange)="checked.set(null)"> Omitir filas inválidas</label>
   }
   <button type="button" class="secondary" (click)="check()"
-    [disabled]="!accountsReady || !valid().length || (invalidCount() > 0 && !skipInvalid)">Revisar duplicados</button>
+    [disabled]="!accountsReady || currencyConflict || !valid().length || (invalidCount() > 0 && !skipInvalid)">Revisar duplicados</button>
   @if (checked(); as preview) {
     <p>Movimientos a importar: {{ preview.nuevas }}.</p>
     @if (duplicates().length) { <p>Filas ya importadas que se omitirán: {{ duplicates().join(', ') }}.</p> }
