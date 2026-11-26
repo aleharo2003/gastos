@@ -366,7 +366,7 @@ def monthly_installments(session,user,space,month,offset=0,day=None):
         JOIN public.gastos g ON g.espacio_id=p.espacio_id AND g.id=p.id
         WHERE p.espacio_id=:s GROUP BY p.cuota_id),
     del_mes AS (
-        SELECT q.*,c.nombre,c.moneda,c.cuenta_id,COALESCE(p.pagado,0) AS pagado
+        SELECT q.*,c.nombre,c.moneda,c.cuenta_id,c.categoria,COALESCE(p.pagado,0) AS pagado
         FROM public.cuotas q JOIN public.compromisos c ON c.espacio_id=q.espacio_id AND c.id=q.compromiso_id
         LEFT JOIN pagos p ON p.cuota_id=q.id
         WHERE q.espacio_id=:s AND q.vencimiento BETWEEN :first AND :last),
@@ -382,9 +382,19 @@ def monthly_installments(session,user,space,month,offset=0,day=None):
         FROM del_mes GROUP BY moneda),
     resumen AS (
         SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY t.moneda),'[]'::jsonb) AS totales FROM totales t)
-    SELECT pagina.*,resumen.totales FROM resumen LEFT JOIN (
+    SELECT pagina.*,resumen.totales,ultimo.fecha AS ultima_fecha_pago,ultimo.cuenta AS ultima_cuenta_pago
+    FROM resumen LEFT JOIN (
         SELECT * FROM del_mes ORDER BY vencimiento,id LIMIT 101 OFFSET :offset
-    ) pagina ON true ORDER BY pagina.vencimiento,pagina.id"""),
+    ) pagina ON true
+    LEFT JOIN LATERAL (
+        SELECT g.fecha, a.nombre AS cuenta
+        FROM public.pagos_cuota p
+        JOIN public.gastos g ON g.espacio_id=p.espacio_id AND g.id=p.id
+        JOIN public.cuentas a ON a.espacio_id=g.espacio_id AND a.id=g.cuenta_id
+        WHERE p.espacio_id=:s AND p.cuota_id=pagina.id
+        ORDER BY g.fecha DESC,g.id DESC LIMIT 1
+    ) ultimo ON true
+    ORDER BY pagina.vencimiento,pagina.id"""),
         {'s':space,'first':first,'last':last,'day':day,'offset':offset}).mappings().all()
     items=[row for row in rows if row['id'] is not None]
     totals=rows[0]['totales']
@@ -392,7 +402,11 @@ def monthly_installments(session,user,space,month,offset=0,day=None):
     for total in totals:
         for key in ('total','pagado','pendiente','vencido','estimado'):total[key]=format(Decimal(total[key]),'.2f')
     return {'mes':month,'totales':totals,'items':[
-        public_installment(row,day)|{'nombre':row['nombre'],'moneda':row['moneda'],'cuenta_id':str(row['cuenta_id'])}
+        public_installment(row,day)|{
+            'nombre':row['nombre'],'moneda':row['moneda'],'cuenta_id':str(row['cuenta_id']),
+            'categoria': row['categoria'],
+        } | ({'ultimo_pago': {'fecha': row['ultima_fecha_pago'].isoformat(), 'cuenta': row['ultima_cuenta_pago']}}
+             if row['ultima_fecha_pago'] is not None else {})
         for row in items[:100]],'next_offset':offset+100 if len(items)>100 else None}
 
 

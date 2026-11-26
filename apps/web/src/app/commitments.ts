@@ -15,7 +15,8 @@ export type Commitment={sistema_amortizacion?:LoanSystem;tna?:string;indice_ajus
   primer_vencimiento:string;total_cuotas:number|null;cuotas_pagadas:number;total:string;pagado:string;pendiente:string;proximo_vencimiento:string|null};
 export type Installment={capital?:string;interes?:string;saldo_capital?:string;pendiente_ajuste?:boolean;estimado?:boolean;version?:number;id:string;espacio_id:string;compromiso_id:string;numero:number;vencimiento:string;importe:string;pagado:string;pendiente:string;estado:string;vencida:boolean};
 type OutstandingTotal={moneda:string;pendiente:string};
-export type MonthlyItem=Installment & {nombre:string;moneda:string;cuenta_id:string};
+export type MonthlyItem=Installment & {nombre:string;moneda:string;cuenta_id:string;categoria?:string|null;
+  ultimo_pago?: { fecha: string; cuenta: string }};
 export type MonthlyTotal={no_aplican?:number;borradores?:number;estimado?:string;moneda:string;cuotas:number;cuotas_pagadas:number;total:string;pagado:string;pendiente:string;vencido:string};
 export type MonthlyPage={mes:string;items:MonthlyItem[];totales:MonthlyTotal[];next_offset:number|null};
 type Create={sistema_amortizacion?:LoanSystem;tna?:string;indice_ajuste?:string;variable:boolean;id:string;cuenta_id:string;nombre:string;moneda:string;importe:string;categoria:string|null;primer_vencimiento:string;total_cuotas:number|null};
@@ -30,6 +31,7 @@ export class Commitments implements OnChanges{
   @Output() loadAccounts=new EventEmitter<void>();
   @Output() draftsChanged=new EventEmitter<number>();
   @Output() changed=new EventEmitter<void>();
+  @Output() openExpense=new EventEmitter<void>();
   @ViewChild(Receipts) receiptPanel?:Receipts;
   readonly items=signal<Commitment[]>([]);
   readonly outstanding=signal<OutstandingTotal[]|null>(null);
@@ -53,6 +55,7 @@ export class Commitments implements OnChanges{
   readonly loading=signal(false);readonly detailLoading=signal(false);readonly historyLoading=signal(false);
   readonly saving=signal(false);readonly paying=signal(false);readonly error=signal('');readonly notice=signal('');
   readonly hidden=signal(false);
+  readonly createOpen = signal(false);
   name='';account='';currency='ARS';amount='';category='';first=today();count=10;indefinite=false;variable=false;indexed=false;indexName='';loanSystem:LoanSystem|''='';loanRate='';
   payAccount='';payDate=today();payAmount='';payDirty=false;installmentOffset=0;
   readonly correcting = signal<Installment | null>(null);
@@ -85,6 +88,7 @@ export class Commitments implements OnChanges{
     this.context++;this.detailVersion++;this.historyVersion++;this.monthVersion++;this.monthLoading.set(false);this.monthItems.set([]);this.monthTotals.set([]);this.monthNext.set(null);this.appliedMonth.set('');this.monthError.set('');this.month=today().slice(0,7);this.loading.set(false);this.saving.set(false);this.paying.set(false);
     this.detailLoading.set(false);this.historyLoading.set(false);this.items.set([]);this.outstanding.set(null);this.selected.set(null);this.quota.set(null);
     this.cancelAmountCorrection();
+    this.createOpen.set(false);
     this.installments.set([]);this.payments.set([]);this.next.set(null);this.nextInstallment.set(null);this.nextPayment.set(null);
     this.receiptPayment.set(null);this.lastPayment.set(null);this.clear();this.payAmount='';this.payPending=undefined;this.payDirty=false;void this.load();void this.loadMonth();void this.loadDrafts();
   }else if(changes['active']&&this.active)this.dayWatch.check();}
@@ -158,6 +162,59 @@ export class Commitments implements OnChanges{
     }catch{if(this.alive&&context===this.context&&version===this.monthVersion)this.monthError.set('No pudimos cargar el resumen mensual. Los datos visibles conservan su mes indicado.');}
     finally{if(this.alive&&context===this.context&&version===this.monthVersion)this.monthLoading.set(false);}
   }
+
+  showCreate(): void {
+    this.createOpen.set(true);
+    this.focusSection('new-commitment-title');
+  }
+
+  closeCreate(): void {
+    this.createOpen.set(false);
+    this.focusSection('new-commitment-action');
+  }
+
+  private focusSection(id: string): void {
+    setTimeout(() => {
+      if (!this.alive || !this.active) return;
+      document.getElementById(id)?.focus();
+    });
+  }
+
+  moveMonth(delta: number): void {
+    const [year, month] = (this.appliedMonth() || this.month).split('-').map(Number);
+    const next = year * 12 + month - 1 + delta;
+    if (!Number.isInteger(next) || next < 12 || next >= 120000) return;
+    this.month = String(Math.floor(next / 12)).padStart(4, '0') + '-' + String(next % 12 + 1).padStart(2, '0');
+    void this.loadMonth();
+  }
+
+  private readonly monthLabel = new Intl.DateTimeFormat('es-AR', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+
+  monthTitle(month: string): string {
+    return this.monthLabel.format(new Date(month + '-01T00:00:00Z'));
+  }
+
+  paidPercent(total: MonthlyTotal): number {
+    const amount = cents(total.total);
+    return amount ? Number(cents(total.pagado) * 1000n / amount) / 10 : 0;
+  }
+
+  monthAmount(currency: string, value: string): string {
+    return this.hidden() ? '••••' : currency + ' ' + showAmount(value);
+  }
+
+  categoryLabel(key?: string | null): string {
+    return this.categories.find(([id]) => id === key)?.[1] ?? '';
+  }
+
+  monthStatus(item: MonthlyItem) {
+    if (item.estado === 'no_aplica') return { label: 'No aplica', tone: 'neutral' };
+    if (item.estado === 'pagada') return { label: 'Pagado', tone: 'paid' };
+    if (item.pendiente_ajuste) return { label: 'Pendiente de ajuste', tone: 'neutral' };
+    if (item.estimado) return { label: 'Por confirmar', tone: 'pending' };
+    if (item.vencida) return { label: item.estado === 'parcial' ? 'Parcial vencido' : 'Vencido', tone: 'overdue' };
+    return { label: item.estado === 'parcial' ? 'Pago parcial' : 'Pendiente', tone: 'pending' };
+  }
   async openMonthly(item:MonthlyItem){
     if(!this.canLeave()||this.detailLoading()||this.saving())return;
     const context=this.context;this.detailLoading.set(true);this.error.set('');
@@ -168,8 +225,9 @@ export class Commitments implements OnChanges{
     if(!debt||!this.alive||context!==this.context||!this.canLeave())return;
     this.cancelPayment();this.selected.set(debt);this.installments.set([]);this.nextInstallment.set(null);this.lastPayment.set(null);
     await this.loadInstallments(Math.floor((item.numero-1)/100)*100);
-    const quota=this.installments().find(row=>row.id===item.id);
-    if(quota)await this.selectQuota(quota);
+    if (!this.alive || context !== this.context || this.selected()?.id !== debt.id) return;
+    await this.selectQuota(this.installments().find(row=>row.id===item.id) ?? item);
+    this.focusSection('commitments-payment-title');
   }
   async load(more=false){
     if(this.loading()||this.saving()||this.paying())return;const offset=more?this.next():0;if(offset===null)return;
@@ -243,7 +301,7 @@ export class Commitments implements OnChanges{
     try{saved=await this.auth.accountRequest<Commitment>('POST',this.path+'/commitments',this.pending);}
     catch(error){if(this.alive&&context===this.context)this.error.set(error instanceof HttpErrorResponse&&error.status===403?'No tenés permiso para crear deudas.':system&&error instanceof HttpErrorResponse&&error.status===422?'No se pudo calcular el préstamo. Revisá el capital, la TNA, el plazo y el primer vencimiento.':'No pudimos confirmar el guardado. Reintentá con los mismos datos; no se duplicará el plan.');}
     finally{if(this.alive&&context===this.context)this.saving.set(false);}
-    if(saved&&this.alive&&context===this.context){this.clear();this.notice.set(saved.total_cuotas===null?'Gasto mensual guardado. No se descontó dinero.':'Deuda guardada con su calendario. No se descontó dinero.');await this.load();await this.loadMonth();await this.loadDrafts();await this.choose(saved);if(saved.indice_ajuste||saved.sistema_amortizacion)this.changed.emit();}
+    if(saved&&this.alive&&context===this.context){this.clear();this.closeCreate();this.notice.set(saved.total_cuotas===null?'Gasto mensual guardado. No se descontó dinero.':'Deuda guardada con su calendario. No se descontó dinero.');await this.load();await this.loadMonth();await this.loadDrafts();await this.choose(saved);if(saved.indice_ajuste||saved.sistema_amortizacion)this.changed.emit();}
   }
   async pause(item:Commitment){
     if(!this.canLeave()||this.saving()||this.loading()||this.detailLoading()||item.total_cuotas!==null)return;

@@ -130,6 +130,28 @@ describe('Deudas fijas',()=>{
     window.dispatchEvent(new CustomEvent('gastos-privacy',{detail:true}));f.detectChanges();
     expect(monthly.textContent).not.toContain('70,00');expect(monthly.textContent).toContain('••••');
   });
+  it('muestra el último pago y separa el alta de un gasto del alta de una deuda', async () => {
+    const {f, c, request, quota} = await setup();
+    const openExpense = vi.fn();
+    c.openExpense.subscribe(openExpense);
+    const installment = { ...quota, nombre: 'Casa', moneda: 'ARS', cuenta_id: 'bank',
+      estado: 'parcial', pagado: '30.00', pendiente: '70.00',
+      ultimo_pago: { fecha: '2026-11-22', cuenta: 'Mercado Pago' } };
+    request.mockResolvedValueOnce({ mes: '2026-11', items: [installment], totales: [], next_offset: null });
+    await c.loadMonth(false, '2026-11');
+    f.detectChanges();
+    const row = f.nativeElement.querySelector('.month-ledger tbody tr');
+    expect(row.textContent).toContain('Pago parcial');
+    expect(row.textContent).toContain('Mercado Pago');
+    expect(row.textContent).toContain('22/11/2026');
+    expect(row.querySelector('button').textContent).toContain('Registrar pago');
+    const header = f.nativeElement.querySelector('.month-header-actions');
+    header.querySelector('.secondary').click();
+    expect(openExpense).toHaveBeenCalledOnce();
+    header.querySelector('.primary').click();
+    f.detectChanges();
+    expect(f.nativeElement.querySelector('#debt-kind')).not.toBeNull();
+  });
   it('descarta respuestas de meses anteriores y conserva el mes visible ante error',async()=>{
     const {c,request}=await setup();let finish!:(value:unknown)=>void;
     request.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));

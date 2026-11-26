@@ -62,8 +62,8 @@ input, select { font-size: 16px; }
   --workspace-panel-surface: var(--piggo-positive-surface);
 }
 .debts-panel {
-  --workspace-panel-accent: var(--piggo-debt);
-  --workspace-panel-surface: var(--piggo-debt-surface);
+  --workspace-panel-accent: var(--g-ink);
+  --workspace-panel-surface: var(--g-surface);
 }
 .reminders-panel {
   --workspace-panel-accent: var(--piggo-reminder);

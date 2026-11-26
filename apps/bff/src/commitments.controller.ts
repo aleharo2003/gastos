@@ -82,7 +82,8 @@ function payment(v:unknown,space:string,id:string):Payment{
   const r=v as Payment;if(!validPay(r)||r.espacio_id!==space||r.cuota_id!==id||!currencies.includes(r.moneda))throw new Error();
   return {id:r.id,espacio_id:space,cuota_id:id,cuenta_id:r.cuenta_id,fecha:r.fecha,moneda:r.moneda,importe:r.importe};
 }
-type MonthlyItem=Installment & {nombre:string;moneda:string;cuenta_id:string};
+type MonthlyItem=Installment & {nombre:string;moneda:string;cuenta_id:string;categoria?:string|null;
+  ultimo_pago?: { fecha: string; cuenta: string }};
 type MonthlyTotal={no_aplican:number;borradores:number;estimado:string;moneda:string;cuotas:number;cuotas_pagadas:number;total:string;pagado:string;pendiente:string;vencido:string};
 function validMonth(value:unknown):value is string{
   return typeof value==='string'&&/^[0-9]{4}-(0[1-9]|1[0-2])$/.test(value)&&!value.startsWith('0000');
@@ -104,8 +105,14 @@ function monthlyPage(value:unknown,space:string,month:string,offset:number){
   const items=page.items.map(t=>{
     if(!t||!validId(t.compromiso_id)||!validId(t.cuenta_id)||typeof t.nombre!=='string'||!t.nombre.trim()||
       [...t.nombre].length>160||!seen.has(t.moneda)||typeof t.vencimiento!=='string'||!t.vencimiento.startsWith(month+'-')||ids.has(t.id))throw new Error();
+    if (t.categoria != null && !categories.includes(t.categoria)) throw new Error();
+    const payment = t.ultimo_pago;
+    if (payment !== undefined && (!payment || !date(payment.fecha) || typeof payment.cuenta !== 'string' ||
+        !payment.cuenta.trim() || [...payment.cuenta].length > 160 || t.pagado === '0.00')) throw new Error();
     const row=installment(t,space,t.compromiso_id);ids.add(row.id);
-    return {...row,nombre:t.nombre,moneda:t.moneda,cuenta_id:t.cuenta_id};
+    return {...row,nombre:t.nombre,moneda:t.moneda,cuenta_id:t.cuenta_id,
+      ...(t.categoria ? { categoria: t.categoria } : {}),
+      ...(payment ? { ultimo_pago: { fecha: payment.fecha, cuenta: payment.cuenta } } : {})};
   });
   return {mes:month,items,totales,next_offset:page.next_offset};
 }

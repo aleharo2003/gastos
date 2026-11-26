@@ -71,9 +71,11 @@ def check_commitments(runtime_url,migration_url):
         monthly=call(lambda s,u,w:monthly_installments(s,u,w,'2024-01',day=date(2024,1,31)))
         assert monthly['totales']==[{'moneda':'ARS','cuotas':1,'cuotas_pagadas':0,'no_aplican':0,'borradores':0,'estimado':'0.00','total':'100.00','pagado':'30.00','pendiente':'70.00','vencido':'0.00'}]
         assert monthly['items'][0]['id']==q1 and not monthly['items'][0]['vencida']
+        assert monthly['items'][0]['ultimo_pago'] == {'fecha': '2026-11-17', 'cuenta': 'Banco'}
         overdue=call(lambda s,u,w:monthly_installments(s,u,w,'2024-01',day=date(2024,2,1)))
         assert overdue['totales'][0]['vencido']=='70.00' and overdue['items'][0]['vencida']
-        assert call(lambda s,u,w:monthly_installments(s,u,w,'2024-02'))['items'][0]['vencimiento']=='2024-02-29'
+        unpaid_month = call(lambda s,u,w:monthly_installments(s,u,w,'2024-02'))['items'][0]
+        assert unpaid_month['vencimiento']=='2024-02-29' and 'ultimo_pago' not in unpaid_month
         assert call(lambda s,u,w:monthly_installments(s,u,w,'2023-12'))=={'mes':'2023-12','items':[],'totales':[],'next_offset':None}
         assert call(lambda s,u,w:monthly_installments(s,u,w,'2024-01'),reader)==call(lambda s,u,w:monthly_installments(s,u,w,'2024-01'))
         denied(lambda:call(lambda s,u,w:monthly_installments(s,u,w,'2024-01'),other),403)
