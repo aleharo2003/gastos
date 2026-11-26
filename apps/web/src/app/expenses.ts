@@ -66,7 +66,6 @@ export class Expenses implements OnInit {
       this.error.set('');
       this.quickOpen.set(true);
     }
-    setTimeout(() => { if (this.alive) document.getElementById('quick-expense-amount')?.focus(); });
   }
 
   async saveQuick(category: { id: string; label: string }): Promise<void> {

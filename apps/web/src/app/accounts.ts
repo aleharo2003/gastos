@@ -14,7 +14,7 @@ import { ReminderPreferences } from './reminder-preferences';
 import { Planning } from './planning';
 import { Expenses, showAmount } from './expenses';
 import { money, rateUnits, reference } from './money-reference';
-import { Component, computed, DestroyRef, effect, inject, Input, OnInit, signal, ViewChild } from '@angular/core';
+import { ChangeDetectorRef, Component, computed, DestroyRef, effect, inject, Input, OnInit, signal, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { DOCUMENT } from '@angular/common';
@@ -32,6 +32,7 @@ export class Accounts implements OnInit {
   @Input({ required: true }) space = '';
   readonly installmentReminder = signal<InstallmentReminder | null>(null);
   private readonly document = inject(DOCUMENT);
+  private readonly changeDetector = inject(ChangeDetectorRef);
   readonly items = signal<Account[]>([]);
   readonly movementAccount = signal<Account | null>(null);
   readonly movementReport = signal<{ desde: string; hasta: string; categoria: string; moneda: string } | null>(null);
@@ -97,6 +98,8 @@ export class Accounts implements OnInit {
     this.quickNotice.set(false);
     this.tab.set('expenses');
     this.expenses.openQuickEntry();
+    this.changeDetector.detectChanges();
+    this.document.getElementById('quick-expense-amount')?.focus();
   }
 
   finishQuickExpense(): void {
