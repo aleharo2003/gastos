@@ -1,5 +1,7 @@
 """Ventas de USD con dos importes exactos y cotización de la operación."""
 from alembic import op
+from alembic.util import CommandError
+from sqlalchemy.exc import DBAPIError
 import sqlalchemy as sa
 
 revision = '0046'
@@ -9,6 +11,16 @@ depends_on = None
 
 
 def upgrade():
+    try:
+        create_sales_schema()
+    except DBAPIError as error:
+        # Solo DDL estático. No se incluye la conexión ni los parámetros de SQLAlchemy.
+        state = getattr(error.orig, 'sqlstate', None)
+        message = getattr(getattr(error.orig, 'diag', None), 'message_primary', None)
+        raise CommandError(f'Migración 0046: {state or "SQL"} · {message or "Error de esquema"}') from None
+
+
+def create_sales_schema():
     table = 'public.ventas_usd'
     op.create_table('ventas_usd',
         sa.Column('espacio_id', sa.Uuid(), nullable=False),
