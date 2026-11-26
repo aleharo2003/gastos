@@ -214,6 +214,12 @@ export class Expenses implements OnInit {
   }
   @ViewChildren(Receipts) receiptPanels!: QueryList<Receipts>;
   editorOpen = true;
+  openEntry(): void {
+    this.editorOpen = true;
+    setTimeout(() => {
+      if (this.alive) document.getElementById('expense-description')?.focus();
+    });
+  }
   hasPendingWork(): boolean {
     return this.saving() || !!(this.editing || this.description || this.amount || this.category ||
       this.note || this.incurredDate || this.dueDate || this.unpaid)

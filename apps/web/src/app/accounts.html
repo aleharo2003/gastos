@@ -216,7 +216,8 @@
   [active]="tab() === 'debts'" (draftsChanged)="draftCount.set($event)"
   [hidden]="tab() !== 'debts'" [space]="space" [accounts]="items()"
   [moreAccounts]="next() !== null" [accountsLoading]="loading()"
-  (loadAccounts)="load(true)" (changed)="planRevision.update(incrementPlan)" />
+  (loadAccounts)="load(true)" (changed)="planRevision.update(incrementPlan)"
+  (openExpense)="tab.set('expenses'); expenses?.openEntry()" />
 
 <div class="savings-panels" [hidden]="tab() !== 'savings'">
   <app-savings-goals class="workspace-panel savings-panel" [space]="space" [accounts]="items()"
