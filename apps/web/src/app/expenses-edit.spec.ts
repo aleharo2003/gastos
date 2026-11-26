@@ -26,4 +26,17 @@ describe('Edicion de gastos',()=>{
     request.mockRejectedValue(new HttpErrorResponse({status:409}));await component.save();
     expect(component.amount).toBe('25');expect(component.editing?.importe).toBe('10.00');expect(component.error()).toContain('otra sesión');expect(request).toHaveBeenCalledTimes(2);
   });
+  it('envía el original de cada fecha adicional que se cambia', async () => {
+    const {request, component} = await setup();
+    component.edit({ ...row, fecha_vencimiento: '2026-11-03' });
+    component.incurredDate = '2026-10-25';
+    component.dueDate = '';
+    request.mockResolvedValue({ ...row, fecha_devengamiento: '2026-10-25' });
+    await component.save();
+    const body = request.mock.calls[1][2];
+    expect(body.original).toMatchObject({ fecha: row.fecha, fecha_vencimiento: '2026-11-03', fecha_devengamiento: null });
+    expect(body.nuevo).toMatchObject({ fecha: row.fecha, fecha_vencimiento: null, fecha_devengamiento: '2026-10-25' });
+    expect(component.incurredDate).toBe('');
+    expect(component.dueDate).toBe('');
+  });
 });

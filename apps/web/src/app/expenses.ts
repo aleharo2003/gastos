@@ -10,11 +10,13 @@ import { SimilarExpenses } from './similar-expenses';
 import { cents } from './money-reference';
 import { progress } from './planning-math';
 
-type Expense = { id: string; espacio_id: string; cuenta_id: string; fecha: string; descripcion: string; moneda: string; importe: string; categoria?: string | null; nota?: string | null; coincidencia_aproximada?: boolean; cuenta_nombre?: string; pago_cuota?: boolean };
+type ExpenseDetails = { nota?: string | null; fecha_devengamiento?: string | null; fecha_vencimiento?: string | null };
+type Expense = ExpenseDetails & { id: string; espacio_id: string; cuenta_id: string; fecha: string; descripcion: string; moneda: string; importe: string; categoria?: string | null; coincidencia_aproximada?: boolean; cuenta_nombre?: string; pago_cuota?: boolean };
 type CategoryTotal = { moneda: string; categoria: string | null; total: string };
 type CategoryReport = { desde: string; hasta: string; items: CategoryTotal[] };
 type CategorySuggestion = {categoria:string|null;coincidencias:number;total:number};
-type Payload = Pick<Expense, 'id' | 'fecha' | 'descripcion' | 'moneda' | 'importe' | 'categoria' | 'nota'>;
+type Payload = Pick<Expense, 'id' | 'fecha' | 'descripcion' | 'moneda' | 'importe' | 'categoria'> & ExpenseDetails;
+const expenseDetailFields = ['nota', 'fecha_devengamiento', 'fecha_vencimiento'] as const;
 export function normalizeAmount(value: string): string | null {
   const text = value.trim().replace(',', '.');
   if (!/^(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,2})?$/.test(text) || !/[1-9]/.test(text)) return null;
@@ -63,6 +65,13 @@ export class Expenses implements OnInit {
   }
   category = '';
   note = '';
+  incurredDate = '';
+  dueDate = '';
+  private clearDetails(): void {
+    this.note = '';
+    this.incurredDate = '';
+    this.dueDate = '';
+  }
   readonly suggestion = signal<CategorySuggestion|null>(null);
   readonly suggesting = signal(false);
   readonly suggestionNote = signal('');
@@ -201,7 +210,8 @@ export class Expenses implements OnInit {
   @ViewChildren(Receipts) receiptPanels!: QueryList<Receipts>;
   editorOpen = true;
   hasPendingWork(): boolean {
-    return this.saving() || !!(this.editing || this.description || this.amount || this.category || this.note)
+    return this.saving() || !!(this.editing || this.description || this.amount || this.category ||
+      this.note || this.incurredDate || this.dueDate)
       || !!this.receiptPanels?.some(panel => panel.busy() || !!panel.selected());
   }
   editing: Payload | null = null;
@@ -217,7 +227,7 @@ export class Expenses implements OnInit {
     this.createAccount = item.cuenta_id;
     this.date = today();
     this.description = item.descripcion;
-    this.note = '';
+    this.clearDetails();
     this.currency = item.moneda;
     this.amount = item.importe;
     this.category = this.selectableCategories.some(row => row.id === item.categoria) ? item.categoria ?? '' : '';
@@ -227,14 +237,19 @@ export class Expenses implements OnInit {
 
   edit(item: Expense): void {
     if (this.saving() || this.loading()) return;
-    if ((this.editing || this.description || this.amount || this.note) && !window.confirm('¿Descartar el formulario actual y editar este gasto?')) return;
+    if ((this.editing || this.description || this.amount || this.note || this.incurredDate || this.dueDate) &&
+        !window.confirm('¿Descartar el formulario actual y editar este gasto?')) return;
     this.clearSuggestion();
     this.editorOpen = true;
     this.similarExpense.set(null);
     this.editAccount = item.cuenta_id;
     this.editing = {id:item.id,fecha:item.fecha,descripcion:item.descripcion,moneda:item.moneda,importe:item.importe,categoria:item.categoria ?? null};
     this.note = item.nota ?? '';
-    if (item.nota) this.editing.nota = item.nota;
+    this.incurredDate = item.fecha_devengamiento ?? '';
+    this.dueDate = item.fecha_vencimiento ?? '';
+    for (const key of expenseDetailFields) {
+      if (item[key] != null) this.editing[key] = item[key];
+    }
     this.category=item.categoria ?? ''; this.date=item.fecha; this.description=item.descripcion; this.currency=item.moneda; this.amount=item.importe;
     this.pending=undefined; this.error.set(''); this.notice.set('Editando el gasto seleccionado.');
     setTimeout(() => { if (this.alive) document.getElementById('expense-date')?.focus(); });
@@ -242,7 +257,7 @@ export class Expenses implements OnInit {
   cancelEdit(): void {
     if (this.saving() || !window.confirm('¿Descartar los cambios de este gasto?')) return;
     this.clearSuggestion();
-    this.editing=null; this.category=''; this.date=today(); this.description=''; this.amount=''; this.note=''; this.error.set(''); this.notice.set('Edición cancelada.');
+    this.editing=null; this.category=''; this.date=today(); this.description=''; this.amount=''; this.clearDetails(); this.error.set(''); this.notice.set('Edición cancelada.');
   }
 
   async confirmVoid(item: Expense): Promise<void> {
@@ -345,19 +360,29 @@ export class Expenses implements OnInit {
     if (!description || [...description].length > 160 || !this.date || !['ARS','USD','EUR'].includes(this.currency)) return;
     const note = this.note.trim() || null;
     if (note && [...note].length > 500) { this.error.set('La nota admite hasta 500 caracteres.'); return; }
-    const noteChanged = this.editing && (this.editing.nota ?? null) !== note;
-    const values = {fecha: this.date, descripcion: description, moneda: this.currency, importe: amount, categoria: this.category || null,
-      ...((this.editing ? noteChanged : note || this.pending?.nota) ? { nota: note } : {})};
+    const details = { nota: note, fecha_devengamiento: this.incurredDate || null, fecha_vencimiento: this.dueDate || null };
+    const values: Omit<Payload, 'id'> = {fecha: this.date, descripcion: description, moneda: this.currency, importe: amount, categoria: this.category || null};
+    const original = this.editing ? { ...this.editing } : null;
+    for (const key of expenseDetailFields) {
+      if (original) {
+        if ((original[key] ?? null) !== details[key]) {
+          original[key] ??= null;
+          values[key] = details[key];
+        }
+      } else if (details[key] || this.pending?.[key]) {
+        values[key] = details[key];
+      }
+    }
     if (!this.pending || Object.entries(values).some(([key,value]) => this.pending![key as keyof Payload] !== value)) this.pending = { id: crypto.randomUUID(), ...values };
     this.clearSuggestion();
     this.saving.set(true);
     let saved = false;
     try {
       const editing = this.editing;
-      const row = editing
-        ? await this.auth.accountRequest<Expense>('PATCH', `${this.writePath}/${editing.id}`, {
-          original: noteChanged ? { ...editing, nota: editing.nota ?? null } : editing,
-          nuevo: { id: editing.id, ...values },
+      const row = original
+        ? await this.auth.accountRequest<Expense>('PATCH', `${this.writePath}/${original.id}`, {
+          original,
+          nuevo: { id: original.id, ...values },
         })
         : await this.auth.accountRequest<Expense>('POST', this.writePath, this.pending);
       if (!this.alive) return;
@@ -365,7 +390,7 @@ export class Expenses implements OnInit {
       this.recentPage.update(items => [row, ...items.filter(item => item.id !== row.id)]
         .sort((a, b) => b.fecha.localeCompare(a.fecha) || b.id.localeCompare(a.id)));
       this.pending = undefined; this.description = ''; this.amount = '';
-      this.note = '';
+      this.clearDetails();
       this.clearSuggestion();
       this.editing=null; this.category=''; this.date=today();
       this.notice.set(editing ? 'Cambios guardados.' : 'Gasto guardado.');

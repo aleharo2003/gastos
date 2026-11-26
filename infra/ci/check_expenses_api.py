@@ -238,8 +238,17 @@ def check_expenses_api(runtime_url, migration_url):
         denied(lambda: category_summary(acct=foreign), 404)
 
         summary_before_cancel_test = {row['moneda']: row for row in summary()['totales']}
-        canceled = body(fecha='2024-02-29', importe='9.85', categoria='alimentos', nota='Café de prueba')
-        assert create(owner, owner, account, canceled)['nota'] == canceled.nota
+        canceled = body(fecha='2024-02-29', importe='9.85', categoria='alimentos', nota='Café de prueba',
+                        fecha_devengamiento='2024-01-28', fecha_vencimiento='2024-02-20')
+        detailed = create(owner, owner, account, canceled)
+        assert detailed['nota'] == canceled.nota
+        assert (detailed['fecha'], detailed['fecha_devengamiento'], detailed['fecha_vencimiento']) == (
+            '2024-02-29', '2024-01-28', '2024-02-20',
+        )
+        assert create(owner, owner, account, canceled) == detailed
+        denied(lambda: create(owner, owner, account, canceled.model_copy(
+            update={'fecha_vencimiento': date(2024, 2, 21)},
+        )), 409)
 
         def cancel(who=owner, expense=canceled.id):
             with runtime_transaction(runtime, usuario_id=who, espacio_id=owner) as session:
@@ -312,10 +321,23 @@ def check_expenses_api(runtime_url, migration_url):
             assert 'usuario_id' not in rows[0]
             exported = next(row for row in rows if row['id'] == str(formula.id))
             assert (exported['descripcion'], exported['nota'], exported['importe']) == ("'=1+1", 'Café, casa', '0.10')
-            assert next(row for row in rows if row['id'] == str(canceled.id))['anulado_en']
+            canceled_row = next(row for row in rows if row['id'] == str(canceled.id))
+            assert canceled_row['anulado_en']
+            assert (canceled_row['fecha_devengamiento'], canceled_row['fecha_vencimiento']) == ('2024-01-28', '2024-02-20')
             catalog = list(csv.DictReader(io.StringIO(archive.read('categorias.csv').decode('utf-8-sig'))))
             assert any(row['id'] == custom.id and row['nombre'] == 'Comida hogar' and row['activa'] == 'False' for row in catalog)
             assert 'ruta' not in archive.read('comprobantes.csv').decode('utf-8-sig')
+
+        def expense_details(due):
+            return body(id=payload.id, fecha=legacy.fecha.isoformat(), importe='0.25', fecha_vencimiento=due)
+
+        absent = expense_details(None)
+        due = expense_details('2026-10-25')
+        saved = edit(editor, owner, account, absent, due)
+        assert saved['fecha_vencimiento'] == '2026-10-25'
+        assert edit(editor, owner, account, absent, due) == saved
+        denied(lambda: edit(editor, owner, account, absent, expense_details('2026-10-20')), 409)
+        assert 'fecha_vencimiento' not in edit(editor, owner, account, due, absent)
 
         import_data = dict(fecha='2024-02-20', descripcion='Importación de prueba', moneda='ARS', importe='0.10')
         preview_body = ImportRequest(filas=[import_data, import_data])

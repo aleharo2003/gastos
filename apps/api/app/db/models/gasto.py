@@ -29,6 +29,8 @@ class Gasto(Base):
     cuenta_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
     usuario_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey('public.perfiles.usuario_id'), nullable=False)
     fecha: Mapped[date] = mapped_column(Date, nullable=False)
+    fecha_devengamiento: Mapped[date | None] = mapped_column(Date)
+    fecha_vencimiento: Mapped[date | None] = mapped_column(Date)
     descripcion: Mapped[str] = mapped_column(Text, nullable=False)
     moneda: Mapped[str] = mapped_column(Text, nullable=False)
     importe: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
