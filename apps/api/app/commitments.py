@@ -444,6 +444,8 @@ def seed_current_installment(session,space,row,day):
 
 def open_installment_month(session, user, space, month):
     require_member(session, user, space, write=True)
+    if month.startswith('0000'):
+        raise HTTPException(422, 'Mes inválido', headers=NO_STORE)
     start = date.fromisoformat(month + '-01')
     end = start.replace(day=monthrange(start.year, start.month)[1])
     missing = session.execute(text("""
@@ -460,7 +462,7 @@ def open_installment_month(session, user, space, month):
 
 @router.post('/spaces/{space}/installment-months/open')
 def post_open_installment_month(space: UUID, request: Request, response: Response,
-                                month: str = Query(pattern=r'^(?!0000)[0-9]{4}-(0[1-9]|1[0-2])$')):
+                                month: str = Query(pattern=r'^[0-9]{4}-(0[1-9]|1[0-2])$')):
     return execute(request, response, space, lambda session, user: open_installment_month(session, user, space, month))
 
 
@@ -520,6 +522,8 @@ class ConfirmationsInput(BaseModel):
 
 def list_drafts(session,user,space,offset=0,month=None):
     require_member(session,user,space)
+    if month and month.startswith('0000'):
+        raise HTTPException(422, 'Mes inválido', headers=NO_STORE)
     period = date.fromisoformat(month + '-01') if month else None
     rows=session.execute(text("""WITH borradores AS (
         SELECT q.*,c.nombre,c.moneda,c.cuenta_id,0::numeric AS pagado FROM public.cuotas q
@@ -561,7 +565,7 @@ def confirm_installments(session,user,space,body):
 
 @router.get('/spaces/{space}/installment-drafts')
 def get_drafts(space:UUID,request:Request,response:Response,offset:int=Query(default=0,ge=0,le=100000),
-               month: str | None = Query(default=None, pattern=r'^(?!0000)[0-9]{4}-(0[1-9]|1[0-2])$')):
+               month: str | None = Query(default=None, pattern=r'^[0-9]{4}-(0[1-9]|1[0-2])$')):
     return execute(request,response,space,lambda s,u:list_drafts(s,u,space,offset,month))
 
 
