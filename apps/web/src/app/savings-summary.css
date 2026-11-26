@@ -1,0 +1,34 @@
+.savings-summary { display: grid; gap: 1rem; min-inline-size: 0; color: var(--g-ink); }
+header, .controls { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; }
+header { justify-content: space-between; }
+h3, h4, p { margin: 0; }
+h3 { font-size: clamp(1.45rem, 2.75vw, 2rem); }
+h4 { font-size: 1.12rem; }
+.report-settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); gap: 1rem; }
+form label { display: block; font-weight: 750; margin-bottom: .35rem; }
+.controls input { flex: 1; min-inline-size: 0; }
+button, input:not([type="checkbox"]) {
+  border: 1px solid var(--g-border); border-radius: var(--piggo-radius-control);
+  padding: .55rem .75rem; font: inherit; color: var(--g-ink); background: var(--g-surface);
+}
+button { cursor: pointer; font-weight: 800; }
+button.primary { background: var(--piggo-action-background); color: var(--piggo-action-foreground); border-color: transparent; }
+button:disabled { opacity: .6; cursor: default; }
+.summary-block { display: grid; gap: .55rem; padding: clamp(.65rem, 2vw, 1.25rem); border-radius: var(--piggo-radius-card); background: var(--g-bg); }
+.table-wrap { overflow: auto; border: 1px solid color-mix(in srgb, var(--g-border) 50%, transparent); border-radius: var(--piggo-radius-control); }
+table { width: 100%; border-collapse: collapse; background: var(--g-surface); font-size: .9rem; }
+:is(td, th) { padding: .55rem .65rem; border-bottom: 1px solid color-mix(in srgb, var(--g-border) 28%, transparent); }
+th { text-align: start; overflow-wrap: anywhere; }
+thead { background: var(--g-soft); }
+thead th:not(:first-child), td { text-align: end; }
+td { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.income-total { color: var(--piggo-positive); background: var(--piggo-positive-surface); font-weight: 900; }
+.expense-total { color: var(--piggo-warning); background: var(--piggo-warning-surface); font-weight: 800; }
+.month-net, tfoot { background: var(--piggo-info-surface); color: var(--piggo-info); font-weight: 900; }
+.hint, small, .annual { color: var(--g-muted); font-size: .85rem; }
+.equivalence { display: flex; align-items: center; gap: .5rem; }
+button:focus-visible, input:focus-visible { outline: 3px solid var(--g-focus); outline-offset: 2px; }
+@media (max-width: 520px) {
+  :is(td, th) { padding: .45rem .4rem; }
+  table { font-size: .82rem; }
+}

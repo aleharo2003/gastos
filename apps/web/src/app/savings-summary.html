@@ -1,0 +1,103 @@
+<section class="savings-summary" aria-labelledby="savings-summary-title">
+  <header>
+    <h3 id="savings-summary-title">Ahorros</h3>
+    <button type="button" class="primary" (click)="registerIncome.emit()">Registrar ingreso</button>
+  </header>
+  @if (hidden()) {
+    <p>Importes ocultos. Podés mostrarlos desde Gastos.</p>
+  } @else {
+    <div class="report-settings">
+      <form (ngSubmit)="load()">
+        <label for="savings-month">Mes del resumen</label>
+        <div class="controls">
+          <input id="savings-month" type="month" name="month" [(ngModel)]="month"
+            min="1900-01" [max]="currentMonth()" required>
+          <button type="submit" [disabled]="loading()">Consultar</button>
+        </div>
+      </form>
+      <form (ngSubmit)="saveRate()">
+        <label for="savings-rate">Cotización de referencia · ARS por 1 USD</label>
+        <div class="controls">
+          <input id="savings-rate" name="rate" [(ngModel)]="draftRate" inputmode="decimal" placeholder="1700">
+          <button type="submit">Guardar</button>
+        </div>
+        @if (rateDate()) { <small>Actualizada el {{ rateDate().split('-').reverse().join('/') }}</small> }
+        @if (rateError()) { <p role="status">{{ rateError() }}</p> }
+      </form>
+    </div>
+    @if (rate()) {
+      <label class="equivalence">
+        <input type="checkbox" [ngModel]="equivalents()" (ngModelChange)="equivalents.set($event)">
+        Ver equivalencias en ARS y USD
+      </label>
+      @if (equivalents()) { <p class="hint">Cada columna muestra el mismo total en su moneda. Los EUR se muestran por separado.</p> }
+    }
+    @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
+    @if (loading()) { <p role="status">Actualizando resumen.</p> }
+    @if (data(); as report) {
+      @if (monthRows(); as rows) {
+        <section class="summary-block" aria-labelledby="savings-month-title">
+          <h4 id="savings-month-title">Resumen del mes · {{ report.mes.split('-').reverse().join('/') }}</h4>
+          <p class="hint">Movimientos registrados hasta el {{ report.hasta.split('-').reverse().join('/') }}.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th scope="col">Concepto</th>
+                @for (currency of columns(); track currency) { <th scope="col">{{ currency }}</th> }
+              </tr></thead>
+              <tbody>
+                @for (row of rows.sources; track row.concept) {
+                  <tr><th scope="row">{{ row.concept ?? 'Otros ingresos agrupados' }}</th>
+                    @for (currency of columns(); track currency) { <td>{{ display(row.totals, currency) }}</td> }
+                  </tr>
+                }
+                <tr class="income-total"><th scope="row">Total ingresos</th>
+                  @for (currency of columns(); track currency) { <td>{{ display(rows.income, currency) }}</td> }
+                </tr>
+                <tr><th scope="row">Pagos de cuotas</th>
+                  @for (currency of columns(); track currency) { <td>{{ display(rows.installments, currency) }}</td> }
+                </tr>
+                <tr><th scope="row">Otros gastos</th>
+                  @for (currency of columns(); track currency) { <td>{{ display(rows.other, currency) }}</td> }
+                </tr>
+                <tr class="expense-total"><th scope="row">Total gastos</th>
+                  @for (currency of columns(); track currency) { <td>{{ display(rows.expenses, currency) }}</td> }
+                </tr>
+                <tr class="month-net"><th scope="row">Resultado del mes</th>
+                  @for (currency of columns(); track currency) { <td>{{ display(rows.net, currency) }}</td> }
+                </tr>
+                <tr class="annual"><th scope="row">Ingresos acumulados del año</th>
+                  @for (currency of columns(); track currency) { <td>{{ display(rows.annual, currency) }}</td> }
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="hint">El resultado del mes es ingresos menos gastos pagados. Las transferencias se reflejan en los saldos de las cuentas.</p>
+        </section>
+      }
+      <section class="summary-block" aria-labelledby="savings-accounts-title">
+        <h4 id="savings-accounts-title">¿Dónde está la plata?</h4>
+        <p class="hint">Saldos registrados al {{ report.fecha_saldos.split('-').reverse().join('/') }}.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th scope="col">Cuenta</th>
+              @for (currency of columns(); track currency) { <th scope="col">{{ currency }}</th> }
+            </tr></thead>
+            <tbody>
+              @for (account of report.cuentas; track account.id) {
+                @let totals = toTotals(account.saldos);
+                <tr><th scope="row">{{ account.nombre }} @if (!account.activa) { <small>Archivada</small> }</th>
+                  @for (currency of columns(); track currency) { <td>{{ display(totals, currency) }}</td> }
+                </tr>
+              } @empty { <tr><th scope="row">Todavía no hay cuentas.</th></tr> }
+            </tbody>
+            <tfoot><tr><th scope="row">Total de todas las cuentas</th>
+              @let total = toTotals(report.saldo_total);
+              @for (currency of columns(); track currency) { <td>{{ display(total, currency) }}</td> }
+            </tr></tfoot>
+          </table>
+        </div>
+        @if (report.next_offset !== null) { <button type="button" (click)="load(true)" [disabled]="loading()">Ver más cuentas</button> }
+      </section>
+    }
+  }
+</section>

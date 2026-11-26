@@ -50,6 +50,11 @@ export class Incomes implements OnChanges {
     if(changes['space']||changes['account']||changes['revision'])void this.loadBalance();
   }
   hasPendingWork(){return this.saving() || !!(this.description || this.amount || this.category);}
+  openEntry(): void {
+    setTimeout(() => {
+      if (this.alive) document.getElementById('income-title')?.focus();
+    });
+  }
   cancel(){if(this.saving())return;this.description='';this.amount='';this.category='';this.pending=undefined;this.error.set('');}
   get categories() { return this.catalog.categories(this.space, 'ingreso').filter(row => row.activa); }
   categoryName(id: string) { return this.catalog.label(this.space, 'ingreso', id); }
