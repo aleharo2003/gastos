@@ -46,7 +46,7 @@ export function validPlan(v:unknown):boolean {
   return true;
 }
 
-type PlanningResource = 'spending-plan' | 'reminder-preferences' | 'spending-plan/category-limits' | 'usd-reference';
+type PlanningResource = 'spending-plan' | 'reminder-preferences' | 'spending-plan/category-limits' | 'usd-reference' | 'usd-reference/settings';
 
 function validReminderPreferences(value: unknown): boolean {
   if (!record(value) || !keys(value, [
@@ -115,6 +115,18 @@ export class PlanningController {
     return this.forward(space, request, response, body, true, 'usd-reference');
   }
 
+  @Get('usd-reference/settings')
+  readMarketType(@Param('space') space: string, @Req() request: Request, @Res({ passthrough: true }) response: Response) {
+    return this.forward(space, request, response, undefined, false, 'usd-reference/settings');
+  }
+
+  @Post('usd-reference/settings')
+  @HttpCode(200)
+  saveMarketType(@Param('space') space: string, @Body() body: unknown, @Req() request: Request,
+    @Res({ passthrough: true }) response: Response) {
+    return this.forward(space, request, response, body, true, 'usd-reference/settings');
+  }
+
   private async forward(
     space: string, request: Request, response: Response, body?: unknown,
     writing = false, resource: PlanningResource = 'spending-plan', month?: unknown,
@@ -128,7 +140,10 @@ export class PlanningController {
     } catch(error){if(error instanceof UnauthorizedException)response.setHeader('WWW-Authenticate','Bearer');throw error;}
     const history = resource === 'spending-plan/category-limits';
     const usd = resource === 'usd-reference';
-    const validate = history
+    const market = resource === 'usd-reference/settings';
+    const validate = market ? (data: unknown) => record(data) && keys(data, ['tipo']) &&
+      typeof data.tipo === 'string' && ['oficial', 'blue', 'bolsa', 'contadoconliqui', 'mayorista', 'cripto', 'tarjeta'].includes(data.tipo)
+      : history
       ? (data: unknown) => record(data) && keys(data, ['mes', 'limites_categoria']) &&
           data.mes === month && (data.limites_categoria === null || validCategoryLimits(data.limites_categoria))
       : usd ? (data: unknown) => record(data) && keys(data, ['cotizacion']) &&

@@ -5,7 +5,7 @@ from uuid import uuid4
 from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
-from app.usd_reference import ManualRate, read_rate, save_rate
+from app.usd_reference import ManualRate, MarketPreference, read_rate, save_market_type, save_rate
 from app.planning import PlanUpdate,get_category_limit_history,get_plan,save_plan,EMPTY
 from app.db.connection import create_runtime_engine,create_migration_engine
 from app.db.unit_of_work import runtime_transaction
@@ -45,6 +45,19 @@ def check_planning(runtime_url,migration_url):
         with runtime_transaction(runtime, usuario_id=other, espacio_id=other) as s:
             assert read_rate(s, other, other, day) == {'cotizacion': None}
             assert s.execute(text('SELECT count(*) FROM public.cotizaciones_manuales')).scalar_one() == 0
+        with migrator.begin() as c:
+            c.execute(text("""
+                INSERT INTO public.cotizaciones_mercado(tipo, fecha, tasa, actualizada_en)
+                VALUES ('oficial','2026-11-12',1800,now()), ('blue','2026-11-15',1900,now())
+            """))
+        with runtime_transaction(runtime, usuario_id=owner, espacio_id=owner) as s:
+            assert read_rate(s, owner, owner, day) == correct
+            assert save_market_type(s, owner, owner, MarketPreference(tipo='blue')) == {'tipo': 'blue'}
+            assert read_rate(s, owner, owner, day)['cotizacion']['tasa'] == '1900.0000'
+        with runtime_transaction(runtime, usuario_id=other, espacio_id=other) as s:
+            assert read_rate(s, other, other, day)['cotizacion']['tasa'] == '1800.0000'
+        with migrator.begin() as c:
+            c.execute(text("DELETE FROM public.cotizaciones_mercado WHERE fecha IN ('2026-11-12','2026-11-15')"))
         assert read()=={'version':0,'datos':EMPTY}
         first=save({'version':0,'datos':data});assert first=={'version':1,'datos':data}
         assert save({'version':0,'datos':data})==first # lost response retry

@@ -32,6 +32,7 @@ TABLES = (
     ('pagos_cuota', 'id cuota_id', 'cuota_id, id'),
     ('variaciones_indice', 'indice periodo variacion', 'indice, periodo'),
     ('metas_ahorro', 'id cuenta_id nombre moneda objetivo fecha_objetivo archivada version', 'id'),
+    ('preferencias_cotizacion', 'tipo', 'tipo'),
     ('cotizaciones_manuales', 'fecha tasa', 'fecha'),
     ('planes_gasto', 'version datos historial_categoria', 'version'),
     ('comprobantes', 'id gasto_id nombre mime bytes sha256', 'gasto_id, id'),

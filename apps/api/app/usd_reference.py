@@ -2,6 +2,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 import re
+from typing import Literal
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -13,6 +14,14 @@ from app.accounts import execute, require_member
 
 router = APIRouter()
 RATE = re.compile(r'(?:0|[1-9][0-9]{0,7})(?:\.[0-9]{1,4})?')
+
+
+MarketType = Literal['oficial', 'blue', 'bolsa', 'contadoconliqui', 'mayorista', 'cripto', 'tarjeta']
+
+
+class MarketPreference(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    tipo: MarketType
 
 
 class ManualRate(BaseModel):
@@ -41,8 +50,14 @@ def local_today():
 
 def effective_rate(session, space, day):
     row = session.execute(text("""
-        SELECT fecha, tasa FROM public.cotizaciones_manuales
-        WHERE espacio_id=:space AND fecha<=:day ORDER BY fecha DESC LIMIT 1
+        SELECT fecha, tasa FROM (
+            SELECT fecha,tasa,1 AS prioridad FROM public.cotizaciones_manuales
+            WHERE espacio_id=:space AND fecha<=:day
+            UNION ALL
+            SELECT fecha,tasa,0 AS prioridad FROM public.cotizaciones_mercado
+            WHERE fecha<=:day AND tipo=COALESCE(
+                (SELECT tipo FROM public.preferencias_cotizacion WHERE espacio_id=:space), 'oficial')
+        ) AS opciones ORDER BY fecha DESC, prioridad DESC LIMIT 1
     """), {'space': space, 'day': day}).mappings().one_or_none()
     if row is None:
         return {'cotizacion': None}
@@ -73,3 +88,28 @@ def get_reference(space: UUID, request: Request, response: Response, fecha: date
 @router.post('/spaces/{space}/usd-reference')
 def post_reference(space: UUID, body: ManualRate, request: Request, response: Response):
     return execute(request, response, space, lambda session, user: save_rate(session, user, space, body, local_today()))
+
+def market_type(session, user, space):
+    require_member(session, user, space)
+    value = session.execute(text('SELECT tipo FROM public.preferencias_cotizacion WHERE espacio_id=:s'),
+                            {'s': space}).scalar_one_or_none()
+    return {'tipo': value or 'oficial'}
+
+
+def save_market_type(session, user, space, body):
+    require_member(session, user, space, write=True)
+    session.execute(text("""
+        INSERT INTO public.preferencias_cotizacion (espacio_id,tipo) VALUES (:s,:tipo)
+        ON CONFLICT (espacio_id) DO UPDATE SET tipo=excluded.tipo
+    """), {'s': space, 'tipo': body.tipo})
+    return {'tipo': body.tipo}
+
+
+@router.get('/spaces/{space}/usd-reference/settings')
+def get_market_type(space: UUID, request: Request, response: Response):
+    return execute(request, response, space, lambda session, user: market_type(session, user, space))
+
+
+@router.post('/spaces/{space}/usd-reference/settings')
+def post_market_type(space: UUID, body: MarketPreference, request: Request, response: Response):
+    return execute(request, response, space, lambda session, user: save_market_type(session, user, space, body))

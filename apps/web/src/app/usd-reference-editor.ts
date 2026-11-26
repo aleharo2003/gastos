@@ -2,6 +2,7 @@ import { Component, inject, input, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { installmentLocalDate } from './installment-date';
 import { rateUnits } from './money-reference';
+import { AuthSession } from './auth-session';
 import { UsdReference } from './usd-reference';
 
 @Component({
@@ -21,6 +22,18 @@ import { UsdReference } from './usd-reference';
       @if (error()) { <p role="alert">{{ error() }}</p> }
       @if (notice()) { <p role="status">{{ notice() }}</p> }
     </details>
+    <details #market (toggle)="market.open && loadMarket()">
+      <summary>Tipo de dólar de referencia</summary>
+      <form (ngSubmit)="saveMarket()">
+        <label [for]="id() + '-market'">Cotización automática</label>
+        <select [id]="id() + '-market'" name="market" [(ngModel)]="marketType" [disabled]="marketBusy()">
+          @for (choice of markets; track choice[0]) { <option [value]="choice[0]">{{ choice[1] }}</option> }
+        </select>
+        <button type="submit" [disabled]="marketBusy()">Guardar preferencia</button>
+      </form>
+      <small>Se usa el precio vendedor de DolarApi. Para la misma fecha, tiene prioridad tu cotización manual.</small>
+      @if (marketStatus()) { <p role="status">{{ marketStatus() }}</p> }
+    </details>
   `,
   styles: [`form { display: grid; gap: .5rem; max-width: 18rem; margin-block: .75rem; }
     button { justify-self: start; }`],
@@ -34,6 +47,42 @@ export class UsdReferenceEditor {
   rate = '';
   date = installmentLocalDate();
   private readonly reference = inject(UsdReference);
+  private readonly auth = inject(AuthSession);
+  readonly markets = [
+    ['oficial', 'Oficial'], ['blue', 'Blue'], ['bolsa', 'MEP'], ['contadoconliqui', 'CCL'],
+    ['mayorista', 'Mayorista'], ['cripto', 'Cripto'], ['tarjeta', 'Tarjeta'],
+  ];
+  marketType = 'oficial';
+  readonly marketBusy = signal(false);
+  readonly marketStatus = signal('');
+
+  private settingsPath(space: string) { return `/api/spaces/${encodeURIComponent(space)}/usd-reference/settings`; }
+
+  async loadMarket(): Promise<void> {
+    if (this.marketBusy()) return;
+    this.marketBusy.set(true);
+    this.marketStatus.set('');
+    try {
+      const result = await this.auth.accountRequest<{ tipo: string }>('GET', this.settingsPath(this.space()));
+      this.marketType = result.tipo;
+    } catch {
+      this.marketStatus.set('No pudimos consultar la preferencia.');
+    } finally { this.marketBusy.set(false); }
+  }
+
+  async saveMarket(): Promise<void> {
+    if (this.marketBusy()) return;
+    const space = this.space();
+    this.marketBusy.set(true);
+    this.marketStatus.set('');
+    try {
+      await this.auth.accountRequest('POST', this.settingsPath(space), { tipo: this.marketType });
+      await this.reference.refresh(space);
+      this.marketStatus.set('Preferencia guardada.');
+    } catch {
+      this.marketStatus.set('No pudimos confirmar la preferencia. Volvé a intentar.');
+    } finally { this.marketBusy.set(false); }
+  }
 
   async save(): Promise<void> {
     if (this.saving()) return;
