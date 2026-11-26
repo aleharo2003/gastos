@@ -22,16 +22,16 @@ def upgrade():
         LANGUAGE plpgsql SET search_path = pg_catalog
         AS $moneda$
         DECLARE
-            cuentas uuid[];
+            target_account_ids uuid[];
             anteriores uuid[];
         BEGIN
             IF TG_TABLE_NAME = 'transferencias' THEN
-                cuentas := ARRAY[NEW.origen_id, NEW.destino_id];
+                target_account_ids := ARRAY[NEW.origen_id, NEW.destino_id];
                 IF TG_OP = 'UPDATE' THEN
                     anteriores := ARRAY[OLD.origen_id, OLD.destino_id];
                 END IF;
             ELSE
-                cuentas := ARRAY[NEW.cuenta_id];
+                target_account_ids := ARRAY[NEW.cuenta_id];
                 IF TG_OP = 'UPDATE' THEN
                     anteriores := ARRAY[OLD.cuenta_id];
                 END IF;
@@ -39,15 +39,15 @@ def upgrade():
 
             IF TG_OP = 'UPDATE' THEN
                 IF OLD.moneda IS NOT DISTINCT FROM NEW.moneda
-                    AND anteriores IS NOT DISTINCT FROM cuentas THEN
+                    AND anteriores IS NOT DISTINCT FROM target_account_ids THEN
                     RETURN NULL;
                 END IF;
             END IF;
 
             IF EXISTS (
-                SELECT 1 FROM public.cuentas
-                WHERE espacio_id = NEW.espacio_id AND id = ANY(cuentas)
-                  AND moneda IS NOT NULL AND moneda <> NEW.moneda
+                SELECT 1 FROM public.cuentas AS account
+                WHERE account.espacio_id = NEW.espacio_id AND account.id = ANY(target_account_ids)
+                  AND account.moneda IS NOT NULL AND account.moneda <> NEW.moneda
             ) THEN
                 RAISE EXCEPTION 'La moneda del movimiento debe coincidir con la de la cuenta'
                     USING ERRCODE = '23514', CONSTRAINT = 'moneda_de_cuenta';
