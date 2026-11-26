@@ -11,7 +11,7 @@ DECLARE
     related text[] := ARRAY[
         'miembros_espacio', 'cuentas', 'ingresos', 'gastos', 'transferencias',
         'compromisos', 'cuotas', 'pagos_cuota', 'variaciones_indice', 'metas_ahorro',
-        'planes_gasto', 'comprobantes', 'categorias_movimientos', 'preferencias_avisos', 'gastos_pendientes', 'cotizaciones_manuales', 'preferencias_cotizacion', 'ventas_usd'
+        'planes_gasto', 'comprobantes', 'categorias_movimientos', 'preferencias_avisos', 'gastos_pendientes', 'cotizaciones_manuales', 'preferencias_cotizacion', 'ventas_usd', 'ofertas_usd'
     ];
 BEGIN
     IF to_regclass('public.gastos_pendientes') IS NULL THEN
@@ -25,6 +25,9 @@ BEGIN
     END IF;
     IF to_regclass('public.ventas_usd') IS NULL THEN
         related := array_remove(related, 'ventas_usd');
+    END IF;
+    IF to_regclass('public.ofertas_usd') IS NULL THEN
+        related := array_remove(related, 'ofertas_usd');
     END IF;
     IF current_user <> 'app_migrator' OR session_user <> 'app_migrator' OR
        NOT EXISTS (SELECT FROM pg_roles r WHERE r.rolname='app_backup' AND r.rolcanlogin

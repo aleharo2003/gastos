@@ -8,6 +8,7 @@ from app.db.connection import create_migration_engine, create_runtime_engine
 from app.db.unit_of_work import runtime_transaction
 from app.incomes import account_balance
 from app.usd_reference import ManualRate, save_rate
+from app.usd_offers import AcceptOffer, OfferInput, accept_offer, save_offer
 from app.usd_sales import SaleInput, list_sales, local_today, save_sale
 
 
@@ -43,10 +44,31 @@ def check_fx_sales(runtime_url, migration_url):
                 assert error.status_code == 422
             else:
                 raise AssertionError('La venta aceptó cuentas con monedas incompatibles')
+        with runtime_transaction(runtime, usuario_id=owner, espacio_id=owner) as s:
+            round_id = uuid4()
+            low = OfferInput(id=uuid4(), ronda=round_id, tasa='1700', contraparte='Ana')
+            high = OfferInput(id=uuid4(), ronda=round_id, tasa='1800', contraparte='Luis')
+            assert save_offer(s, owner, owner, low)['oferta']['referencia'] == '1750.0000'
+            save_offer(s, owner, owner, high)
+            acceptance = AcceptOffer(oferta_id=low.id, origen_id=origin, destino_id=destination,
+                                     usd='5.00', fecha=day.isoformat())
+            try:
+                accept_offer(s, owner, owner, acceptance)
+            except HTTPException as error:
+                assert error.status_code == 409
+            else:
+                raise AssertionError('La aceptación omitió el aviso de la mejor oferta')
+            accepted = acceptance.model_copy(update={'confirmar_mejor': True})
+            result = accept_offer(s, owner, owner, accepted)
+            assert result['venta']['ars'] == '8500.00'
+            assert accept_offer(s, owner, owner, accepted) == result
+            states = dict(s.execute(text('SELECT id,estado FROM public.ofertas_usd WHERE ronda=:r'),
+                                    {'r': round_id}).tuples().all())
+            assert states == {low.id: 'aceptada', high.id: 'rechazada'}
         print('OK: venta USD, saldos por moneda, referencia congelada y reintento.', flush=True)
     finally:
         with migrator.begin() as c:
-            for table,column in (('ventas_usd','espacio_id'), ('cuentas','espacio_id'), ('miembros_espacio','espacio_id'),
+            for table,column in (('ofertas_usd','espacio_id'), ('ventas_usd','espacio_id'), ('cuentas','espacio_id'), ('miembros_espacio','espacio_id'),
                                  ('espacios','id'), ('perfiles','usuario_id')):
                 c.execute(text(f'DELETE FROM public.{table} WHERE {column}=:u'), {'u': owner})
         runtime.dispose()

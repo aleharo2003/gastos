@@ -2,7 +2,7 @@ from datetime import date
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import Computed, Date, ForeignKeyConstraint, Index, Numeric, Text, Uuid
+from sqlalchemy import Computed, Date, ForeignKeyConstraint, Index, Numeric, Text, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -11,6 +11,7 @@ from app.db.base import Base
 class VentaUsd(Base):
     __tablename__ = 'ventas_usd'
     __table_args__ = (
+        UniqueConstraint('espacio_id','id', name='uq_ventas_usd_espacio_id'),
         ForeignKeyConstraint(['espacio_id','origen_id'], ['public.cuentas.espacio_id','public.cuentas.id'], name='fk_ventas_usd_origen_cuentas'),
         ForeignKeyConstraint(['espacio_id','destino_id'], ['public.cuentas.espacio_id','public.cuentas.id'], name='fk_ventas_usd_destino_cuentas'),
         Index('ix_ventas_usd_espacio_fecha', 'espacio_id', 'fecha', 'id'),

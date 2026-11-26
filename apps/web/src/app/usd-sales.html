@@ -26,6 +26,7 @@
     <input id="sale-ars" name="ars" [(ngModel)]="pesos" inputmode="decimal" required [disabled]="saving()">
     <button type="submit" [disabled]="form.invalid || saving()">{{ saving() ? 'Registrando…' : 'Registrar venta' }}</button>
   </form>
+  <app-usd-offers [space]="space" [accounts]="accounts" (sold)="refreshAfterOffer()" />
   <h4>Ventas registradas</h4>
   @if (loading()) { <p role="status">Cargando ventas…</p> }
   @else if (!sales().length) { <p>Todavía no hay ventas registradas.</p> }
