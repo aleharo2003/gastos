@@ -1,0 +1,45 @@
+<section aria-labelledby="usd-sales-title">
+  <h3 id="usd-sales-title">Venta de dólares</h3>
+  @if (error()) { <p role="alert">{{ error() }}</p> }
+  @if (notice()) { <p role="status">{{ notice() }}</p> }
+  @if (moreAccounts) {
+    <button type="button" class="secondary" [disabled]="accountsLoading" (click)="loadAccounts.emit()">Cargar más cuentas</button>
+  }
+  <form #form="ngForm" (ngSubmit)="save()">
+    <label for="sale-source">Cuenta de la que salieron los USD</label>
+    <select id="sale-source" name="source" [(ngModel)]="source" required [disabled]="saving()">
+      <option value="">Elegí la cuenta de origen</option>
+      @for (a of sources; track a.id) { <option [value]="a.id">{{ a.nombre }}</option> }
+    </select>
+    <label for="sale-destination">Cuenta que recibió los pesos</label>
+    <select id="sale-destination" name="destination" [(ngModel)]="destination" required [disabled]="saving()">
+      <option value="">Elegí la cuenta de destino</option>
+      @for (a of destinations; track a.id) { <option [value]="a.id">{{ a.nombre }}</option> }
+    </select>
+    <label for="sale-date">Fecha</label>
+    <input id="sale-date" name="date" type="date" [max]="today()" [(ngModel)]="date" required [disabled]="saving()">
+    <label for="sale-counterparty">Contraparte</label>
+    <input id="sale-counterparty" name="counterparty" [(ngModel)]="counterparty" maxlength="160" required [disabled]="saving()">
+    <label for="sale-usd">USD entregados</label>
+    <input id="sale-usd" name="usd" [(ngModel)]="dollars" inputmode="decimal" required [disabled]="saving()">
+    <label for="sale-ars">ARS recibidos</label>
+    <input id="sale-ars" name="ars" [(ngModel)]="pesos" inputmode="decimal" required [disabled]="saving()">
+    <button type="submit" [disabled]="form.invalid || saving()">{{ saving() ? 'Registrando…' : 'Registrar venta' }}</button>
+  </form>
+  <h4>Ventas registradas</h4>
+  @if (loading()) { <p role="status">Cargando ventas…</p> }
+  @else if (!sales().length) { <p>Todavía no hay ventas registradas.</p> }
+  <ul>
+    @for (sale of sales(); track sale.id) {
+      <li>
+        <strong>{{ sale.fecha }} · {{ sale.contraparte }}</strong>
+        <p>USD {{ showAmount(sale.usd) }} de {{ accountName(sale.origen_id) }} → ARS {{ showAmount(sale.ars) }} a {{ accountName(sale.destino_id) }}</p>
+        <p>Tipo de cambio · {{ sale.tasa }} ARS por USD</p>
+        @if (sale.referencia) { <p>Referencia {{ sale.referencia }} del {{ sale.fecha_referencia }} · Diferencia {{ sale.diferencia_pct }} %</p> }
+      </li>
+    }
+  </ul>
+  @if (offset() !== null && sales().length) {
+    <button type="button" [disabled]="loading()" (click)="load(true)">Ver más</button>
+  }
+</section>

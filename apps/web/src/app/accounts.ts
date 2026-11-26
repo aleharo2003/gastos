@@ -18,6 +18,7 @@ import { ChangeDetectorRef, Component, computed, DestroyRef, effect, inject, Inp
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { DOCUMENT } from '@angular/common';
+import { UsdSales } from './usd-sales';
 import { UsdReference } from './usd-reference';
 import { AuthSession } from './auth-session';
 
@@ -35,7 +36,7 @@ type Page = { items: Account[]; next_offset: number | null };
 type AccountBalance = { totales: { moneda: string; saldo: string }[] };
 
 @Component({
-  selector: 'app-accounts', imports: [FormsModule, CategorySettings, SpaceExport, ExpenseImport, TodayCategoryReport, Movements, Expenses, Planning, Incomes, Transfers, SavingsGoals, SavingsSummary, Commitments, DueOverview, ReminderPreferences],
+  selector: 'app-accounts', imports: [FormsModule, CategorySettings, SpaceExport, ExpenseImport, TodayCategoryReport, Movements, Expenses, Planning, Incomes, Transfers, SavingsGoals, SavingsSummary, Commitments, DueOverview, ReminderPreferences, UsdSales],
   providers: [UsdReference],
   templateUrl: './accounts.html', styleUrl: './accounts.css',
 })
@@ -66,7 +67,7 @@ export class Accounts implements OnInit {
   readonly error = signal('');
   readonly notice = signal('');
   readonly next = signal<number | null>(null);
-  readonly tab = signal<'today' | 'expenses' | 'incomes' | 'movements' | 'accounts' | 'plan' | 'savings' | 'debts' | 'reminders'>(
+  readonly tab = signal<'today' | 'expenses' | 'incomes' | 'movements' | 'accounts' | 'plan' | 'savings' | 'debts' | 'reminders' | 'usd'>(
     inject(DOCUMENT).defaultView?.matchMedia?.('(max-width: 767px)').matches ? 'expenses' : 'today',
   );
   readonly showInactive = signal(false);

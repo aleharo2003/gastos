@@ -138,6 +138,12 @@ def account_balance(session, user, space, account=None, *, through=None):
           UNION ALL
           SELECT moneda, 0::numeric, 0::numeric, 0::numeric, 0::numeric, importe
           FROM public.transferencias WHERE espacio_id=:s AND anulado_en IS NULL""" + outgoing + """
+          UNION ALL
+          SELECT 'ARS', 0::numeric, 0::numeric, 0::numeric, ars, 0::numeric
+          FROM public.ventas_usd WHERE espacio_id=:s""" + (cutoff + (' AND destino_id=:a' if account is not None else '')) + """
+          UNION ALL
+          SELECT 'USD', 0::numeric, 0::numeric, 0::numeric, 0::numeric, usd
+          FROM public.ventas_usd WHERE espacio_id=:s""" + (cutoff + (' AND origen_id=:a' if account is not None else '')) + """
         ) movimientos GROUP BY moneda ORDER BY moneda"""), {'s':space,'a':account,'through':through}).mappings().all()
     by_currency = {row['moneda']:row for row in rows}
     return {'totales':[{'moneda':currency, **{key:format(by_currency.get(currency, {}).get(key, Decimal(0)), '.2f')
@@ -190,6 +196,12 @@ def savings_summary(session, user, space, month, today, offset=0):
             UNION ALL
             SELECT origen_id, moneda, -importe FROM public.transferencias
             WHERE espacio_id=:space AND anulado_en IS NULL AND fecha<=:today AND origen_id IN (SELECT id FROM pagina)
+            UNION ALL
+            SELECT destino_id, 'ARS', ars FROM public.ventas_usd
+            WHERE espacio_id=:space AND fecha<=:today AND destino_id IN (SELECT id FROM pagina)
+            UNION ALL
+            SELECT origen_id, 'USD', -usd FROM public.ventas_usd
+            WHERE espacio_id=:space AND fecha<=:today AND origen_id IN (SELECT id FROM pagina)
         )
         SELECT a.id,a.nombre,a.activa,s.moneda,SUM(s.neto) AS saldo
         FROM pagina a LEFT JOIN saldos s ON s.cuenta_id=a.id

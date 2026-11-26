@@ -12,5 +12,8 @@ BEGIN
         RAISE EXCEPTION 'Preparar primero el rol restringido app_jobs.';
     END IF;
     GRANT EXECUTE ON FUNCTION public.generar_cuotas_mes() TO app_jobs;
+    IF to_regprocedure('public.guardar_cotizaciones_mercado(jsonb)') IS NOT NULL THEN
+        GRANT EXECUTE ON FUNCTION public.guardar_cotizaciones_mercado(jsonb) TO app_jobs;
+    END IF;
 END
 $guard$;
