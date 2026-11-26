@@ -23,6 +23,30 @@ describe('Gastos', () => {
     request.mockResolvedValue({...payload,espacio_id:'space',cuenta_id:'account'});await component.save();
     expect(request.mock.calls[2][2].id).toBe(payload.id);expect(component.items().length).toBe(1);
   });
+  it('guarda la carga rápida y conserva el ID al reintentar', async () => {
+    const { fixture, request, component } = setup();
+    await fixture.whenStable();
+    component.description = 'Borrador detallado';
+    component.openQuickEntry();
+    component.quickAmount = '100,25';
+
+    const category = { id: 'alimentos', label: 'Alimentos' };
+    request.mockRejectedValueOnce(new Error());
+    await component.saveQuick(category);
+    const payload = request.mock.calls[1][2];
+    expect(component.quickOpen()).toBe(true);
+    expect(payload).toMatchObject({
+      fecha: component.date, descripcion: 'Alimentos', importe: '100.25', moneda: 'ARS', categoria: 'alimentos',
+    });
+
+    request.mockResolvedValueOnce({ ...payload, espacio_id: 'space', cuenta_id: 'account' });
+    await component.saveQuick(category);
+    expect(request.mock.calls[2][2].id).toBe(payload.id);
+    expect(component.quickOpen()).toBe(false);
+    expect(component.description).toBe('Borrador detallado');
+    expect(component.undoable()).toEqual({ id: payload.id, account: 'account' });
+  });
+
   it('repite como gasto nuevo con fecha actual y espera la confirmación de guardado', async () => {
     const { fixture, request, component } = setup();
     await fixture.whenStable();

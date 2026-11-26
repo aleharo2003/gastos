@@ -9,6 +9,19 @@
   <button type="button" (click)="tab.set('debts')" [attr.aria-current]="tab() === 'debts' ? 'page' : null">Deudas</button>
   <button type="button" (click)="tab.set('reminders')" [attr.aria-current]="tab() === 'reminders' ? 'page' : null">Avisos</button>
 </nav>
+@if (items().length) {
+  <button type="button" class="quick-expense-action" (click)="openQuickExpense()"
+    [disabled]="expenses?.saving() || !!expenses?.editing">+ Gasto rápido</button>
+}
+@if (quickNotice() && tab() !== 'expenses') {
+  <div class="workspace-panel" role="status">
+    {{ expenses?.notice() }}
+    @if (expenses?.undoable()) {
+      <button type="button" class="secondary" [disabled]="expenses?.saving() || expenses?.loading()"
+        (click)="undoQuickExpense()">Deshacer registro</button>
+    }
+  </div>
+}
 @if(draftCount()>0){<p role="status">Tenés {{ draftCount() }} montos estimados por confirmar. <button type="button" class="secondary" (click)="tab.set('debts')">Revisar estimados</button></p>}
 <app-due-overview [space]="space" [active]="tab() === 'today'" [hidden]="tab() !== 'today'"
   [accounts]="items()" [moreAccounts]="next() !== null" [accountsLoading]="loading()"
@@ -241,7 +254,7 @@
   }
 @for (account of selected(); track account.id) {
   <app-expenses class="workspace-panel expenses-panel" [space]="space" [account]="account" [accounts]="items()"
-    [hidden]="tab() !== 'expenses'" (summaryChanged)="planRevision.update(incrementPlan)" />
+    [hidden]="tab() !== 'expenses'" (quickSaved)="finishQuickExpense()" (summaryChanged)="planRevision.update(incrementPlan)" />
   <app-incomes class="workspace-panel savings-panel" [space]="space" [account]="account" [accounts]="items()"
     [hidden]="tab() !== 'incomes'" [revision]="planRevision()" (changed)="planRevision.update(incrementPlan)" />
 }

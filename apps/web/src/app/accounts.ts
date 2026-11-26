@@ -88,6 +88,29 @@ export class Accounts implements OnInit {
 
   @ViewChild(Commitments) commitments?: Commitments;
   @ViewChild(Expenses) expenses?: Expenses;
+  private quickReturnTab?: ReturnType<typeof this.tab>;
+  readonly quickNotice = signal(false);
+
+  openQuickExpense(): void {
+    if (!this.expenses || this.expenses.editing || this.expenses.saving()) return;
+    if (this.tab() !== 'expenses' || !this.expenses.quickOpen()) this.quickReturnTab = this.tab();
+    this.quickNotice.set(false);
+    this.tab.set('expenses');
+    this.expenses.openQuickEntry();
+  }
+
+  finishQuickExpense(): void {
+    const previous = this.quickReturnTab;
+    this.quickReturnTab = undefined;
+    if (!previous || previous === 'expenses') return;
+    this.tab.set(previous);
+    this.quickNotice.set(true);
+  }
+
+  async undoQuickExpense(): Promise<void> {
+    await this.expenses?.undoSave();
+    if (this.expenses?.error()) this.tab.set('expenses');
+  }
   @ViewChild(Incomes) incomes?: Incomes;
   openIncome(): void {
     this.tab.set('incomes');

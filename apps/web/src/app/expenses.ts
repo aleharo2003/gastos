@@ -38,6 +38,55 @@ export class Expenses implements OnInit {
   @Input({ required: true }) account = { id: '', nombre: '' };
   @Input() accounts: {id:string;nombre:string}[] = [];
   @Output() summaryChanged=new EventEmitter<void>();
+  @Output() quickSaved = new EventEmitter<void>();
+  readonly quickOpen = signal(false);
+  quickAmount = '';
+  private quickPreferredId = '';
+  private pendingQuick?: { path: string; body: Payload };
+
+  private get quickPreferenceKey(): string {
+    return `piggo.quick-expense.${this.auth.userId ?? ''}.${this.space}`;
+  }
+
+  get quickAccountId(): string {
+    return this.account.id || (this.accounts.some(row => row.id === this.quickPreferredId)
+      ? this.quickPreferredId : this.accounts.length === 1 ? this.accounts[0].id : '');
+  }
+
+  setQuickAccount(event: Event): void {
+    const id = (event.target as HTMLSelectElement).value;
+    this.quickPreferredId = id;
+    try { localStorage.setItem(this.quickPreferenceKey, id); } catch {}
+  }
+
+  openQuickEntry(): void {
+    if (this.saving() || this.editing) return;
+    if (!this.quickOpen()) {
+      try { this.quickPreferredId = localStorage.getItem(this.quickPreferenceKey) ?? ''; } catch {}
+      this.error.set('');
+      this.quickOpen.set(true);
+    }
+    setTimeout(() => { if (this.alive) document.getElementById('quick-expense-amount')?.focus(); });
+  }
+
+  async saveQuick(category: { id: string; label: string }): Promise<void> {
+    if (!this.quickOpen() || this.editing || this.loading() || this.saving()) return;
+    this.notice.set('');
+    const account = this.quickAccountId;
+    const amount = normalizeAmount(this.quickAmount);
+    if (!account || !amount) {
+      this.error.set(account ? 'Ingresá un importe mayor que cero, con hasta dos decimales.' : 'Elegí la cuenta habitual del gasto.');
+      return;
+    }
+    this.error.set('');
+    const path = this.accountPath(account);
+    const previous = this.pendingQuick;
+    if (previous?.path !== path || previous.body.importe !== amount || previous.body.categoria !== category.id) {
+      this.pendingQuick = { path, body: { id: crypto.randomUUID(), fecha: today(), descripcion: category.label,
+        moneda: 'ARS', importe: amount, categoria: category.id } };
+    }
+    await this.savePaid(path, this.pendingQuick!.body, null, true);
+  }
   createAccount = '';
   editAccount = '';
   private savedAccount = '';
@@ -221,7 +270,7 @@ export class Expenses implements OnInit {
     });
   }
   hasPendingWork(): boolean {
-    return this.saving() || !!(this.editing || this.description || this.amount || this.category ||
+    return this.saving() || !!(this.quickAmount || this.editing || this.description || this.amount || this.category ||
       this.note || this.incurredDate || this.dueDate || this.unpaid)
       || !!this.receiptPanels?.some(panel => panel.busy() || !!panel.selected());
   }
@@ -396,25 +445,34 @@ export class Expenses implements OnInit {
       }
     }
     if (!this.pending || Object.entries(values).some(([key,value]) => this.pending![key as keyof Payload] !== value)) this.pending = { id: crypto.randomUUID(), ...values };
+    await this.savePaid(this.writePath, this.pending, original);
+  }
+
+  private async savePaid(path: string, payload: Payload, original: Payload | null, quick = false): Promise<void> {
     this.clearSuggestion();
     this.saving.set(true);
     let saved = false;
     try {
       const editing = this.editing;
       const row = original
-        ? await this.auth.accountRequest<Expense>('PATCH', `${this.writePath}/${original.id}`, {
+        ? await this.auth.accountRequest<Expense>('PATCH', `${path}/${original.id}`, {
           original,
-          nuevo: { id: original.id, ...values },
+          nuevo: { ...payload, id: original.id },
         })
-        : await this.auth.accountRequest<Expense>('POST', this.writePath, this.pending);
+        : await this.auth.accountRequest<Expense>('POST', path, payload);
       if (!this.alive) return;
       this.items.update(items => [row, ...items.filter(item => item.id !== row.id)].sort((a,b) => b.fecha.localeCompare(a.fecha) || b.id.localeCompare(a.id)));
       this.recentPage.update(items => [row, ...items.filter(item => item.id !== row.id)]
         .sort((a, b) => b.fecha.localeCompare(a.fecha) || b.id.localeCompare(a.id)));
-      this.pending = undefined; this.description = ''; this.amount = '';
-      this.clearDetails();
-      this.clearSuggestion();
-      this.editing=null; this.category=''; this.date=today();
+      if (quick) {
+        this.pendingQuick = undefined;
+        this.quickAmount = '';
+        this.quickOpen.set(false);
+      } else {
+        this.pending = undefined; this.description = ''; this.amount = '';
+        this.clearDetails();
+        this.editing = null; this.category = ''; this.date = today();
+      }
       this.notice.set(editing ? 'Cambios guardados.' : 'Gasto guardado.');
       saved = true;
       this.similarExpense.set(null);
@@ -422,6 +480,7 @@ export class Expenses implements OnInit {
       if (!editing) this.offerUndo(row);
       this.summaryRevision.update(n=>n+1); this.summaryChanged.emit();
       if(this.appliedFilters()){this.notice.set('Guardado. La lista respeta los filtros; el gasto puede quedar fuera de los resultados.');}
+      if (quick) this.quickSaved.emit();
     } catch (error) {
       if (this.alive) this.error.set(error instanceof HttpErrorResponse && error.status === 409 && this.editing
         ? 'El gasto cambió desde otra sesión o corresponde a un pago de cuota. Tu formulario se conserva. Los pagos de cuotas no se editan desde Gastos; para otros gastos, actualizá la lista y revisá los valores actuales.'

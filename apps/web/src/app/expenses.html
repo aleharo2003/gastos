@@ -2,7 +2,7 @@
   <div class="expense-entry">
   @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
   @if (notice()) { <p class="notice" role="status">{{ notice() }}</p> }
-  @if (undoable()) {
+  @if (undoable() && !quickOpen()) {
     <button type="button" class="secondary" (click)="undoSave()"
       [disabled]="saving() || loading() || !!editing">Deshacer registro</button>
   }
@@ -10,7 +10,37 @@
   @if(receiptOutsideList()){
     @for(id of [receiptExpense()!]; track id){<app-receipts [id]="'receipts-'+id" [path]="receiptPath(id)" />}
   }
-  <details class="expense-editor" [open]="editorOpen" (toggle)="editorOpen = editorPanel.open" #editorPanel>
+  @if (quickOpen()) {
+    <section class="quick-expense" aria-labelledby="quick-expense-title">
+      <h3 id="quick-expense-title">Carga rápida</h3>
+      <label for="quick-expense-amount">Importe en pesos (ARS)</label>
+      <input class="expense-amount" id="quick-expense-amount" type="text" inputmode="decimal"
+        [(ngModel)]="quickAmount" placeholder="0,00" [disabled]="saving()">
+      @if (!account.id) {
+        <label for="quick-expense-account">Cuenta habitual</label>
+        <select id="quick-expense-account" [value]="quickAccountId" (change)="setQuickAccount($event)" [disabled]="saving()">
+          <option value="">Elegí una cuenta</option>
+          @for (item of accounts; track item.id) {
+            <option [value]="item.id">{{ item.nombre }}</option>
+          }
+        </select>
+      } @else {
+        <p>Cuenta · {{ account.nombre }}</p>
+      }
+      <fieldset class="recent-expenses">
+        <legend>Elegí una categoría para guardar</legend>
+        <div class="quick-expense-categories">
+          @for (choice of selectableCategories; track choice.id) {
+            <button type="button" class="secondary" [disabled]="saving() || loading() || !quickAccountId || !quickAmount"
+              (click)="saveQuick(choice)">{{ choice.label }}</button>
+          }
+        </div>
+      </fieldset>
+      @if (saving()) { <p role="status">Guardando gasto…</p> }
+      <button type="button" class="secondary" [disabled]="saving()" (click)="quickOpen.set(false)">Cerrar carga rápida</button>
+    </section>
+  }
+  <details class="expense-editor" [hidden]="quickOpen()" [open]="editorOpen" (toggle)="editorOpen = editorPanel.open" #editorPanel>
     <summary id="expense-entry-title">{{ editing ? 'Editar gasto' : 'Registrar gasto' }}</summary>
   <form #expenseForm="ngForm" (ngSubmit)="save()">
     @if (editing) { <h4>Editar gasto · {{ accountName(editAccount) }}</h4> }
