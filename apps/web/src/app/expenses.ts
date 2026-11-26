@@ -16,6 +16,7 @@ type CategoryTotal = { moneda: string; categoria: string | null; total: string }
 type CategoryReport = { desde: string; hasta: string; items: CategoryTotal[] };
 type CategorySuggestion = {categoria:string|null;coincidencias:number;total:number};
 type Payload = Pick<Expense, 'id' | 'fecha' | 'descripcion' | 'moneda' | 'importe' | 'categoria'> & ExpenseDetails;
+type PendingPayload = Omit<Payload, 'fecha'>;
 const expenseDetailFields = ['nota', 'fecha_devengamiento', 'fecha_vencimiento'] as const;
 export function normalizeAmount(value: string): string | null {
   const text = value.trim().replace(',', '.');
@@ -67,10 +68,14 @@ export class Expenses implements OnInit {
   note = '';
   incurredDate = '';
   dueDate = '';
+  unpaid = false;
+  private pendingExpense?: { path: string; body: PendingPayload };
   private clearDetails(): void {
     this.note = '';
     this.incurredDate = '';
     this.dueDate = '';
+    this.unpaid = false;
+    this.pendingExpense = undefined;
   }
   readonly suggestion = signal<CategorySuggestion|null>(null);
   readonly suggesting = signal(false);
@@ -211,7 +216,7 @@ export class Expenses implements OnInit {
   editorOpen = true;
   hasPendingWork(): boolean {
     return this.saving() || !!(this.editing || this.description || this.amount || this.category ||
-      this.note || this.incurredDate || this.dueDate)
+      this.note || this.incurredDate || this.dueDate || this.unpaid)
       || !!this.receiptPanels?.some(panel => panel.busy() || !!panel.selected());
   }
   editing: Payload | null = null;
@@ -237,9 +242,10 @@ export class Expenses implements OnInit {
 
   edit(item: Expense): void {
     if (this.saving() || this.loading()) return;
-    if ((this.editing || this.description || this.amount || this.note || this.incurredDate || this.dueDate) &&
+    if ((this.editing || this.description || this.amount || this.note || this.incurredDate || this.dueDate || this.unpaid) &&
         !window.confirm('¿Descartar el formulario actual y editar este gasto?')) return;
     this.clearSuggestion();
+    this.clearDetails();
     this.editorOpen = true;
     this.similarExpense.set(null);
     this.editAccount = item.cuenta_id;
@@ -357,10 +363,20 @@ export class Expenses implements OnInit {
     const amount = normalizeAmount(this.amount), description = this.description.trim();
     this.error.set(''); this.notice.set('');
     if (!amount) { this.error.set('Ingresá un importe mayor que cero, sin separador de miles y con hasta dos decimales.'); return; }
-    if (!description || [...description].length > 160 || !this.date || !['ARS','USD','EUR'].includes(this.currency)) return;
+    if (!description || [...description].length > 160 || !['ARS','USD','EUR'].includes(this.currency)) return;
     const note = this.note.trim() || null;
     if (note && [...note].length > 500) { this.error.set('La nota admite hasta 500 caracteres.'); return; }
     const details = { nota: note, fecha_devengamiento: this.incurredDate || null, fecha_vencimiento: this.dueDate || null };
+    if (this.unpaid && !this.editing) {
+      if (!this.dueDate) {
+        this.error.set('Ingresá el vencimiento del gasto pendiente.');
+        return;
+      }
+      await this.savePending({ descripcion: description, moneda: this.currency, importe: amount,
+        categoria: this.category || null, ...details });
+      return;
+    }
+    if (!this.date) return;
     const values: Omit<Payload, 'id'> = {fecha: this.date, descripcion: description, moneda: this.currency, importe: amount, categoria: this.category || null};
     const original = this.editing ? { ...this.editing } : null;
     for (const key of expenseDetailFields) {
@@ -410,6 +426,30 @@ export class Expenses implements OnInit {
     if (saved && this.alive && this.reportOpen) void this.loadCategoryReport();
     if(saved && this.alive && this.appliedFilters()) {
       this.items.set([]); this.next.set(null); await this.load();
+    }
+  }
+
+  private async savePending(values: Omit<PendingPayload, 'id'>): Promise<void> {
+    const path = this.writePath + '/pending';
+    const previous = this.pendingExpense;
+    if (previous?.path !== path || Object.entries(values).some(([key, value]) => previous.body[key as keyof PendingPayload] !== value)) {
+      this.pendingExpense = { path, body: { id: crypto.randomUUID(), ...values } };
+    }
+    this.clearSuggestion();
+    this.saving.set(true);
+    try {
+      await this.auth.accountRequest('POST', path, this.pendingExpense!.body);
+      if (!this.alive) return;
+      this.description = ''; this.amount = ''; this.category = ''; this.date = today();
+      this.clearDetails();
+      this.notice.set('Gasto pendiente guardado. Podés pagarlo desde Hoy.');
+      this.summaryChanged.emit();
+    } catch (error) {
+      if (this.alive) this.error.set(error instanceof HttpErrorResponse && error.status === 409
+        ? 'La cuenta está archivada o el gasto cambió. Revisá la cuenta antes de reintentar.'
+        : 'No pudimos confirmar el gasto pendiente. Reintentá con los mismos datos para evitar duplicados.');
+    } finally {
+      if (this.alive) this.saving.set(false);
     }
   }
 }

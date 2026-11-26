@@ -13,8 +13,11 @@
     @if (!hidden()) {
       <form class="card payment" (ngSubmit)="pay()" aria-labelledby="due-payment-title">
         <h4 id="due-payment-title">Registrar pago · {{ item.nombre }}</h4>
-        <p>Cuota {{ item.numero }} · Saldo al abrir {{ item.moneda }} {{ amount(item.pendiente) }}</p>
+        <p>{{ item.cuenta_id ? 'Gasto pendiente' : 'Cuota ' + item.numero }} · {{ item.moneda }} {{ amount(item.pendiente) }}</p>
         <fieldset [disabled]="saving() || uncertain()">
+          @if (item.cuenta_id) {
+            @if (accountName(item.cuenta_id); as name) { <p>Cuenta del gasto {{ name }}</p> }
+          } @else {
           <label for="due-pay-account">Cuenta</label>
           <select id="due-pay-account" name="dueAccount" [(ngModel)]="account" required>
             <option value="">Elegí una cuenta</option>
@@ -25,10 +28,13 @@
           @if (moreAccounts) {
             <button type="button" (click)="loadAccounts.emit()" [disabled]="accountsLoading">Cargar más cuentas</button>
           }
+          }
           <label for="due-pay-date">Fecha de pago</label>
           <input id="due-pay-date" type="date" name="dueDate" [(ngModel)]="paymentDate" required />
-          <label for="due-pay-amount">Importe en {{ item.moneda }}</label>
-          <input id="due-pay-amount" name="dueAmount" inputmode="decimal" [(ngModel)]="paymentAmount" required />
+          @if (!item.cuenta_id) {
+            <label for="due-pay-amount">Importe en {{ item.moneda }}</label>
+            <input id="due-pay-amount" name="dueAmount" inputmode="decimal" [(ngModel)]="paymentAmount" required />
+          }
         </fieldset>
         <div class="payment-actions">
           <button type="submit" [disabled]="saving()">{{ saving() ? 'Registrando…' : uncertain() ? 'Reintentar pago' : 'Registrar pago' }}</button>
@@ -44,7 +50,7 @@
     @if (hasPending(data)) {
       <div class="groups">
         @for (section of sections; track section.key) {
-          @let group = data.grupos[section.key];
+          @if (data.grupos[section.key]; as group) {
           <section class="card"
             [class.due-today]="section.key === 'hoy' && group.cantidad > 0"
             [class.due-week]="section.key === 'semana'"
@@ -60,7 +66,7 @@
               <ul>
                 @for (item of group.items; track item.id) {
                   <li>
-                    <div><strong>{{ item.nombre }}</strong><small>Cuota {{ item.numero }} · {{ shortDate(item.vencimiento) }}</small></div>
+                    <div><strong>{{ item.nombre }}</strong><small>{{ item.cuenta_id ? 'Gasto pendiente' : 'Cuota ' + item.numero }} · {{ shortDate(item.vencimiento) }}</small></div>
                     <div>
                       <strong>{{ item.moneda }} {{ amount(item.pendiente) }}</strong>
                       @if (item.pendiente_ajuste) {
@@ -70,21 +76,22 @@
                       } @else if (!hidden()) {
                         <button type="button" (click)="startPayment(item)"
                           [disabled]="!!selected() || loading() || error()"
-                          [attr.aria-label]="'Registrar pago de ' + item.nombre + ', cuota ' + item.numero">Pagar</button>
+                          [attr.aria-label]="'Registrar pago de ' + item.nombre + (item.cuenta_id ? '' : ', cuota ' + item.numero)">Pagar</button>
                       }
                     </div>
                   </li>
                 }
               </ul>
               @if (group.cantidad > group.items.length) {
-                <p>Mostrando {{ group.items.length }} de {{ group.cantidad }} cuotas. Consultá el resto en Deudas.</p>
+                <p>Mostrando {{ group.items.length }} de {{ group.cantidad }} vencimientos.</p>
               }
-            } @else { <p>Sin cuotas pendientes.</p> }
+            } @else { <p>Sin vencimientos pendientes.</p> }
           </section>
+          }
         }
       </div>
     } @else {
-      <p class="card" role="status">No tenés cuotas vencidas ni pendientes para hoy o el resto de la semana.</p>
+      <p class="card" role="status">No tenés vencimientos pendientes para hoy o el resto de la semana.</p>
     }
     <ng-content select="[category-alerts]"></ng-content>
     @if (data.presupuesto.gastos; as spending) {
@@ -163,7 +170,7 @@
               <div><dt>Pasivos</dt><dd>{{ worth.currency }} {{ formatBudget(worth.liabilities) }}</dd></div>
               <div><dt>Patrimonio neto</dt><dd><strong>{{ worth.currency }} {{ formatBudget(worth.net) }}</strong></dd></div>
             </dl>
-            <p>Incluye los saldos de tus cuentas y las cuotas pendientes ya generadas.</p>
+            <p>Incluye los saldos de tus cuentas, las cuotas generadas y los gastos pendientes.</p>
             @if (worth.estimated) { <p>Conversión estimada · 1 USD = ARS {{ rate() }}</p> }
           }
         }

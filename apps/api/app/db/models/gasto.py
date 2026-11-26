@@ -41,3 +41,30 @@ class Gasto(Base):
     importado_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     nota: Mapped[str | None] = mapped_column(Text, nullable=True)
     categoria: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class GastoPendiente(Base):
+    __tablename__ = 'gastos_pendientes'
+    __table_args__ = (
+        ForeignKeyConstraint(['espacio_id', 'cuenta_id'], ['public.cuentas.espacio_id', 'public.cuentas.id']),
+        ForeignKeyConstraint(['espacio_id', 'gasto_id'], ['public.gastos.espacio_id', 'public.gastos.id']),
+        CheckConstraint('gasto_id IS NULL OR gasto_id=id', name='ck_gastos_pendientes_pago'),
+        CheckConstraint("moneda IN ('ARS','USD','EUR')", name='ck_gastos_pendientes_moneda'),
+        CheckConstraint('importe > 0 AND importe < 1000000000000', name='ck_gastos_pendientes_importe'),
+        CheckConstraint('char_length(btrim(descripcion)) BETWEEN 1 AND 160', name='ck_gastos_pendientes_descripcion'),
+        CheckConstraint('nota IS NULL OR char_length(nota) BETWEEN 1 AND 500', name='ck_gastos_pendientes_nota'),
+        Index('ix_gastos_pendientes_espacio_vencimiento', 'espacio_id', 'fecha_vencimiento', 'id',
+              postgresql_where=text('gasto_id IS NULL')),
+    )
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    espacio_id: Mapped[UUID] = mapped_column(Uuid)
+    cuenta_id: Mapped[UUID] = mapped_column(Uuid)
+    usuario_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey('public.perfiles.usuario_id'))
+    fecha_devengamiento: Mapped[date | None] = mapped_column(Date)
+    fecha_vencimiento: Mapped[date] = mapped_column(Date)
+    descripcion: Mapped[str] = mapped_column(Text)
+    moneda: Mapped[str] = mapped_column(Text)
+    importe: Mapped[Decimal] = mapped_column(Numeric(14, 2))
+    categoria: Mapped[str | None] = mapped_column(Text)
+    nota: Mapped[str | None] = mapped_column(Text)
+    gasto_id: Mapped[UUID | None] = mapped_column(Uuid)

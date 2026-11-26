@@ -76,6 +76,26 @@ describe('Pagos desde Hoy', () => {
     expect(changed).toHaveBeenCalledTimes(1);
   });
 
+  it('paga un gasto pendiente por su importe completo en la cuenta registrada', async () => {
+    const { fixture, component, request } = await setup();
+    const pending = { ...installment, id: 'invoice', nombre: 'Luz', numero: null, cuenta_id: 'bank' };
+    const data = overview('100.00');
+    request.mockResolvedValueOnce({ ...data, grupos: { ...data.grupos,
+      hoy: { ...data.grupos.hoy, items: [pending] },
+    } });
+    await component.load();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[aria-label="Registrar pago de Luz"]').click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('#due-pay-amount')).toBeNull();
+    component.paymentDate = '2026-11-18';
+    request.mockResolvedValueOnce({ id: pending.id }).mockResolvedValueOnce(data);
+    await component.pay();
+    expect(request).toHaveBeenCalledWith('POST', '/api/spaces/shared/accounts/bank/expenses/invoice/pay-pending',
+      { fecha: '2026-11-18' });
+    expect(component.selected()).toBeNull();
+  });
+
   it('reintenta el mismo pago si se pierde la respuesta', async () => {
     const { fixture, component, request } = await setup();
     component.startPayment(installment);

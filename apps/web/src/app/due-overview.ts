@@ -9,13 +9,14 @@ import { money, rateUnits, reference, type CurrencyTotal } from './money-referen
 import { limitUsage, type LimitPeriod, type PlanLimits } from './planning-math';
 
 type DueTotal = { moneda: string; pendiente: string };
-type DueItem = DueTotal & { id: string; nombre: string; numero: number; vencimiento: string; estimado: boolean; pendiente_ajuste?: boolean };
+type DueItem = DueTotal & { id: string; nombre: string; numero: number | null; vencimiento: string; estimado: boolean;
+  pendiente_ajuste?: boolean; cuenta_id?: string };
 type Group = { cantidad: number; totales: DueTotal[]; items: DueItem[] };
 
 type Overview = {
   fecha: string;
   fin_semana: string;
-  grupos: Record<'hoy' | 'semana' | 'vencidas', Group>;
+  grupos: Record<'hoy' | 'semana' | 'vencidas', Group> & { proximos?: Group };
   resumen_mes: (DueTotal & { pagado: string })[];
   saldos: { moneda: string; saldo: string }[];
   deudas?: DueTotal[];
@@ -75,6 +76,7 @@ export class DueOverview implements OnChanges {
     { key: 'hoy', title: 'Vencen hoy' },
     { key: 'semana', title: 'Resto de la semana' },
     { key: 'vencidas', title: 'Vencidas' },
+    { key: 'proximos', title: 'Próximos gastos' },
   ] as const;
 
   private readonly auth = inject(AuthSession);
@@ -140,7 +142,7 @@ export class DueOverview implements OnChanges {
     if (item.estimado || item.pendiente_ajuste || this.hidden() || this.selected() || this.saving() || this.loading() || this.error()) return;
     this.paymentError.set('');
     this.notice.set('');
-    this.account = this.accounts.length === 1 ? this.accounts[0].id : '';
+    this.account = item.cuenta_id ?? (this.accounts.length === 1 ? this.accounts[0].id : '');
     this.paymentDate = installmentLocalDate();
     this.paymentAmount = item.pendiente;
     this.selected.set(item);
@@ -162,11 +164,12 @@ export class DueOverview implements OnChanges {
     const item = this.selected();
     if (!item || item.estimado || item.pendiente_ajuste || this.saving() || this.hidden()) return;
 
-    const payment = this.pendingPayment ?? prepareInstallmentPayment(item.id, {
+    const payment = item.cuenta_id ? undefined : this.pendingPayment ?? prepareInstallmentPayment(item.id, {
       cuenta_id: this.account, fecha: this.paymentDate, importe: this.paymentAmount,
     }, item.pendiente, this.accounts);
-    if (!payment) {
-      this.paymentError.set('Elegí una cuenta, una fecha y un importe positivo que no supere el saldo de la cuota.');
+    if (item.cuenta_id ? !this.paymentDate : !payment) {
+      this.paymentError.set(item.cuenta_id ? 'Ingresá la fecha de pago.'
+        : 'Elegí una cuenta, una fecha y un importe positivo que no supere el saldo de la cuota.');
       return;
     }
 
@@ -176,10 +179,18 @@ export class DueOverview implements OnChanges {
     this.paymentError.set('');
     let refresh = false;
     try {
-      await submitInstallmentPayment(this.auth, this.space, payment);
+      if (item.cuenta_id) {
+        const root = '/api/spaces/' + encodeURIComponent(this.space);
+        const path = root + '/accounts/' + encodeURIComponent(item.cuenta_id) +
+          '/expenses/' + encodeURIComponent(item.id) + '/pay-pending';
+        await this.auth.accountRequest('POST', path, { fecha: this.paymentDate });
+      } else {
+        await submitInstallmentPayment(this.auth, this.space, payment!);
+      }
       if (version !== this.paymentVersion) return;
       this.clearPayment();
-      this.notice.set('Pago registrado. El saldo se actualizó en Deudas y Gastos.');
+      this.notice.set(item.cuenta_id ? 'Pago registrado en Gastos. El saldo se actualizó.'
+        : 'Pago registrado. El saldo se actualizó en Deudas y Gastos.');
       this.paymentSaved.emit();
       refresh = true;
     } catch (error) {
@@ -187,7 +198,8 @@ export class DueOverview implements OnChanges {
       const status = error instanceof HttpErrorResponse ? error.status : 0;
       if (status === 409 || status === 404) {
         this.clearPayment();
-        this.paymentError.set('La cuota cambió. Revisá el saldo actualizado antes de pagar.');
+        this.paymentError.set(item.cuenta_id ? 'El gasto cambió o la cuenta está archivada. Revisá el estado antes de pagar.'
+          : 'La cuota cambió. Revisá el saldo actualizado antes de pagar.');
         refresh = true;
       } else if (status === 400 || status === 403 || status === 422) {
         this.pendingPayment = undefined;
@@ -238,7 +250,11 @@ export class DueOverview implements OnChanges {
   }
 
   hasPending(overview: Overview): boolean {
-    return this.sections.some(({ key }) => overview.grupos[key].cantidad > 0);
+    return this.sections.some(({ key }) => (overview.grupos[key]?.cantidad ?? 0) > 0);
+  }
+
+  accountName(id: string): string {
+    return this.accounts.find(account => account.id === id)?.nombre ?? '';
   }
 
   shortDate(date: string): string {

@@ -101,10 +101,10 @@ function monthlyPage(value:unknown,space:string,month:string,offset:number){
   });
   return {mes:month,items,totales,next_offset:page.next_offset};
 }
-const dueGroups = ['hoy','semana','vencidas'] as const;
+const dueGroups = ['hoy','semana','vencidas','proximos'] as const;
 type DueGroupKey = typeof dueGroups[number];
 type DueTotal = { moneda:string; pendiente:string };
-type DueItem = DueTotal & { id:string; nombre:string; numero:number; vencimiento:string; estimado:boolean; pendiente_ajuste?:boolean };
+type DueItem = DueTotal & { id:string; nombre:string; numero:number|null; vencimiento:string; estimado:boolean; pendiente_ajuste?:boolean; cuenta_id?:string };
 type DueGroup = { cantidad:number; totales:DueTotal[]; items:DueItem[] };
 type DueOverview = {
   fecha:string;
@@ -127,7 +127,7 @@ function dueTotals<T extends DueTotal>(value:T[]):T[]{
 function dueOverview(value:unknown){
   const page=value as DueOverview;
   if(!page||!date(page.fecha)||!date(page.fin_semana)||page.fin_semana<page.fecha||!page.grupos)throw new Error();
-  const groups=dueGroups.map(key=>{
+  const groups=dueGroups.filter(key => key !== 'proximos' || page.grupos.proximos !== undefined).map(key=>{
     const group=page.grupos[key];
     if(!group||!Number.isSafeInteger(group.cantidad)||group.cantidad<0||!Array.isArray(group.items)||
        group.items.length!==Math.min(group.cantidad,20))throw new Error();
@@ -139,17 +139,20 @@ function dueOverview(value:unknown){
     const seen=new Set<string>();
     const items=group.items.map(row=>{
       if(!row||!validId(row.id)||seen.has(row.id)||typeof row.nombre!=='string'||!row.nombre.trim()||
-         [...row.nombre].length>160||!Number.isInteger(row.numero)||row.numero<1||row.numero>119988||
+         [...row.nombre].length>160||
+         (row.cuenta_id === undefined ? row.numero === null || !Number.isInteger(row.numero) || row.numero<1 || row.numero>119988
+           : !validId(row.cuenta_id) || row.numero !== null || row.estimado || row.pendiente_ajuste) ||
          !date(row.vencimiento)||typeof row.estimado!=='boolean'||!sum(row.pendiente)||cents(row.pendiente)<=0n||
          (row.pendiente_ajuste!==undefined&&typeof row.pendiente_ajuste!=='boolean')||
          (row.pendiente_ajuste&&row.estimado)||!totals.some(total=>total.moneda===row.moneda)||
          (key==='hoy'&&row.vencimiento!==page.fecha)||
          (key==='vencidas'&&row.vencimiento>=page.fecha)||
-         (key==='semana'&&(row.vencimiento<=page.fecha||row.vencimiento>page.fin_semana)))throw new Error();
+         (key==='semana'&&(row.vencimiento<=page.fecha||row.vencimiento>page.fin_semana))||
+         (key==='proximos'&&(!row.cuenta_id||row.vencimiento<=page.fin_semana)))throw new Error();
       seen.add(row.id);
       const {id,nombre,numero,vencimiento,moneda,pendiente,estimado}=row;
       return {id,nombre,numero,vencimiento,moneda,pendiente,estimado,
-        ...(row.pendiente_ajuste?{pendiente_ajuste:true}:{})};
+        ...(row.pendiente_ajuste?{pendiente_ajuste:true}:{}), ...(row.cuenta_id ? { cuenta_id: row.cuenta_id } : {})};
     });
     return [key,{cantidad:group.cantidad,totales:totals,items}] as const;
   });

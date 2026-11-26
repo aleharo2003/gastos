@@ -557,7 +557,7 @@ def post_installment_skip(space: UUID, identifier: UUID, body: SkipInstallmentIn
                    lambda session, user: skip_installment(session, user, space, identifier, body.version))
 
 
-def due_overview(session, user, space, today=None):
+def due_overview(session, user, space, today=None, *, include_expenses=False):
     require_member(session, user, space)
     today = today or commitment_local_date()
     week_end = today + timedelta(days=6-today.weekday())
@@ -577,43 +577,52 @@ def due_overview(session, user, space, today=None):
             WHERE q.espacio_id=:space AND NOT q.no_aplica
               AND q.vencimiento<=GREATEST(:week_end,:month_end)
         ), pending AS (
-            SELECT *, importe-pagado AS pendiente,
+            SELECT id, numero, vencimiento, estimado, pendiente_ajuste, nombre, moneda,
+                NULL::uuid AS cuenta_id, importe-pagado AS pendiente,
                 CASE WHEN vencimiento<:today THEN 'vencidas'
                      WHEN vencimiento=:today THEN 'hoy' ELSE 'semana' END AS grupo
             FROM amounts WHERE importe>pagado AND vencimiento<=:week_end
+            UNION ALL
+            SELECT id, NULL, fecha_vencimiento, false, false, descripcion, moneda, cuenta_id, importe,
+                CASE WHEN fecha_vencimiento<:today THEN 'vencidas' WHEN fecha_vencimiento=:today THEN 'hoy'
+                     WHEN fecha_vencimiento<=:week_end THEN 'semana' ELSE 'proximos' END
+            FROM public.gastos_pendientes WHERE :include_expenses AND espacio_id=:space AND gasto_id IS NULL
         ), ranked AS (
             SELECT *, ROW_NUMBER() OVER (PARTITION BY grupo ORDER BY vencimiento,id) AS rank
             FROM pending
         )
         SELECT 'total' AS type, grupo, moneda, COUNT(*) AS cantidad,
             SUM(pendiente) AS pendiente, NULL::numeric AS pagado, NULL::date AS vencimiento,
-            NULL::uuid AS id, NULL::text AS nombre, NULL::int AS numero, NULL::boolean AS estimado, NULL::boolean AS pendiente_ajuste
+            NULL::uuid AS id, NULL::text AS nombre, NULL::int AS numero, NULL::boolean AS estimado,
+            NULL::boolean AS pendiente_ajuste, NULL::uuid AS cuenta_id
         FROM pending GROUP BY grupo,moneda
         UNION ALL
-        SELECT 'item', grupo, moneda, NULL, pendiente, NULL, vencimiento,id,nombre,numero,estimado,pendiente_ajuste
+        SELECT 'item', grupo, moneda, NULL, pendiente, NULL, vencimiento,id,nombre,numero,estimado,pendiente_ajuste,cuenta_id
         FROM ranked WHERE rank<=20
         UNION ALL
-        SELECT 'mes', NULL, moneda, COUNT(*), SUM(importe-pagado), SUM(pagado), NULL,NULL,NULL,NULL,NULL,NULL
+        SELECT 'mes', NULL, moneda, COUNT(*), SUM(importe-pagado), SUM(pagado), NULL,NULL,NULL,NULL,NULL,NULL,NULL
         FROM amounts WHERE vencimiento BETWEEN :month_start AND :month_end GROUP BY moneda
         ORDER BY type,grupo,moneda,vencimiento,id
     """), {'space':space,'today':today,'week_end':week_end,
-           'month_start':month_start,'month_end':month_end}).mappings()
+           'month_start':month_start,'month_end':month_end,'include_expenses':include_expenses}).mappings()
     groups = {key:{'cantidad':0,'totales':[],'items':[]} for key in ('hoy','semana','vencidas')}
     month = []
     for row in rows:
         amount = format(row['pendiente'], '.2f')
         if row['type']=='mes':
             month.append({'moneda':row['moneda'],'pagado':format(row['pagado'],'.2f'),'pendiente':amount})
-        elif row['type']=='total':
-            group = groups[row['grupo']]
+            continue
+        group = groups.setdefault(row['grupo'], {'cantidad':0,'totales':[],'items':[]})
+        if row['type']=='total':
             group['cantidad'] += row['cantidad']
             group['totales'].append({'moneda':row['moneda'],'pendiente':amount})
         else:
-            groups[row['grupo']]['items'].append({
+            group['items'].append({
                 'id':str(row['id']),'nombre':row['nombre'],'numero':row['numero'],
                 'moneda':row['moneda'],'pendiente':amount,'estimado':row['estimado'],
                 'vencimiento':row['vencimiento'].isoformat(),
-            } | ({'pendiente_ajuste': True} if row['pendiente_ajuste'] else {}))
+            } | ({'pendiente_ajuste': True} if row['pendiente_ajuste'] else {})
+              | ({'cuenta_id': str(row['cuenta_id'])} if row['cuenta_id'] else {}))
     for group in groups.values():
         group['items'].sort(key=lambda item:(item['vencimiento'],item['id']))
     return {'fecha':today.isoformat(),'fin_semana':week_end.isoformat(),
@@ -622,14 +631,23 @@ def due_overview(session, user, space, today=None):
 
 def today_overview(session, user, space, today=None):
     today = today or commitment_local_date()
-    result = due_overview(session, user, space, today)
+    result = due_overview(session, user, space, today, include_expenses=True)
     balance = account_balance(session, user, space)
     plan = get_plan(session, user, space)
     usage = expense_summary(session, user, space, day=today)
+    debts = {row['moneda']: Decimal(row['pendiente'])
+             for row in list_commitments(session, user, space, page_size=0)['totales']}
+    pending = session.execute(text("""
+        SELECT moneda, SUM(importe) FROM public.gastos_pendientes
+        WHERE espacio_id=:space AND gasto_id IS NULL GROUP BY moneda
+    """), {'space': space})
+    for currency, amount in pending:
+        debts[currency] = debts.get(currency, Decimal(0)) + amount
     return {
         **result,
         'saldos': balance,
-        'deudas': list_commitments(session, user, space, page_size=0)['totales'],
+        'deudas': [{'moneda': currency, 'pendiente': format(amount, '.2f')}
+                   for currency, amount in sorted(debts.items()) if amount > 0],
         'presupuesto': {'limites': plan['datos']['limites'], 'gastos': usage['totales']},
     }
 
