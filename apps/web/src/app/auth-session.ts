@@ -4,11 +4,11 @@ import { firstValueFrom } from 'rxjs';
 import type { Session, SupabaseClient } from '@supabase/supabase-js';
 import { environment } from '../environments/environment';
 
-export const AUTH_CLIENT_FACTORY = new InjectionToken<(url: string, key: string, storageKey: string) => Promise<SupabaseClient>>('AUTH_CLIENT_FACTORY', {
-  providedIn: 'root', factory: () => async (url, key, storageKey) => {
+export const AUTH_CLIENT_FACTORY = new InjectionToken<(url: string, key: string, storageKey: string, persistSession?: boolean) => Promise<SupabaseClient>>('AUTH_CLIENT_FACTORY', {
+  providedIn: 'root', factory: () => async (url, key, storageKey, persistSession = true) => {
     const { createClient } = await import('@supabase/supabase-js');
     return createClient(url, key, { auth: {
-      storageKey, persistSession: true, autoRefreshToken: true, detectSessionInUrl: false,
+      storageKey, persistSession, autoRefreshToken: persistSession, detectSessionInUrl: false,
     } });
   },
 });
@@ -35,6 +35,38 @@ export class AuthSession {
   private started = false;
   private signingOut = false;
   private storageKey = '';
+  private recoveryFactory?: () => Promise<SupabaseClient>;
+  private recoveryClient?: SupabaseClient;
+
+  async requestPasswordReset(email: string, redirectTo: string): Promise<void> {
+    await this.client?.auth.resetPasswordForEmail(email.trim(), { redirectTo }).catch(() => undefined);
+  }
+
+  async resetPassword(token: string, password: string): Promise<'updated' | 'expired' | 'retry'> {
+    try {
+      if (!this.recoveryClient) {
+        const client = await this.recoveryFactory?.();
+        if (!client) return 'retry';
+        const { data, error } = await client.auth.verifyOtp({ type: 'recovery', token_hash: token });
+        if (error || !data.session) {
+          return error?.status === 400 || error?.status === 403 || error?.status === 422 ? 'expired' : 'retry';
+        }
+        this.recoveryClient = client;
+      }
+      const { error } = await this.recoveryClient.auth.updateUser({ password });
+      if (error) return 'retry';
+      await this.endPasswordRecovery();
+      return 'updated';
+    } catch {
+      return 'retry';
+    }
+  }
+
+  async endPasswordRecovery(): Promise<void> {
+    const client = this.recoveryClient;
+    this.recoveryClient = undefined;
+    await client?.auth.signOut({ scope: 'local' }).catch(() => undefined);
+  }
 
   get userId(): string | undefined {
     return this.session?.user.id;
@@ -48,6 +80,9 @@ export class AuthSession {
       if (!/^[a-z0-9]{20}$/.test(config.projectRef) || !config.publishableKey?.startsWith('sb_publishable_')) throw new Error();
       this.storageKey = `gastos-auth-${config.projectRef}`;
       this.client = await this.factory(`https://${config.projectRef}.supabase.co`, config.publishableKey, this.storageKey);
+      this.recoveryFactory = () => this.factory(
+        `https://${config.projectRef}.supabase.co`, config.publishableKey, this.storageKey + '-recovery', false,
+      );
       const subscription = this.client.auth.onAuthStateChange((_event, session) => {
         if (!this.signingOut) this.acceptSession(session);
       }).data.subscription;

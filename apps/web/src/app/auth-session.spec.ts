@@ -11,18 +11,28 @@ describe('AuthSession', () => {
   let service: AuthSession;
   let event: (event: string, session: Session | null) => void;
   let auth: any;
+  let recoveryAuth: any;
+  let factory: ReturnType<typeof vi.fn>;
   beforeEach(() => {
     auth = {
       onAuthStateChange: vi.fn((callback) => { event = callback; return { data: { subscription: { unsubscribe: vi.fn() } } }; }),
       getSession: vi.fn().mockResolvedValue({ data: { session: null }, error: null }),
       signInWithPassword: vi.fn().mockResolvedValue({ data: { session }, error: null }),
       signOut: vi.fn().mockResolvedValue({ error: null }),
+      resetPasswordForEmail: vi.fn().mockResolvedValue({ error: null }),
       startAutoRefresh: vi.fn().mockResolvedValue(undefined),
       stopAutoRefresh: vi.fn().mockResolvedValue(undefined),
     };
+    recoveryAuth = {
+      verifyOtp: vi.fn().mockResolvedValue({ data: { session }, error: null }),
+      updateUser: vi.fn().mockResolvedValue({ error: null }),
+      signOut: vi.fn().mockResolvedValue({ error: null }),
+    };
+    factory = vi.fn(async (_url, _key, _storageKey, persistSession = true) =>
+      ({ auth: persistSession ? auth : recoveryAuth }) as unknown as SupabaseClient);
     TestBed.configureTestingModule({ providers: [
       provideHttpClient(), provideHttpClientTesting(),
-      { provide: AUTH_CLIENT_FACTORY, useValue: async () => ({ auth }) as unknown as SupabaseClient },
+      { provide: AUTH_CLIENT_FACTORY, useValue: factory },
     ] });
     service = TestBed.inject(AuthSession); http = TestBed.inject(HttpTestingController);
   });
@@ -32,6 +42,33 @@ describe('AuthSession', () => {
     http.expectOne('/auth-config.json').flush({ projectRef: 'cyxhyfbiacfayixbmotq', publishableKey: 'sb_publishable_test' });
     await pending;
   }
+  it('solicita la recuperación sin exponer errores del proveedor', async () => {
+    await initialize();
+    auth.resetPasswordForEmail.mockRejectedValueOnce(new Error('private detail'));
+    await expect(service.requestPasswordReset(' test@example.com ', 'https://piggo.example/?recuperar=1'))
+      .resolves.toBeUndefined();
+    expect(auth.resetPasswordForEmail).toHaveBeenCalledWith('test@example.com', {
+      redirectTo: 'https://piggo.example/?recuperar=1',
+    });
+    expect(service.message()).toBe('');
+  });
+
+  it('cambia la contraseña en una sesión separada y rechaza un enlace usado', async () => {
+    await initialize();
+    expect(await service.resetPassword('test-hash', 'long-test-password')).toBe('updated');
+    expect(factory).toHaveBeenLastCalledWith(expect.any(String), expect.any(String),
+      expect.stringMatching(/-recovery$/), false);
+    expect(recoveryAuth.verifyOtp).toHaveBeenCalledWith({ type: 'recovery', token_hash: 'test-hash' });
+    expect(recoveryAuth.updateUser).toHaveBeenCalledWith({ password: 'long-test-password' });
+    expect(recoveryAuth.signOut).toHaveBeenCalledWith({ scope: 'local' });
+    expect(service.signedIn()).toBe(false);
+    http.expectNone('/api/me');
+
+    recoveryAuth.verifyOtp.mockResolvedValueOnce({ data: { session: null }, error: { status: 403 } });
+    expect(await service.resetPassword('test-hash', 'another-test-password')).toBe('expired');
+    expect(recoveryAuth.updateUser).toHaveBeenCalledTimes(1);
+  });
+
   it('crea espacio con token y permite repetir sin duplicados de UI', async () => {
     await initialize(); await service.login('test@example.com', 'password');
     http.expectOne('/api/me').flush({ usuario_id: 'user-1' }); await Promise.resolve();

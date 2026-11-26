@@ -10,6 +10,7 @@ describe('Login web', () => {
       ready: signal(true), available: signal(true), busy: signal(false),
       checking: signal(false), signedIn: signal(false), verified: signal(false),
       email: signal(''), message: signal(''), personalSpace: signal(''), creatingSpace: signal(false), createPersonalSpace: vi.fn(),
+      resetPassword: vi.fn().mockResolvedValue('updated'), endPasswordRecovery: vi.fn(),
       initialize: vi.fn().mockResolvedValue(undefined),
       login: vi.fn().mockResolvedValue(undefined), logout: vi.fn(), verify: vi.fn(),
     };
@@ -33,6 +34,25 @@ describe('Login web', () => {
     await fixture.whenStable(); fixture.detectChanges();
     expect(auth.login).toHaveBeenCalledWith('test@example.com', 'example-password');
     expect(fixture.nativeElement.querySelector('#password').value).toBe('');
+  });
+  it('abre un enlace de recuperación, limpia la URL y permite elegir contraseña', async () => {
+    window.history.replaceState(null, '', '/?recuperar=1#token_hash=sample-hash');
+    const { fixture, auth } = setup();
+    await fixture.whenStable();
+    expect(window.location.search).toBe('');
+    expect(window.location.hash).toBe('');
+    expect(fixture.nativeElement.querySelector('h1').textContent).toContain('contraseña nueva');
+    for (const id of ['new-password', 'repeat-password']) {
+      const input = fixture.nativeElement.querySelector('#' + id);
+      input.value = 'new-test-password';
+      input.dispatchEvent(new Event('input'));
+    }
+    await fixture.whenStable();
+    fixture.nativeElement.querySelector('form').dispatchEvent(new Event('submit', { cancelable: true }));
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(auth.resetPassword).toHaveBeenCalledWith('sample-hash', 'new-test-password');
+    expect(fixture.nativeElement.textContent).toContain('Contraseña actualizada');
   });
   it('muestra la identidad verificada y permite salir', () => {
     const { fixture, auth } = setup();
