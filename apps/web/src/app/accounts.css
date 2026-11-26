@@ -76,3 +76,18 @@ section{border-top:1px solid var(--g-border);padding-top:12px;margin-top:20px}h3
 }
 .budget-alerts li.over-limit { background: var(--piggo-danger-surface); color: var(--piggo-danger); }
 .budget-alerts button { width: fit-content; margin-top: 8px; }
+
+.quick-expense-action {
+  width: fit-content;
+  margin-block: 0.5rem;
+  min-height: 2.75rem;
+}
+
+@media (max-width: 767px) {
+  .quick-expense-action {
+    position: fixed;
+    inset-inline-end: 1rem;
+    inset-block-end: calc(1rem + env(safe-area-inset-bottom));
+    z-index: 2;
+  }
+}

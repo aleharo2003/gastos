@@ -94,6 +94,16 @@ describe('Navegación del espacio', () => {
     fixture.nativeElement.querySelector('.budget-alerts button').click();
     expect(component.tab()).toBe('plan');
   });
+  it('enfoca el importe de la carga rápida desde Hoy y puede volver a la sección anterior', async () => {
+    const { fixture, component } = await setup();
+    fixture.nativeElement.querySelector('.quick-expense-action').click();
+    const amount = fixture.nativeElement.querySelector('#quick-expense-amount');
+    expect(component.tab()).toBe('expenses');
+    expect(document.activeElement).toBe(amount);
+    expect(amount.inputMode).toBe('decimal');
+    component.finishQuickExpense();
+    expect(component.tab()).toBe('today');
+  });
   it('conserva instancia, borrador y filtros al visitar Cuentas', async () => {
     const {fixture,component}=await setup();
     const expenses=component.expenses!;
