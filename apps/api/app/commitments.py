@@ -343,6 +343,24 @@ def get_installments(space:UUID,identifier:UUID,request:Request,response:Respons
     return execute(request,response,space,lambda s,u:list_installments(s,u,space,identifier,offset))
 
 
+def installment_detail(session, user, space, identifier):
+    row = require_installment(session, user, space, identifier)
+    paid = session.execute(text("""
+        SELECT COALESCE(SUM(g.importe),0) FROM public.pagos_cuota p
+        JOIN public.gastos g ON g.espacio_id=p.espacio_id AND g.id=p.id
+        WHERE p.espacio_id=:space AND p.cuota_id=:id
+    """), {'space': space, 'id': identifier}).scalar_one()
+    return public_installment(dict(row) | {'pagado': paid}) | {
+        'nombre': row['nombre'], 'moneda': row['moneda'], 'cuenta_id': str(row['cuenta_id']),
+    }
+
+
+@router.get('/spaces/{space}/installments/{identifier}')
+def get_installment_detail(space: UUID, identifier: UUID, request: Request, response: Response):
+    return execute(request, response, space, lambda s, u: installment_detail(s, u, space, identifier),
+                   repeatable_read=True)
+
+
 @router.post('/spaces/{space}/installments/{identifier}/payments')
 def post_payment(space:UUID,identifier:UUID,body:PaymentInput,request:Request,response:Response):
     return execute(request,response,space,lambda s,u:pay_installment(s,u,space,identifier,body))

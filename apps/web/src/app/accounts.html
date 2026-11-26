@@ -214,6 +214,7 @@
 }
 
 <app-commitments class="workspace-panel debts-panel"
+  [reminder]="installmentReminder()"
   [active]="tab() === 'debts'" (draftsChanged)="draftCount.set($event)"
   [hidden]="tab() !== 'debts'" [space]="space" [accounts]="items()"
   [moreAccounts]="next() !== null" [accountsLoading]="loading()"

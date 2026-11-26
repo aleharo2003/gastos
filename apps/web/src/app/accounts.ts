@@ -5,7 +5,7 @@ import { ExpenseImport } from './expense-import';
 import { TodayCategoryReport } from './today-category-report';
 import { Movements } from './movements';
 import { DueOverview } from './due-overview';
-import { Commitments } from './commitments';
+import { Commitments, type InstallmentReminder } from './commitments';
 import { SavingsGoals, type GoalTransfer } from './savings-goals';
 import { Transfers } from './transfers';
 import { Incomes } from './incomes';
@@ -30,6 +30,8 @@ type AccountBalance = { totales: { moneda: string; saldo: string }[] };
 })
 export class Accounts implements OnInit {
   @Input({ required: true }) space = '';
+  readonly installmentReminder = signal<InstallmentReminder | null>(null);
+  private readonly document = inject(DOCUMENT);
   readonly items = signal<Account[]>([]);
   readonly movementAccount = signal<Account | null>(null);
   readonly movementReport = signal<{ desde: string; hasta: string; categoria: string; moneda: string } | null>(null);
@@ -227,6 +229,18 @@ export class Accounts implements OnInit {
   private readonly categoryCatalog = inject(CategoryCatalog);
 
   ngOnInit(): void {
+    const query = new URLSearchParams(this.document.location?.search ?? '');
+    const month = query.get('mes');
+    const action = query.get('aviso');
+    const quota = query.get('cuota');
+    if (query.get('espacio') === this.space && month && /^(?!0000)\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+      if (action === 'pago' && quota && /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(quota)) {
+        this.installmentReminder.set({ month, action, quota });
+      } else if (action === 'importe' || action === 'ajuste') {
+        this.installmentReminder.set({ month, action });
+      }
+      if (this.installmentReminder()) this.tab.set('debts');
+    }
     this.categoryCatalog.ensure(this.space);
     try {
       const saved = JSON.parse(localStorage.getItem('gastos.reference.' + this.space) ?? 'null');

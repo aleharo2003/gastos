@@ -10,7 +10,7 @@ from app.accounts import AccountInput,create_account
 from app.incomes import IncomeInput,create_income,account_balance
 from app.expenses import ExpenseInput,ExpenseEdit,create_expense,edit_expense
 from app.commitments import CommitmentInput,PaymentInput,create_commitment,list_commitments,list_installments,pay_installment,list_payments,monthly_installments,due_overview,skip_installment,today_overview
-from app.commitments import InstallmentAmountInput, commitment_payment_trend, correct_installment_amount
+from app.commitments import InstallmentAmountInput, commitment_payment_trend, correct_installment_amount, installment_detail
 from app.db.connection import create_runtime_engine,create_migration_engine
 from app.db.unit_of_work import runtime_transaction
 
@@ -68,6 +68,10 @@ def check_commitments(runtime_url,migration_url):
         assert results[0]==results[1] and balance()=='970.00'
         partial=cuotas(debt['id'])['items'][0]
         assert (partial['pagado'],partial['pendiente'],partial['estado'])==('30.00','70.00','parcial')
+        linked_quota=call(lambda s,u,w:installment_detail(s,u,w,q1),reader)
+        assert linked_quota['pendiente']=='70.00' and linked_quota['cuenta_id']==str(bank)
+        denied(lambda:call(lambda s,u,w:installment_detail(s,u,w,q1),other),403)
+        denied(lambda:call(lambda s,u,w:installment_detail(s,u,w,foreign_quota)),404)
         monthly=call(lambda s,u,w:monthly_installments(s,u,w,'2024-01',day=date(2024,1,31)))
         assert monthly['totales']==[{'moneda':'ARS','cuotas':1,'cuotas_pagadas':0,'no_aplican':0,'borradores':0,'estimado':'0.00','total':'100.00','pagado':'30.00','pendiente':'70.00','vencido':'0.00'}]
         assert monthly['items'][0]['id']==q1 and not monthly['items'][0]['vencida']

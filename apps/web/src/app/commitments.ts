@@ -20,10 +20,12 @@ export type MonthlyItem=Installment & {nombre:string;moneda:string;cuenta_id:str
 export type MonthlyTotal={no_aplican?:number;borradores?:number;estimado?:string;moneda:string;cuotas:number;cuotas_pagadas:number;total:string;pagado:string;pendiente:string;vencido:string};
 export type MonthlyPage={mes:string;items:MonthlyItem[];totales:MonthlyTotal[];next_offset:number|null};
 type Create={sistema_amortizacion?:LoanSystem;tna?:string;indice_ajuste?:string;variable:boolean;id:string;cuenta_id:string;nombre:string;moneda:string;importe:string;categoria:string|null;primer_vencimiento:string;total_cuotas:number|null};
+export type InstallmentReminder = { month: string } & ({ action: 'importe' | 'ajuste' } | { action: 'pago'; quota: string });
 @Component({selector:'app-commitments',imports:[FormsModule,Receipts,AdjustmentIndices,CommitmentPaymentTrend],templateUrl:'./commitments.html',styleUrl:'./commitments.css'})
 export class Commitments implements OnChanges{
   @Input({required:true}) space='';
   @Input() active = true;
+  @Input() reminder: InstallmentReminder | null = null;
   protected readonly indicesOpen = signal(false);
   @Input() accounts:{id:string;nombre:string}[]=[];
   @Input() moreAccounts=false;
@@ -85,14 +87,16 @@ export class Commitments implements OnChanges{
     inject(DestroyRef).onDestroy(()=>{this.dayWatch.stop();this.alive=false;this.context++;this.detailVersion++;this.historyVersion++;window.removeEventListener('gastos-privacy',this.privacyListener);});
   }
   ngOnChanges(changes:SimpleChanges){if(changes['space']){
-    this.draftMonth.set('');
+    this.draftMonth.set(this.reminder?.action === 'importe' ? this.reminder.month : '');
     this.draftVersion++;this.drafts.set([]);this.draftCount.set(0);this.draftsChanged.emit(0);this.draftNext.set(null);this.draftOffset=0;this.draftValues={};this.draftDirty=false;this.draftLoading.set(false);this.draftError.set('');
-    this.context++;this.detailVersion++;this.historyVersion++;this.monthVersion++;this.monthLoading.set(false);this.monthItems.set([]);this.monthTotals.set([]);this.monthNext.set(null);this.appliedMonth.set('');this.monthError.set('');this.month=today().slice(0,7);this.loading.set(false);this.saving.set(false);this.paying.set(false);
+    this.context++;this.detailVersion++;this.historyVersion++;this.monthVersion++;this.monthLoading.set(false);this.monthItems.set([]);this.monthTotals.set([]);this.monthNext.set(null);this.appliedMonth.set('');this.monthError.set('');this.month=this.reminder?.month ?? today().slice(0,7);this.loading.set(false);this.saving.set(false);this.paying.set(false);
     this.detailLoading.set(false);this.historyLoading.set(false);this.items.set([]);this.outstanding.set(null);this.selected.set(null);this.quota.set(null);
     this.cancelAmountCorrection();
     this.createOpen.set(false);
     this.installments.set([]);this.payments.set([]);this.next.set(null);this.nextInstallment.set(null);this.nextPayment.set(null);
     this.receiptPayment.set(null);this.lastPayment.set(null);this.clear();this.payAmount='';this.payPending=undefined;this.payDirty=false;void this.load();void this.loadMonth();void this.loadDrafts();
+    if (this.reminder?.action === 'importe') this.focusSection('month-drafts-title');
+    if (this.reminder?.action === 'pago') void this.openReminderPayment(this.reminder.quota);
   }else if(changes['active']&&this.active)this.dayWatch.check();}
   private get path(){return `/api/spaces/${encodeURIComponent(this.space)}`;}
   total(){if(this.indefinite||this.indexed||this.loanSystem)return null;const amount=normalizeAmount(this.amount);return amount&&Number.isInteger(this.count)&&this.count>=1&&this.count<=600?money(cents(amount)*BigInt(this.count)):null;}
@@ -288,6 +292,22 @@ export class Commitments implements OnChanges{
     if (!this.alive || context !== this.context || this.selected()?.id !== debt.id) return;
     await this.selectQuota(this.installments().find(row=>row.id===item.id) ?? item);
     this.focusSection('commitments-payment-title');
+  }
+
+  private async openReminderPayment(id: string): Promise<void> {
+    const context = this.context;
+    this.detailLoading.set(true);
+    let item: MonthlyItem;
+    try {
+      item = await this.auth.accountRequest<MonthlyItem>('GET', this.path + '/installments/' + encodeURIComponent(id));
+    } catch {
+      if (this.alive && context === this.context) this.error.set('No pudimos abrir la cuota del aviso. Podés buscarla en el mes indicado.');
+      return;
+    } finally {
+      if (this.alive && context === this.context) this.detailLoading.set(false);
+    }
+    if (!this.alive || context !== this.context || !this.active) return;
+    await this.openMonthly(item);
   }
   async load(more=false){
     if(this.loading()||this.saving()||this.paying())return;const offset=more?this.next():0;if(offset===null)return;
