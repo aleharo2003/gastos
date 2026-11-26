@@ -46,7 +46,7 @@ export function validPlan(v:unknown):boolean {
   return true;
 }
 
-type PlanningResource = 'spending-plan' | 'reminder-preferences' | 'spending-plan/category-limits';
+type PlanningResource = 'spending-plan' | 'reminder-preferences' | 'spending-plan/category-limits' | 'usd-reference';
 
 function validReminderPreferences(value: unknown): boolean {
   if (!record(value) || !keys(value, [
@@ -58,6 +58,13 @@ function validReminderPreferences(value: unknown): boolean {
     typeof value.hora_local === 'string' && /^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(value.hora_local) &&
     typeof value.vencimientos === 'boolean' && typeof value.vencidas === 'boolean' &&
     typeof value.resumen_semanal === 'boolean';
+}
+
+const rateDate = (value: unknown) => typeof value === 'string' && /^(?!0000)\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$/.test(value);
+function validManualRate(value: unknown): boolean {
+  return record(value) && keys(value, ['fecha', 'tasa']) && rateDate(value.fecha)
+    && typeof value.tasa === 'string' && /^(?:0|[1-9][0-9]{0,7})(?:\.[0-9]{1,4})?$/.test(value.tasa)
+    && /[1-9]/.test(value.tasa);
 }
 
 @Controller('api/spaces/:space')
@@ -91,6 +98,23 @@ export class PlanningController {
     return this.forward(space, request, response, body, true, 'reminder-preferences');
   }
 
+  @Get('usd-reference')
+  readUsdReference(
+    @Param('space') space: string, @Query('fecha') date: unknown,
+    @Req() request: Request, @Res({ passthrough: true }) response: Response,
+  ) {
+    return this.forward(space, request, response, undefined, false, 'usd-reference', date);
+  }
+
+  @Post('usd-reference')
+  @HttpCode(200)
+  saveUsdReference(
+    @Param('space') space: string, @Body() body: unknown,
+    @Req() request: Request, @Res({ passthrough: true }) response: Response,
+  ) {
+    return this.forward(space, request, response, body, true, 'usd-reference');
+  }
+
   private async forward(
     space: string, request: Request, response: Response, body?: unknown,
     writing = false, resource: PlanningResource = 'spending-plan', month?: unknown,
@@ -103,14 +127,18 @@ export class PlanningController {
       await this.auth.verifyIdentity(parts[1]);
     } catch(error){if(error instanceof UnauthorizedException)response.setHeader('WWW-Authenticate','Bearer');throw error;}
     const history = resource === 'spending-plan/category-limits';
+    const usd = resource === 'usd-reference';
     const validate = history
       ? (data: unknown) => record(data) && keys(data, ['mes', 'limites_categoria']) &&
           data.mes === month && (data.limites_categoria === null || validCategoryLimits(data.limites_categoria))
-      : resource === 'spending-plan' ? validPlan : validReminderPreferences;
-    if (!UUID.test(space) || (writing && !validate(body)) ||
+      : usd ? (data: unknown) => record(data) && keys(data, ['cotizacion']) &&
+          (data.cotizacion === null || validManualRate(data.cotizacion))
+        : resource === 'spending-plan' ? validPlan : validReminderPreferences;
+    if (!UUID.test(space) || (writing && !(usd ? validManualRate(body) : validate(body))) ||
+        (usd && month !== undefined && !rateDate(month)) ||
         (history && (typeof month !== 'string' || !/^(19[0-9]{2}|20[0-9]{2})-(0[1-9]|1[0-2])$/.test(month)))) {
       throw new BadRequestException(history ? 'Mes o espacio invalido'
-        : resource === 'spending-plan' ? 'Presupuesto invalido' : 'Preferencias invalidas');
+        : usd ? 'Cotización inválida' : resource === 'spending-plan' ? 'Presupuesto invalido' : 'Preferencias invalidas');
     }
     try {
       const base=new URL(process.env.API_BASE_URL??'http://127.0.0.1:8000');
@@ -120,8 +148,9 @@ export class PlanningController {
       if(!/^\d+$/.test(raw)||!Number.isSafeInteger(timeout)||timeout<1||timeout>2147483647)throw new Error();
       const url = new URL(`/spaces/${space.toLowerCase()}/${resource}`, base);
       if (history) url.searchParams.set('mes', String(month));
+      if (usd && month !== undefined) url.searchParams.set('fecha', String(month));
       const result=await fetch(url,{
-        method:writing?(resource==='spending-plan'?'POST':'PUT'):'GET',redirect:'error',signal:AbortSignal.timeout(timeout),
+        method:writing?(resource==='reminder-preferences'?'PUT':'POST'):'GET',redirect:'error',signal:AbortSignal.timeout(timeout),
         headers:{Accept:'application/json',Authorization:`Bearer ${parts[1]}`,...(writing?{'Content-Type':'application/json'}:{})},
         ...(writing?{body:JSON.stringify(body)}:{}),
       });

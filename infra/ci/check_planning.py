@@ -1,9 +1,11 @@
 """Pruebas del plan compartido en la base desechable de CI."""
 from concurrent.futures import ThreadPoolExecutor
+from datetime import date
 from uuid import uuid4
 from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
+from app.usd_reference import ManualRate, read_rate, save_rate
 from app.planning import PlanUpdate,get_category_limit_history,get_plan,save_plan,EMPTY
 from app.db.connection import create_runtime_engine,create_migration_engine
 from app.db.unit_of_work import runtime_transaction
@@ -27,6 +29,22 @@ def check_planning(runtime_url,migration_url):
         for user in users:
             with runtime_transaction(runtime,usuario_id=user) as s:s.execute(text('SELECT public.crear_espacio_personal()'))
         with migrator.begin() as c:c.execute(text('INSERT INTO public.miembros_espacio VALUES (:u,:s,:r)'),[{'u':reader,'s':owner,'r':'lector'},{'u':editor,'s':owner,'r':'editor'}])
+        day = date(2026, 11, 20)
+        dated = ManualRate(fecha='2026-11-05', tasa='1700.25')
+        next_rate = ManualRate(fecha='2026-11-12', tasa='1725.5')
+        correct = {'cotizacion': {'fecha': '2026-11-12', 'tasa': '1725.5000'}}
+        with runtime_transaction(runtime, usuario_id=owner, espacio_id=owner) as s:
+            assert read_rate(s, owner, owner, day) == {'cotizacion': None}
+            assert save_rate(s, owner, owner, dated, day)['cotizacion']['tasa'] == '1700.2500'
+            assert save_rate(s, owner, owner, next_rate, day) == correct
+            assert save_rate(s, owner, owner, next_rate, day) == correct
+            assert read_rate(s, owner, owner, date(2026, 11, 8))['cotizacion']['tasa'] == '1700.2500'
+        with runtime_transaction(runtime, usuario_id=reader, espacio_id=owner) as s:
+            assert read_rate(s, reader, owner, day) == correct
+            denied(lambda: save_rate(s, reader, owner, dated, day), 403)
+        with runtime_transaction(runtime, usuario_id=other, espacio_id=other) as s:
+            assert read_rate(s, other, other, day) == {'cotizacion': None}
+            assert s.execute(text('SELECT count(*) FROM public.cotizaciones_manuales')).scalar_one() == 0
         assert read()=={'version':0,'datos':EMPTY}
         first=save({'version':0,'datos':data});assert first=={'version':1,'datos':data}
         assert save({'version':0,'datos':data})==first # lost response retry

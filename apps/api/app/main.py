@@ -12,6 +12,7 @@ from app.movement_categories import router as movement_categories_router
 from app.expenses import router as expenses_router
 from app.expense_import import router as expense_import_router
 from app.planning import router as planning_router
+from app.usd_reference import router as usd_reference_router
 from app.receipts import router as receipts_router
 from app.personal_space import router as personal_space_router
 
@@ -37,6 +38,7 @@ app.include_router(expenses_router)
 app.include_router(expense_import_router)
 app.include_router(receipts_router)
 app.include_router(planning_router)
+app.include_router(usd_reference_router)
 app.include_router(personal_space_router)
 
 

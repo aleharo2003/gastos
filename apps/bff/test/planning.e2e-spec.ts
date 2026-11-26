@@ -33,6 +33,20 @@ describe('Presupuestos HTTP',()=>{
     fetchMock.mockImplementation(async () => new Response(JSON.stringify({...preferences,hora_local:'24:00'})));
     await request(app.getHttpServer()).get(route).set('Authorization','Bearer token').expect(502);
   });
+  it('consulta y guarda cotizaciones manuales por fecha', async () => {
+    const route = `/api/spaces/${space}/usd-reference`;
+    const cotizacion = { fecha: '2026-11-12', tasa: '1720.2500' };
+    fetchMock.mockImplementation(async () => new Response(JSON.stringify({ cotizacion })));
+    await request(app.getHttpServer()).get(route + '?fecha=2026-11-12').set('Authorization', 'Bearer token')
+      .expect(200).expect({ cotizacion }).expect('Cache-Control', 'no-store');
+    expect(new URL(String(fetchMock.mock.calls[0][0])).searchParams.get('fecha')).toBe(cotizacion.fecha);
+    await request(app.getHttpServer()).post(route).set('Authorization', 'Bearer token')
+      .send(cotizacion).expect(200).expect({ cotizacion });
+    expect(fetchMock.mock.calls[1][1]).toMatchObject({ method: 'POST', body: JSON.stringify(cotizacion) });
+    await request(app.getHttpServer()).post(route).set('Authorization', 'Bearer token')
+      .send({ ...cotizacion, tasa: '0.00' }).expect(400);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
   it('requiere token y reenvia lectura y guardado sin cache',async()=>{
     await request(app.getHttpServer()).get(path).expect(401);expect(fetchMock).not.toHaveBeenCalled();
     await request(app.getHttpServer()).get(path).set('Authorization','Bearer token').expect(200).expect(value).expect('Cache-Control','no-store');

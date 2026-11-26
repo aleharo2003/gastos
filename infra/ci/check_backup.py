@@ -29,6 +29,7 @@ def check_backup(migration_url, password, grant_path):
             VALUES (%s,%s,%s,%s,'2026-11-01','=1+1','ARS',98765.43,'Prueba de restauración')
         """, (expense, owner, account, owner))
         connection.execute('UPDATE public.cuentas SET activa=false WHERE id=%s', (account,))
+        connection.execute("INSERT INTO public.cotizaciones_manuales VALUES (%s,'2026-11-01',1725.25)", (owner,))
         connection.execute("SELECT set_config('piggo.backup_space', %s, true)", (str(owner),))
         body = grant_path.read_text(encoding='utf-8').split('DO $grant$', 1)[1].rsplit('COMMIT;', 1)[0]
         connection.execute('DO $grant$' + body)
@@ -66,6 +67,8 @@ def check_backup(migration_url, password, grant_path):
         assert connection.execute('SELECT importe,descripcion,nota FROM public.gastos WHERE id=%s', (expense,)).fetchone() == (
             Decimal('98765.43'), '=1+1', 'Prueba de restauración')
         assert connection.execute('SELECT activa FROM public.cuentas WHERE id=%s', (account,)).fetchone() == (False,)
+        assert connection.execute('SELECT tasa FROM public.cotizaciones_manuales WHERE espacio_id=%s',
+                                  (owner,)).fetchone() == (Decimal('1725.2500'),)
         assert connection.execute('SELECT id FROM public.espacios').fetchall() == [(owner,)]
         remove_test_rows(connection)
     print('OK: una sola cuenta de respaldo, una sola área de datos, cifrado y restauración en PostgreSQL desechable.')

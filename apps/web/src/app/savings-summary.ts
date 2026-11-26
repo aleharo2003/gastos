@@ -1,5 +1,7 @@
 import { Component, DestroyRef, EventEmitter, Input, OnChanges, Output, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { UsdReference } from './usd-reference';
+import { UsdReferenceEditor } from './usd-reference-editor';
 import { AuthSession } from './auth-session';
 import { installmentLocalDate } from './installment-date';
 import { cents, money, rateUnits } from './money-reference';
@@ -32,7 +34,7 @@ function rounded(numerator: bigint, denominator: bigint): bigint {
 
 @Component({
   selector: 'app-savings-summary',
-  imports: [FormsModule],
+  imports: [FormsModule, UsdReferenceEditor],
   templateUrl: './savings-summary.html',
   styleUrl: './savings-summary.css',
 })
@@ -50,8 +52,7 @@ export class SavingsSummary implements OnChanges {
   readonly rate = signal('');
   readonly rateDate = signal('');
   readonly equivalents = signal(false);
-  readonly rateError = signal('');
-  draftRate = '';
+  private readonly usdReference = inject(UsdReference);
   private request = 0;
   private storedSpace = '';
   private readonly auth = inject(AuthSession);
@@ -114,35 +115,9 @@ export class SavingsSummary implements OnChanges {
   }
 
   private loadReference(): void {
-    this.rate.set('');
-    this.rateDate.set('');
-    this.draftRate = '';
-    try {
-      const saved = JSON.parse(localStorage.getItem('gastos.reference.' + this.space) ?? 'null');
-      if (typeof saved?.rate === 'string' && rateUnits(saved.rate)) {
-        this.rate.set(saved.rate);
-        this.rateDate.set(typeof saved.date === 'string' ? saved.date : '');
-        this.draftRate = saved.rate;
-      }
-    } catch {}
-  }
-
-  saveRate(): void {
-    if (!rateUnits(this.draftRate)) {
-      this.rateError.set('Ingresá un valor mayor que cero, con hasta cuatro decimales.');
-      return;
-    }
-    const rate = this.draftRate.trim().replace(',', '.');
-    const date = installmentLocalDate();
-    this.rateError.set('');
-    try {
-      localStorage.setItem('gastos.reference.' + this.space, JSON.stringify({ rate, date }));
-      window.dispatchEvent(new CustomEvent('gastos-reference', { detail: { space: this.space, rate, date } }));
-    } catch {
-      this.rate.set(rate);
-      this.rateDate.set(date);
-      this.rateError.set('Cotización aplicada para esta sesión.');
-    }
+    const reference = this.usdReference.current(this.space);
+    this.rate.set(reference?.rate ?? '');
+    this.rateDate.set(reference?.date ?? '');
   }
 
   async load(more = false): Promise<void> {
