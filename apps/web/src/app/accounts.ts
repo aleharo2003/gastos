@@ -9,6 +9,7 @@ import { Commitments } from './commitments';
 import { SavingsGoals, type GoalTransfer } from './savings-goals';
 import { Transfers } from './transfers';
 import { Incomes } from './incomes';
+import { SavingsSummary } from './savings-summary';
 import { ReminderPreferences } from './reminder-preferences';
 import { Planning } from './planning';
 import { Expenses, showAmount } from './expenses';
@@ -24,7 +25,7 @@ type Page = { items: Account[]; next_offset: number | null };
 type AccountBalance = { totales: { moneda: string; saldo: string }[] };
 
 @Component({
-  selector: 'app-accounts', imports: [FormsModule, CategorySettings, SpaceExport, ExpenseImport, TodayCategoryReport, Movements, Expenses, Planning, Incomes, Transfers, SavingsGoals, Commitments, DueOverview, ReminderPreferences],
+  selector: 'app-accounts', imports: [FormsModule, CategorySettings, SpaceExport, ExpenseImport, TodayCategoryReport, Movements, Expenses, Planning, Incomes, Transfers, SavingsGoals, SavingsSummary, Commitments, DueOverview, ReminderPreferences],
   templateUrl: './accounts.html', styleUrl: './accounts.css',
 })
 export class Accounts implements OnInit {
@@ -51,7 +52,7 @@ export class Accounts implements OnInit {
   readonly error = signal('');
   readonly notice = signal('');
   readonly next = signal<number | null>(null);
-  readonly tab = signal<'today' | 'expenses' | 'movements' | 'accounts' | 'plan' | 'savings' | 'debts' | 'reminders'>(
+  readonly tab = signal<'today' | 'expenses' | 'incomes' | 'movements' | 'accounts' | 'plan' | 'savings' | 'debts' | 'reminders'>(
     inject(DOCUMENT).defaultView?.matchMedia?.('(max-width: 767px)').matches ? 'expenses' : 'today',
   );
   readonly showInactive = signal(false);
@@ -86,6 +87,10 @@ export class Accounts implements OnInit {
   @ViewChild(Commitments) commitments?: Commitments;
   @ViewChild(Expenses) expenses?: Expenses;
   @ViewChild(Incomes) incomes?: Incomes;
+  openIncome(): void {
+    this.tab.set('incomes');
+    this.incomes?.openEntry();
+  }
   @ViewChild(Transfers) transfers?: Transfers;
   async fundGoal(goal: GoalTransfer): Promise<void> {
     if (!this.items().some(row => row.id === goal.cuenta_id)) {

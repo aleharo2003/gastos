@@ -1,25 +1,6 @@
-<section aria-labelledby="balance-title">
-  <h3 id="balance-title">Saldo · {{ account.nombre }}</h3>
-  <p>Ingresos menos gastos, más transferencias recibidas y menos transferencias enviadas. Todo el historial, separado por moneda. Incluye movimientos con fecha futura.</p>
-  @if(balanceError()){<p class="error" role="alert">{{ balanceError() }}</p>}
-  @if(balance(); as value){
-    <div class="balances">
-      @for(row of value.totales;track row.moneda){
-        <div class="balance">
-          <h4>{{ row.moneda }}</h4>
-          <p>Ingresos: {{ hidden() ? '••••' : showAmount(row.ingresos) }}</p>
-          <p>Gastos: {{ hidden() ? '••••' : showAmount(row.gastos) }}</p>
-          @if(row.transferencias_entrada !== undefined){<p>Transferencias recibidas: {{ hidden() ? '••••' : showAmount(row.transferencias_entrada!) }}</p>}
-          @if(row.transferencias_salida !== undefined){<p>Transferencias enviadas: {{ hidden() ? '••••' : showAmount(row.transferencias_salida!) }}</p>}
-          <strong [class.negative]="row.saldo.startsWith('-')">{{ hidden() ? '••••' : showAmount(row.saldo) }}</strong>
-        </div>
-      }
-    </div>
-  } @else if(!balanceError()){<p role="status">Actualizando saldo…</p>}
-  <button type="button" class="secondary" (click)="loadBalance()">Actualizar saldo</button>
-  <details>
-    <summary>Ingresos · Registrar y consultar</summary>
-    <p>Registrá sueldo, trabajos extra o regalos. Para empezar, podés cargar el dinero que ya tenés como «Saldo inicial». Si ya cargaste gastos, incluí lo necesario para que el saldo resultante coincida con tu cuenta.</p>
+<section aria-labelledby="income-title">
+  <h3 id="income-title" tabindex="-1">Registrar ingreso</h3>
+  @if (account.id) { <p>Cuenta destino <strong>{{ account.nombre }}</strong></p> }
     @if(error()){<p class="error" role="alert">{{ error() }}</p>}
     @if(notice()){<p class="notice" role="status">{{ notice() }}</p>}
     <form #incomeForm="ngForm" (ngSubmit)="save()">
@@ -63,5 +44,24 @@
     </ul>
     <button type="button" class="secondary" (click)="load()" [disabled]="loading()||saving()">Actualizar ingresos</button>
     @if(next()!==null){<button type="button" class="secondary" (click)="load(true)" [disabled]="loading()||saving()">Ver más ingresos</button>}
+  <details class="income-balance">
+    <summary>Saldo de {{ account.nombre || "todas las cuentas" }}</summary>
+  <p>Ingresos menos gastos, más transferencias recibidas y menos transferencias enviadas. Todo el historial, separado por moneda. Incluye movimientos con fecha futura.</p>
+  @if(balanceError()){<p class="error" role="alert">{{ balanceError() }}</p>}
+  @if(balance(); as value){
+    <div class="balances">
+      @for(row of value.totales;track row.moneda){
+        <div class="balance">
+          <h4>{{ row.moneda }}</h4>
+          <p>Ingresos: {{ hidden() ? '••••' : showAmount(row.ingresos) }}</p>
+          <p>Gastos: {{ hidden() ? '••••' : showAmount(row.gastos) }}</p>
+          @if(row.transferencias_entrada !== undefined){<p>Transferencias recibidas: {{ hidden() ? '••••' : showAmount(row.transferencias_entrada!) }}</p>}
+          @if(row.transferencias_salida !== undefined){<p>Transferencias enviadas: {{ hidden() ? '••••' : showAmount(row.transferencias_salida!) }}</p>}
+          <strong [class.negative]="row.saldo.startsWith('-')">{{ hidden() ? '••••' : showAmount(row.saldo) }}</strong>
+        </div>
+      }
+    </div>
+  } @else if(!balanceError()){<p role="status">Actualizando saldo…</p>}
+  <button type="button" class="secondary" (click)="loadBalance()">Actualizar saldo</button>
   </details>
 </section>

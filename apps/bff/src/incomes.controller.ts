@@ -50,6 +50,48 @@ export function validateBalance(value:unknown) {
   return {totales};
 }
 
+type SummaryAmount = { moneda: string; total: string };
+type SavingsSummary = {
+  mes: string; hasta: string; fecha_saldos: string; next_offset: number | null;
+  actividad: (SummaryAmount & { tipo: string })[];
+  ingresos: (SummaryAmount & { concepto: string | null })[];
+  cuentas: { id: string; nombre: string; activa: boolean; saldos: SummaryAmount[] }[];
+  saldo_total: SummaryAmount[];
+};
+
+function savingsSummary(value: unknown, month: string, offset: number) {
+  const data = value as SavingsSummary | null;
+  const iso = (v: unknown) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
+  const amount = (row: SummaryAmount, signed = false) => !!row && ['ARS', 'USD', 'EUR'].includes(row.moneda) &&
+    typeof row.total === 'string' && (signed ? /^-?\d{1,31}\.\d{2}$/ : /^\d{1,31}\.\d{2}$/).test(row.total);
+  if (!data || data.mes !== month || !iso(data.hasta) || !data.hasta.startsWith(month + '-') ||
+      !iso(data.fecha_saldos) || data.fecha_saldos < data.hasta ||
+      !Array.isArray(data.actividad) || data.actividad.length > 9 ||
+      !Array.isArray(data.ingresos) || data.ingresos.length > 39 ||
+      !Array.isArray(data.cuentas) || data.cuentas.length > 100 ||
+      !Array.isArray(data.saldo_total) || data.saldo_total.length !== 3 || data.saldo_total.some(row => !amount(row, true)) ||
+      new Set(data.saldo_total.map(row => row.moneda)).size !== 3 ||
+      !(data.next_offset === null || (data.next_offset === offset + 100 && data.cuentas.length === 100))) throw new Error();
+  const actividad = data.actividad.map(row => {
+    if (!amount(row) || !['ingresos_anuales', 'cuotas', 'otros_gastos'].includes(row.tipo)) throw new Error();
+    return { tipo: row.tipo, moneda: row.moneda, total: row.total };
+  });
+  const ingresos = data.ingresos.map(row => {
+    if (!amount(row) || (row.concepto !== null &&
+        (typeof row.concepto !== 'string' || !row.concepto.trim() || [...row.concepto].length > 160))) throw new Error();
+    return { concepto: row.concepto, moneda: row.moneda, total: row.total };
+  });
+  const cuentas = data.cuentas.map(row => {
+    if (!row || typeof row.id !== 'string' || !UUID.test(row.id) || typeof row.nombre !== 'string' ||
+        !row.nombre.trim() || [...row.nombre].length > 160 || typeof row.activa !== 'boolean' ||
+        !Array.isArray(row.saldos) || row.saldos.length > 3 || row.saldos.some(item => !amount(item, true))) throw new Error();
+    return { id: row.id, nombre: row.nombre, activa: row.activa,
+      saldos: row.saldos.map(({ moneda, total }) => ({ moneda, total })) };
+  });
+  return { mes: month, hasta: data.hasta, fecha_saldos: data.fecha_saldos, next_offset: data.next_offset,
+    actividad, ingresos, cuentas, saldo_total: data.saldo_total.map(({ moneda, total }) => ({ moneda, total })) };
+}
+
 @Controller('api/spaces/:space')
 export class IncomesController {
   constructor(private readonly auth:AuthService) {}
@@ -85,6 +127,18 @@ export class IncomesController {
     return this.forward(token,space,query.account as string|undefined,'balance');
   }
 
+  @Get('savings-summary')
+  async savings(@Param('space') space: string, @Query() query: Record<string, unknown>,
+    @Req() request: Request, @Res({ passthrough: true }) response: Response) {
+    response.setHeader('Cache-Control', 'no-store');
+    const token = await this.token(request, response);
+    if (Object.keys(query).some(key => !['month', 'offset'].includes(key)) || typeof query.month !== 'string' ||
+        !/^(19[0-9]{2}|20[0-9]{2})-(0[1-9]|1[0-2])$/.test(query.month) ||
+        (query.offset !== undefined && (typeof query.offset !== 'string' || !/^\d{1,6}$/.test(query.offset) ||
+          Number(query.offset) > 100000))) throw new BadRequestException('Mes o página inválidos');
+    return this.forward(token, space, undefined, 'savings', undefined, Number(query.offset ?? 0), query.month);
+  }
+
   private async token(request: Request, response: Response) {
     const count = request.rawHeaders.filter((v, i) => i % 2 === 0 && v.toLowerCase() === 'authorization').length;
     const parts = request.headers.authorization?.trim().split(/\s+/) ?? [];
@@ -99,7 +153,7 @@ export class IncomesController {
   }
 
 
-  private async forward(token:string, rawSpace:string, rawAccount:string|undefined, operation:'list'|'create'|'balance', body?:IncomeInput, offset=0) {
+  private async forward(token:string, rawSpace:string, rawAccount:string|undefined, operation:'list'|'create'|'balance'|'savings', body?:IncomeInput, offset=0, month='') {
     if(!UUID.test(rawSpace) || (rawAccount!==undefined && !UUID.test(rawAccount)))throw new BadRequestException('Espacio o cuenta invalida');
     const space=rawSpace.toLowerCase(), account=rawAccount?.toLowerCase();
     try {
@@ -109,7 +163,7 @@ export class IncomesController {
           (base.protocol!=='https:' && !(base.protocol==='http:' && local)))throw new Error();
       const rawTimeout=process.env.API_TIMEOUT_MS??'5000',timeout=Number(rawTimeout);
       if(!/^\d+$/.test(rawTimeout) || !Number.isSafeInteger(timeout) || timeout<1 || timeout>2147483647)throw new Error();
-      const path=operation==='balance'
+      const path=operation==='savings' ? `/spaces/${space}/savings-summary?month=${month}&offset=${offset}` : operation==='balance'
         ? `/spaces/${space}/account-balance${account?'?account='+account:''}`
         : `/spaces/${space}${account?'/accounts/'+account:''}/incomes?offset=${offset}`;
       const result=await fetch(new URL(path,base),{
@@ -120,6 +174,7 @@ export class IncomesController {
       if([400,401,403,404,409,422,503].includes(result.status))throw new HttpException('No se pudo completar la operacion',result.status);
       if(!result.ok)throw new Error();
       const data=await boundedJson(result,131072);
+      if (operation === 'savings') return savingsSummary(data, month, offset);
       if(operation==='balance')return validateBalance(data);
       if(body)return income(data,space,account);
       const page=data as {items:unknown[];next_offset:number|null};

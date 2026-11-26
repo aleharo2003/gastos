@@ -23,6 +23,15 @@ export class ExpenseTotals implements OnChanges {
     const privacy=(event:Event)=>this.hidden.set((event as CustomEvent).detail===true);
     window.addEventListener('gastos-privacy',privacy);
     inject(DestroyRef).onDestroy(()=>window.removeEventListener('gastos-privacy',privacy));
+    const referenceChanged = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      if (detail?.space !== this.space || typeof detail.rate !== 'string' || !rateUnits(detail.rate)) return;
+      this.rate = detail.rate;
+      this.draftRate = detail.rate;
+      this.rateDate = typeof detail.date === 'string' ? detail.date : argentinaDay();
+    };
+    window.addEventListener('gastos-reference', referenceChanged);
+    inject(DestroyRef).onDestroy(() => window.removeEventListener('gastos-reference', referenceChanged));
     const timer=setInterval(()=>{
       if(!document.hidden && this.data() && this.data()!.fecha!==argentinaDay()) void this.load();
     },60000);
@@ -66,6 +75,6 @@ export class ExpenseTotals implements OnChanges {
     this.rate=this.draftRate.trim().replace(',','.');this.rateDate=argentinaDay();this.rateError='';
     try { localStorage.setItem('gastos.reference.'+this.space,JSON.stringify({rate:this.rate,date:this.rateDate})); }
     catch { this.rateError='La referencia se aplicó, pero este navegador no permite guardarla.'; }
-    window.dispatchEvent(new CustomEvent('gastos-reference',{detail:{space:this.space,rate:this.rate}}));
+    window.dispatchEvent(new CustomEvent('gastos-reference',{detail:{space:this.space,rate:this.rate,date:this.rateDate}}));
   }
 }

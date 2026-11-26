@@ -1,12 +1,13 @@
 """Ingresos y saldos sobre PostgreSQL desechable, con el rol runtime real."""
 from concurrent.futures import ThreadPoolExecutor
+from datetime import date
 from decimal import Decimal
 from uuid import uuid4
 from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from app.accounts import AccountInput, create_account
-from app.incomes import IncomeInput, create_income, list_incomes, account_balance
+from app.incomes import IncomeInput, create_income, list_incomes, account_balance, savings_summary
 from app.expenses import ExpenseInput, ExpenseEdit, create_expense, edit_expense
 from app.db.connection import create_runtime_engine, create_migration_engine
 from app.db.unit_of_work import runtime_transaction
@@ -94,6 +95,25 @@ def check_incomes(runtime_url, migration_url):
         assert totals()['ARS']['saldo']=='10.20'
         assert totals(None)['ARS']['saldo']=='60.20'
         assert len(call(list_incomes,reader,owner,None)['items'])==100
+
+        def report(who=reader, current=date(2026,11,30), month='2026-11'):
+            with runtime_transaction(runtime, usuario_id=who, espacio_id=owner) as session:
+                return savings_summary(session, who, owner, month, current)
+
+        savings = report()
+        assert {(r['concepto'], r['moneda'], r['total']) for r in savings['ingresos']} == {
+            ('Sueldo', 'ARS', '160.20'), ('Sueldo', 'USD', '0.10'),
+        }
+        assert {(r['tipo'], r['moneda'], r['total']) for r in savings['actividad']} == {
+            ('ingresos_anuales', 'ARS', '160.20'), ('ingresos_anuales', 'USD', '0.10'), ('otros_gastos', 'ARS', '100.00'),
+        }
+        assert {r['moneda']: r['total'] for r in savings['saldo_total']} == {
+            'ARS': '60.20', 'USD': '0.10', 'EUR': '0.00',
+        }
+        assert {row['id'] for row in savings['cuentas']} == {str(account), str(second)}
+        assert report(current=date(2026,11,15))['ingresos'] == []
+        denied(lambda: report(who=other), 403)
+        denied(lambda: report(month='2026-12'), 422)
 
         insert="""INSERT INTO public.ingresos(id,espacio_id,cuenta_id,usuario_id,fecha,descripcion,moneda,importe)
             VALUES (:id,:s,:a,:u,'2026-11-16','SQL','ARS',1)"""
