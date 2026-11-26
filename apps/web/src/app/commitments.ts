@@ -64,6 +64,7 @@ export class Commitments implements OnChanges{
   readonly categories=[['alimentos','Alimentos'],['transporte','Transporte'],['vivienda','Vivienda'],['servicios','Servicios'],['salud','Salud'],['educacion','Educación'],['ocio','Ocio'],['impuestos','Impuestos'],['auto','Auto'],['bancario','Bancario'],['ropa','Ropa'],['otros','Otros']];
   private readonly auth=inject(AuthSession);private alive=true;private context=0;private detailVersion=0;private historyVersion=0;
   readonly drafts=signal<MonthlyItem[]>([]);
+  readonly draftMonth = signal('');
   readonly draftCount=signal(0);readonly draftLoading=signal(false);readonly draftError=signal('');
   readonly draftNext=signal<number|null>(null);draftOffset=0;draftDirty=false;
   draftValues:Record<string,{amount:string;selected:boolean;version:number}>={};
@@ -84,6 +85,7 @@ export class Commitments implements OnChanges{
     inject(DestroyRef).onDestroy(()=>{this.dayWatch.stop();this.alive=false;this.context++;this.detailVersion++;this.historyVersion++;window.removeEventListener('gastos-privacy',this.privacyListener);});
   }
   ngOnChanges(changes:SimpleChanges){if(changes['space']){
+    this.draftMonth.set('');
     this.draftVersion++;this.drafts.set([]);this.draftCount.set(0);this.draftsChanged.emit(0);this.draftNext.set(null);this.draftOffset=0;this.draftValues={};this.draftDirty=false;this.draftLoading.set(false);this.draftError.set('');
     this.context++;this.detailVersion++;this.historyVersion++;this.monthVersion++;this.monthLoading.set(false);this.monthItems.set([]);this.monthTotals.set([]);this.monthNext.set(null);this.appliedMonth.set('');this.monthError.set('');this.month=today().slice(0,7);this.loading.set(false);this.saving.set(false);this.paying.set(false);
     this.detailLoading.set(false);this.historyLoading.set(false);this.items.set([]);this.outstanding.set(null);this.selected.set(null);this.quota.set(null);
@@ -112,22 +114,26 @@ export class Commitments implements OnChanges{
     if(this.saving()||this.paying())return;
     if(this.draftDirty){this.draftError.set('Confirmá o descartá los cambios antes de actualizar o cambiar de página.');return;}
     const context=this.context,version=++this.draftVersion;
+    const month = this.draftMonth();
     this.draftLoading.set(true);this.draftError.set('');
     try{
-      const page=await this.auth.accountRequest<{borradores:number;items:MonthlyItem[];next_offset:number|null}>('GET',this.path+'/installment-drafts?offset='+offset);
+      const page=await this.auth.accountRequest<{borradores:number;borradores_total?:number;items:MonthlyItem[];next_offset:number|null}>(
+        'GET',this.path+'/installment-drafts?offset='+offset+(month?'&month='+encodeURIComponent(month):''));
       if(!this.alive||context!==this.context||version!==this.draftVersion)return;
       if(!Number.isInteger(page.borradores)||!Array.isArray(page.items))throw new Error();
-      this.drafts.set(page.items);this.draftCount.set(page.borradores);this.draftsChanged.emit(page.borradores);
+      this.drafts.set(page.items);this.draftCount.set(page.borradores);this.draftsChanged.emit(page.borradores_total??page.borradores);
       this.draftOffset=offset;this.draftNext.set(page.next_offset);
-      this.draftValues=Object.fromEntries(page.items.map(row=>[row.id,{amount:row.importe,selected:true,version:row.version??1}]));
+      this.draftValues=Object.fromEntries(page.items.map(row=>[row.id,{amount:month?'':row.importe,selected:true,version:row.version??1}]));
     }catch{if(this.alive&&context===this.context&&version===this.draftVersion)this.draftError.set('No pudimos cargar los montos estimados.');}
     finally{if(this.alive&&context===this.context&&version===this.draftVersion)this.draftLoading.set(false);}
   }
   async discardDrafts(){if(this.saving()||this.paying())return;this.draftDirty=false;await this.loadDrafts();}
   async confirmDrafts(){
     if(this.saving()||this.paying()||this.draftLoading()||!this.canLeave())return;
-    const selected=this.drafts().filter(row=>this.draftValues[row.id]?.selected);
-    if(!selected.length){this.draftError.set('Seleccioná al menos una cuota.');return;}
+    const month = this.draftMonth();
+    const selected=this.drafts().filter(row=>month
+      ? !!this.draftValues[row.id]?.amount.trim() : this.draftValues[row.id]?.selected);
+    if(!selected.length){this.draftError.set(month?'Ingresá al menos un importe o elegí «Dejar para después».':'Seleccioná al menos una cuota.');return;}
     const items=[];
     for(const row of selected){
       const value=this.draftValues[row.id],importe=normalizeAmount(value.amount);
@@ -138,13 +144,67 @@ export class Commitments implements OnChanges{
     try{
       await this.auth.accountRequest('POST',this.path+'/installment-confirmations',{items});
       if(!this.alive||context!==this.context)return;
-      this.draftDirty=false;this.cancelPayment();this.notice.set('Montos confirmados. Ya podés registrar sus pagos; no se descontó dinero.');saved=true;
+      this.draftDirty=false;this.cancelPayment();this.notice.set(month
+        ? 'Importes guardados. Los que dejaste vacíos siguen por confirmar.'
+        : 'Montos confirmados. Ya podés registrar sus pagos; no se descontó dinero.');saved=true;
     }catch(error){
       if(this.alive&&context===this.context)this.draftError.set(error instanceof HttpErrorResponse&&error.status===409
         ?'El lote cambió en otra sesión. Tus importes se conservan. Descartá y actualizá para revisar el estado antes de confirmar.'
         :'No pudimos confirmar el lote. Podés reintentar con los mismos datos; no se duplicará la confirmación.');
     }finally{if(this.alive&&context===this.context)this.saving.set(false);}
-    if(saved&&this.alive&&context===this.context){await this.load();await this.loadMonth();await this.loadDrafts(0);await this.loadInstallments();}
+    if(saved&&this.alive&&context===this.context){await this.load();await this.loadMonth();await this.loadDrafts(0);await this.loadInstallments();this.changed.emit();}
+  }
+
+  async openInstallmentMonth(): Promise<void> {
+    if (this.saving() || this.paying() || this.hidden() || !this.canLeave()) return;
+    if (this.draftDirty) {
+      this.monthError.set('Guardá o descartá los importes en edición antes de abrir otro mes.');
+      return;
+    }
+    const month = this.month;
+    if (!/^(?!0000)[0-9]{4}-(0[1-9]|1[0-2])$/.test(month)) {
+      this.monthError.set('Elegí un mes válido.');
+      return;
+    }
+    const context = this.context;
+    this.saving.set(true);
+    this.monthError.set('');
+    this.notice.set('');
+    let result: { mes: string; creadas: number };
+    try {
+      result = await this.auth.accountRequest('POST', this.path + '/installment-months/open?month=' + encodeURIComponent(month));
+    } catch (error) {
+      if (this.alive && context === this.context) this.monthError.set(error instanceof HttpErrorResponse && error.status === 403
+        ? 'Tu rol no permite abrir el mes.' : 'No pudimos confirmar la apertura. Podés reintentar.');
+      return;
+    } finally {
+      if (this.alive && context === this.context) this.saving.set(false);
+    }
+    if (!this.alive || context !== this.context) return;
+    this.draftMonth.set(month);
+    this.drafts.set([]);
+    this.draftCount.set(0);
+    this.draftOffset = 0;
+    this.draftNext.set(null);
+    this.notice.set(result.creadas
+      ? `Mes preparado con ${result.creadas} cuotas nuevas.`
+      : 'Mes preparado con tus gastos mensuales activos.');
+    this.focusSection('month-drafts-title');
+    await Promise.all([this.loadMonth(false, month), this.loadDrafts(0), this.load()]);
+    if (this.alive && context === this.context) this.changed.emit();
+  }
+
+  closeMonthReview(): void {
+    if (this.saving() || this.paying()) return;
+    if (this.draftDirty && !window.confirm('¿Salir sin guardar los importes que escribiste?')) return;
+    this.draftDirty = false;
+    this.draftMonth.set('');
+    this.drafts.set([]);
+    this.draftCount.set(0);
+    this.draftOffset = 0;
+    this.draftNext.set(null);
+    void this.loadDrafts(0);
+    this.focusSection('open-month-action');
   }
   async loadMonth(more=false, requestedMonth=this.month){
     if(this.saving()||this.paying())return;

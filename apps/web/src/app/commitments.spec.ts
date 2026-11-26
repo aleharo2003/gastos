@@ -26,6 +26,36 @@ describe('Deudas fijas',()=>{
     expect(f.nativeElement.textContent).toContain('Pendiente: 170,00');
     expect(request.mock.calls.at(-1)).toEqual(['GET','/api/spaces/s/commitments/debt']);
   });
+  it('abre el mes y confirma solo los importes completados', async () => {
+    const {f, c, request, quota} = await setup();
+    c.month = '2026-12';
+    const first = { ...quota, estimado: true, version: 1, nombre: 'Luz', moneda: 'ARS', cuenta_id: 'bank' };
+    const second = { ...first, id: 'water', nombre: 'Agua' };
+    let confirmed = false;
+    request.mockImplementation(async (_method: string, path: string) => {
+      if (path.includes('/installment-months/open')) return { mes: '2026-12', creadas: 2 };
+      if (path.includes('/installment-confirmations')) {
+        confirmed = true;
+        return { confirmadas: [first.id] };
+      }
+      if (path.includes('/installment-drafts')) return {
+        items: confirmed ? [second] : [first, second], borradores: confirmed ? 1 : 2, next_offset: null,
+      };
+      return { mes: '2026-12', items: [], totales: [], next_offset: null };
+    });
+    await c.openInstallmentMonth();
+    f.detectChanges();
+    expect(request).toHaveBeenCalledWith('POST', '/api/spaces/s/installment-months/open?month=2026-12');
+    expect(request).toHaveBeenCalledWith('GET', '/api/spaces/s/installment-drafts?offset=0&month=2026-12');
+    expect(c.draftValues[first.id].amount).toBe('');
+    expect(c.draftValues[second.id].amount).toBe('');
+    c.draftValues[first.id].amount = '135,20';
+    await c.confirmDrafts();
+    expect(request).toHaveBeenCalledWith('POST', '/api/spaces/s/installment-confirmations',
+      { items: [{ id: first.id, importe: '135.20', version: 1 }] });
+    expect(c.draftCount()).toBe(1);
+    expect(c.draftValues[second.id].amount).toBe('');
+  });
   it('envía la corrección con la versión de la cuota y actualiza el resumen', async () => {
     const {f, c, request, debt, quota} = await setup();
     await c.choose(debt);

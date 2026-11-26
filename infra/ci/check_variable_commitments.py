@@ -11,6 +11,7 @@ from fastapi import HTTPException
 from app.accounts import AccountInput,create_account
 from app.commitments import (CommitmentInput,PaymentInput,ConfirmationsInput,create_commitment,
     list_installments,list_drafts,confirm_installments,pay_installment,monthly_installments,seed_current_installment,skip_installment)
+from app.commitments import CommitmentPause, open_installment_month, pause_commitment
 from app.db.connection import create_runtime_engine,create_migration_engine
 from app.db.unit_of_work import runtime_transaction
 
@@ -122,6 +123,41 @@ def check_variable_commitments(runtime_url,migration_url,jobs_url):
         after_skip=call(lambda s,u,w:monthly_installments(s,u,w,month))['totales'][0]
         assert after_skip['no_aplican']==1 and after_skip['pagado']==before_skip['pagado']
         assert Decimal(before_skip['pendiente'])-Decimal(after_skip['pendiente'])==100
+
+        def future_plan(name, variable=False):
+            return call(lambda s,u,w:create_commitment(s,u,w,CommitmentInput(
+                id=uuid4(),cuenta_id=account,nombre=name,moneda='ARS',importe='90.00',
+                primer_vencimiento=future.replace(day=monthrange(future.year, future.month)[1]).isoformat(),
+                total_cuotas=None,variable=variable,
+            )))
+
+        fixed = future_plan('Internet')
+        paused = future_plan('Servicio pausado', variable=True)
+        call(lambda s,u,w:pause_commitment(s,u,w,paused['id'],CommitmentPause(pausado=True, version=1)))
+        period = future.strftime('%Y-%m')
+        expense_count = expenses()
+
+        def open_month(who=owner):
+            return call(lambda s,u,w:open_installment_month(s,u,w,period),who)
+
+        denied(lambda:open_month(reader),403)
+        denied(lambda:open_month(other),403)
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            opened=list(pool.map(lambda _:open_month(),range(2)))
+        assert sorted(row['creadas'] for row in opened)==[0,102]
+        assert open_month()=={'mes':period,'creadas':0}
+        assert quotas(fixed['id'])[0]['importe']=='90.00' and not quotas(fixed['id'])[0]['estimado']
+        assert quotas(paused['id'])==[]
+        scoped=call(lambda s,u,w:list_drafts(s,u,w,0,period),reader)
+        assert scoped['borradores']==102 and scoped['borradores_total']==199
+        assert all(row['vencimiento'].startswith(period) for row in scoped['items'])
+        last_page=call(lambda s,u,w:list_drafts(s,u,w,scoped['next_offset'],period),reader)
+        assert len(last_page['items'])==2
+        first_new,second_new=last_page['items']
+        confirm(batch([(first_new['id'],'133.00',first_new['version'])]))
+        assert call(lambda s,u,w:list_drafts(s,u,w,0,period),reader)['borradores']==101
+        assert call(lambda s,u,w:list_drafts(s,u,w,100,period),reader)['items'][0]['id']==second_new['id']
+        assert expenses()==expense_count
         print('OK: cuota no aplicable conservada, reintento, totales, borradores y proteccion de pagos.',flush=True)
         print('OK: variables, >100 borradores, montos previos, confirmacion atomica concurrente, rollback, lector, aislamiento, pago posterior e inmutabilidad.',flush=True)
     finally:

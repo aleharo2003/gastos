@@ -428,17 +428,42 @@ def get_commitment(space:UUID,identifier:UUID,request:Request,response:Response)
 def seed_current_installment(session,space,row,day):
     first=row['primer_vencimiento']
     offset=(day.year-first.year)*12+day.month-first.month
-    if offset<0 or row['pausado']:return
+    if offset<0 or row['pausado']:return False
     amount=row['importe']
     if row['variable']:
         previous=session.execute(text('''SELECT importe FROM public.cuotas WHERE espacio_id=:s AND compromiso_id=:c
             AND periodo<:p AND NOT no_aplica ORDER BY periodo DESC LIMIT 1'''),
             {'s':space,'c':row['id'],'p':day.replace(day=1)}).scalar_one_or_none()
         if previous is not None:amount=previous
-    session.execute(text("""INSERT INTO public.cuotas(id,espacio_id,compromiso_id,numero,vencimiento,importe,estimado)
-        VALUES (:id,:s,:c,:n,:v,:i,:e) ON CONFLICT (espacio_id,compromiso_id,periodo) DO NOTHING"""),
+    inserted = session.execute(text("""INSERT INTO public.cuotas(id,espacio_id,compromiso_id,numero,vencimiento,importe,estimado)
+        VALUES (:id,:s,:c,:n,:v,:i,:e) ON CONFLICT (espacio_id,compromiso_id,periodo) DO NOTHING RETURNING id"""),
         {'id':uuid5(UUID(str(row['id'])),str(offset+1)),'s':space,'c':row['id'],'n':offset+1,
-         'v':monthly_due(first,offset),'i':amount,'e':row['variable']})
+         'v':monthly_due(first,offset),'i':amount,'e':row['variable']}).scalar_one_or_none()
+    return inserted is not None
+
+
+def open_installment_month(session, user, space, month):
+    require_member(session, user, space, write=True)
+    if month.startswith('0000'):
+        raise HTTPException(422, 'Mes inválido', headers=NO_STORE)
+    start = date.fromisoformat(month + '-01')
+    end = start.replace(day=monthrange(start.year, start.month)[1])
+    missing = session.execute(text("""
+        SELECT c.* FROM public.compromisos c
+        WHERE c.espacio_id=:space AND c.total_cuotas IS NULL AND NOT c.pausado
+          AND c.primer_vencimiento<=:end AND NOT EXISTS (
+            SELECT 1 FROM public.cuotas q
+            WHERE q.espacio_id=c.espacio_id AND q.compromiso_id=c.id AND q.periodo=:start
+          )
+        ORDER BY c.id FOR UPDATE OF c
+    """), {'space': space, 'start': start, 'end': end}).mappings().all()
+    return {'mes': month, 'creadas': sum(seed_current_installment(session, space, row, start) for row in missing)}
+
+
+@router.post('/spaces/{space}/installment-months/open')
+def post_open_installment_month(space: UUID, request: Request, response: Response,
+                                month: str = Query(pattern=r'^[0-9]{4}-(0[1-9]|1[0-2])$')):
+    return execute(request, response, space, lambda session, user: open_installment_month(session, user, space, month))
 
 
 class CommitmentPause(BaseModel):
@@ -495,19 +520,26 @@ class ConfirmationsInput(BaseModel):
         return self
 
 
-def list_drafts(session,user,space,offset=0):
+def list_drafts(session,user,space,offset=0,month=None):
     require_member(session,user,space)
+    if month and month.startswith('0000'):
+        raise HTTPException(422, 'Mes inválido', headers=NO_STORE)
+    period = date.fromisoformat(month + '-01') if month else None
     rows=session.execute(text("""WITH borradores AS (
         SELECT q.*,c.nombre,c.moneda,c.cuenta_id,0::numeric AS pagado FROM public.cuotas q
         JOIN public.compromisos c ON c.espacio_id=q.espacio_id AND c.id=q.compromiso_id
-        WHERE q.espacio_id=:s AND q.estimado)
-        SELECT pagina.*,resumen.borradores FROM (SELECT COUNT(*)::int AS borradores FROM borradores) resumen
-        LEFT JOIN (SELECT * FROM borradores ORDER BY vencimiento,id LIMIT 101 OFFSET :offset) pagina ON true
-        ORDER BY pagina.vencimiento,pagina.id"""),{'s':space,'offset':offset}).mappings().all()
+        WHERE q.espacio_id=:s AND q.estimado), filtrados AS (
+        SELECT * FROM borradores WHERE CAST(:period AS date) IS NULL OR periodo=:period)
+        SELECT pagina.*,resumen.borradores,resumen.borradores_total
+        FROM (SELECT (SELECT COUNT(*)::int FROM filtrados) AS borradores,
+                     (SELECT COUNT(*)::int FROM borradores) AS borradores_total) resumen
+        LEFT JOIN (SELECT * FROM filtrados ORDER BY vencimiento,id LIMIT 101 OFFSET :offset) pagina ON true
+        ORDER BY pagina.vencimiento,pagina.id"""),{'s':space,'offset':offset,'period':period}).mappings().all()
     items=[row for row in rows if row['id'] is not None]
     return {'borradores':rows[0]['borradores'],'items':[
         public_installment(row)|{'nombre':row['nombre'],'moneda':row['moneda'],'cuenta_id':str(row['cuenta_id'])}
-        for row in items[:100]],'next_offset':offset+100 if len(items)>100 else None}
+        for row in items[:100]],'next_offset':offset+100 if len(items)>100 and offset<=99900 else None} | (
+            {'borradores_total': rows[0]['borradores_total']} if month else {})
 
 
 def confirm_installments(session,user,space,body):
@@ -532,8 +564,9 @@ def confirm_installments(session,user,space,body):
 
 
 @router.get('/spaces/{space}/installment-drafts')
-def get_drafts(space:UUID,request:Request,response:Response,offset:int=Query(default=0,ge=0,le=100000)):
-    return execute(request,response,space,lambda s,u:list_drafts(s,u,space,offset))
+def get_drafts(space:UUID,request:Request,response:Response,offset:int=Query(default=0,ge=0,le=100000),
+               month: str | None = Query(default=None, pattern=r'^[0-9]{4}-(0[1-9]|1[0-2])$')):
+    return execute(request,response,space,lambda s,u:list_drafts(s,u,space,offset,month))
 
 
 @router.post('/spaces/{space}/installment-confirmations')

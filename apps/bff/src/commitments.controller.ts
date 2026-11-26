@@ -291,9 +291,17 @@ export class CommitmentsController{
   @Get('installment-drafts')
   async drafts(@Param('space') space:string,@Query() query:Record<string,unknown>,@Req() req:Request,@Res({passthrough:true}) res:Response){
     res.setHeader('Cache-Control','no-store');const token=await this.token(req,res);
-    if(Object.keys(query).some(k=>k!=='offset')||(query.offset!==undefined&&
+    if(Object.keys(query).some(k=>!['offset','month'].includes(k))||(query.month!==undefined&&!validMonth(query.month))||(query.offset!==undefined&&
       (typeof query.offset!=='string'||!/^\d{1,6}$/.test(query.offset)||Number(query.offset)>100000)))throw new BadRequestException('Pagina invalida');
-    return this.forward(token,space,'drafts',undefined,Number(query.offset??0));
+    return this.forward(token,space,'drafts',undefined,Number(query.offset??0),undefined,query.month as string|undefined);
+  }
+  @Post('installment-months/open')
+  @HttpCode(200)
+  async openMonth(@Param('space') space:string,@Query() query:Record<string,unknown>,@Req() req:Request,@Res({passthrough:true}) res:Response){
+    res.setHeader('Cache-Control','no-store');
+    const token=await this.token(req,res);
+    if(!validMonth(query.month)||Object.keys(query).length!==1)throw new BadRequestException('Mes inválido');
+    return this.forward(token,space,'open-month',undefined,0,undefined,query.month);
   }
   @Post('installment-confirmations')
   @HttpCode(200)
@@ -383,15 +391,18 @@ export class CommitmentsController{
 
 
 
-  private async forward(token:string,rawSpace:string,kind:'index-import'|'index-values'|'commitments'|'installments'|'payments'|'payment-trend'|'monthly'|'detail'|'pause'|'drafts'|'confirm'|'skip'|'overview'|'amount',id:string|undefined,offset=0,body?:IndexCsv|IndexValue|Create|Pay|Confirm|{version:number}|{pausado:boolean;version:number}|AmountCorrection,month?:string){
+  private async forward(token:string,rawSpace:string,kind:'index-import'|'index-values'|'commitments'|'installments'|'payments'|'payment-trend'|'monthly'|'detail'|'pause'|'drafts'|'confirm'|'skip'|'overview'|'amount'|'open-month',id:string|undefined,offset=0,body?:IndexCsv|IndexValue|Create|Pay|Confirm|{version:number}|{pausado:boolean;version:number}|AmountCorrection,month?:string){
     if(!UUID.test(rawSpace))throw new BadRequestException('Espacio invalido');const space=rawSpace.toLowerCase();
     try{
       const base=new URL(process.env.API_BASE_URL??'http://127.0.0.1:8000'),local=['localhost','127.0.0.1','[::1]','api'].includes(base.hostname);
       if(base.username||base.password||base.search||base.hash||base.pathname!=='/'||(base.protocol!=='https:'&&!(base.protocol==='http:'&&local)))throw new Error();
       const rawTimeout=process.env.API_TIMEOUT_MS??'5000',timeout=Number(rawTimeout);
       if(!/^\d+$/.test(rawTimeout)||!Number.isSafeInteger(timeout)||timeout<1||timeout>2147483647)throw new Error();
-      const suffix=kind==='amount'?`installments/${id}/amount`:kind==='payment-trend'?`commitments/${id}/payment-trend`:kind==='index-import'?'index-values/import':kind==='index-values'?'index-values':kind==='overview'?'due-overview':kind==='skip'?`installments/${id}/skip`:kind==='drafts'?'installment-drafts':kind==='confirm'?'installment-confirmations':(kind==='detail'||kind==='pause')?`commitments/${id}`:kind==='monthly'?'installments':kind==='commitments'?'commitments':kind==='installments'?`commitments/${id}/installments`:`installments/${id}/payments`;
-      const result=await fetch(new URL(`/spaces/${space}/${suffix}?offset=${offset}${kind==='monthly'?'&month='+month:''}`,base),{method:kind==='pause'?'PATCH':body?'POST':'GET',redirect:'error',signal:AbortSignal.timeout(timeout),
+      const suffix=kind==='open-month'?'installment-months/open':kind==='amount'?`installments/${id}/amount`:kind==='payment-trend'?`commitments/${id}/payment-trend`:kind==='index-import'?'index-values/import':kind==='index-values'?'index-values':kind==='overview'?'due-overview':kind==='skip'?`installments/${id}/skip`:kind==='drafts'?'installment-drafts':kind==='confirm'?'installment-confirmations':(kind==='detail'||kind==='pause')?`commitments/${id}`:kind==='monthly'?'installments':kind==='commitments'?'commitments':kind==='installments'?`commitments/${id}/installments`:`installments/${id}/payments`;
+      const params = new URLSearchParams();
+      if (kind !== 'open-month') params.set('offset', String(offset));
+      if (month !== undefined) params.set('month', month);
+      const result=await fetch(new URL(`/spaces/${space}/${suffix}?${params}`,base),{method:kind==='pause'?'PATCH':body||kind==='open-month'?'POST':'GET',redirect:'error',signal:AbortSignal.timeout(timeout),
         headers:{Accept:'application/json',Authorization:`Bearer ${token}`,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
       if (kind === 'index-import' && [409, 422].includes(result.status)) {
         const error = await boundedJson(result, 4096) as { detail?: unknown } | null;
@@ -456,18 +467,27 @@ export class CommitmentsController{
         if(!Array.isArray(ids)||ids.length!==input.items.length||ids.some((id,index)=>id!==input.items[index].id))throw new Error();
         return {confirmadas:ids};
       }
+      if (kind === 'open-month') {
+        const result = data as {mes: string; creadas: number} | null;
+        if (!result || result.mes !== month || !Number.isSafeInteger(result.creadas) || result.creadas < 0) throw new Error();
+        return { mes: result.mes, creadas: result.creadas };
+      }
       if(kind==='drafts'){
-        const page=data as {borradores:number;items:unknown[];next_offset:number|null};
+        const page=data as {borradores:number;borradores_total?:number;items:unknown[];next_offset:number|null};
         if(!page||!Number.isSafeInteger(page.borradores)||page.borradores<0||!Array.isArray(page.items)||page.items.length>100||
           !(page.next_offset===null||page.next_offset===offset+100))throw new Error();
         const items=page.items.map(value=>{
           const t=value as Installment & {nombre:string;moneda:string;cuenta_id:string};
           if(!t||typeof t.nombre!=='string'||!t.nombre.trim()||[...t.nombre].length>160||!currencies.includes(t.moneda)||
-            !validId(t.cuenta_id)||!validId(t.compromiso_id)||!t.estimado)throw new Error();
+            !validId(t.cuenta_id)||!validId(t.compromiso_id)||!t.estimado||
+            (month && (typeof t.vencimiento !== 'string' || !t.vencimiento.startsWith(month + '-'))))throw new Error();
           return {...installment(t,space,t.compromiso_id),nombre:t.nombre,moneda:t.moneda,cuenta_id:t.cuenta_id};
         });
         if(page.borradores<items.length||new Set(items.map(t=>t.id)).size!==items.length)throw new Error();
-        return {borradores:page.borradores,items,next_offset:page.next_offset};
+        const total = page.borradores_total;
+        if (month && (typeof total !== 'number' || !Number.isSafeInteger(total) || total < page.borradores)) throw new Error();
+        return {borradores:page.borradores,items,next_offset:page.next_offset,
+          ...(month ? { borradores_total: total } : {})};
       }
       if(kind==='pause'){
         const row=commitment(data,space),input=body as {pausado:boolean;version:number};
