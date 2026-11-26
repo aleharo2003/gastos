@@ -3,9 +3,10 @@ import { FormsModule } from '@angular/forms';
 import { Theme } from './theme';
 import { Accounts } from './accounts';
 import { AuthSession } from './auth-session';
+import { InstallPiggo } from './install-piggo';
 
 @Component({
-  selector: 'app-root', imports: [FormsModule, Accounts],
+  selector: 'app-root', imports: [FormsModule, Accounts, InstallPiggo],
   templateUrl: './app.html', styleUrl: './app.css',
 })
 export class App implements OnInit {
