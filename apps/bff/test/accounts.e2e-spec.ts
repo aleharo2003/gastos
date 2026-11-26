@@ -40,6 +40,17 @@ describe('Cuentas HTTP', () => {
     expect(JSON.parse(options.body)).toEqual({ id, nombre:'Efectivo' });
     expect(options.headers.Authorization).toBe('Bearer token');
   });
+  it('conserva el saldo inicial y los datos de una tarjeta de crédito', async () => {
+    const card = { id, nombre: 'Tarjeta', tipo: 'tarjeta_credito', moneda: 'ARS',
+      saldo_inicial: '-125.75', dia_cierre: 20, dia_vencimiento: 3 };
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ ...card, espacio_id: space })));
+    await request(app.getHttpServer()).post(path).set('Authorization', 'Bearer token')
+      .send(card).expect(200).expect({ ...card, espacio_id: space });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual(card);
+    await request(app.getHttpServer()).post(path).set('Authorization', 'Bearer token')
+      .send({ ...card, dia_vencimiento: 32 }).expect(400);
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
   it('reenvía el cambio de nombre a la cuenta y conserva el nombre anterior', async () => {
     await request(app.getHttpServer()).patch(`${path}/${id}`).set('Authorization', 'Bearer token')
       .send({ nombre: ' Efectivo ', nombre_anterior: 'Caja' }).expect(200).expect(row);

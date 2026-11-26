@@ -91,3 +91,36 @@ section{border-top:1px solid var(--g-border);padding-top:12px;margin-top:20px}h3
     z-index: 2;
   }
 }
+
+.account-create {
+  max-width: 40rem;
+  margin-block: 1rem;
+}
+
+.account-create summary {
+  color: var(--g-accent);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.account-create-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr));
+  column-gap: 0.75rem;
+}
+
+.account-create select {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.625rem;
+  border: 1px solid var(--g-border);
+  border-radius: 0.5rem;
+  background: var(--g-surface);
+  color: var(--g-ink);
+  font: inherit;
+}
+
+.account-create button {
+  width: fit-content;
+}

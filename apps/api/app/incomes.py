@@ -112,6 +112,7 @@ def account_balance(session, user, space, account=None, *, through=None):
     else: require_account(session, user, space, account)
     cutoff = ' AND fecha<=:through' if through is not None else ''
     clause = cutoff + (' AND cuenta_id=:a' if account is not None else '')
+    opening = ' AND id=:a' if account is not None else ''
     # Una instantanea incluye ambos lados de todas las transferencias.
     incoming = cutoff + (' AND destino_id=:a' if account is not None else '')
     outgoing = cutoff + (' AND origen_id=:a' if account is not None else '')
@@ -119,19 +120,23 @@ def account_balance(session, user, space, account=None, *, through=None):
         SELECT moneda, SUM(entrada) AS ingresos, SUM(salida) AS gastos,
             SUM(transferencia_entrada) AS transferencias_entrada,
             SUM(transferencia_salida) AS transferencias_salida,
-            SUM(entrada)-SUM(salida)+SUM(transferencia_entrada)-SUM(transferencia_salida) AS saldo
+            SUM(apertura)+SUM(entrada)-SUM(salida)+SUM(transferencia_entrada)-SUM(transferencia_salida) AS saldo
         FROM (
-          SELECT moneda, importe AS entrada, 0::numeric AS salida,
+          SELECT moneda, saldo_inicial AS apertura, 0::numeric AS entrada, 0::numeric AS salida,
+              0::numeric AS transferencia_entrada, 0::numeric AS transferencia_salida
+          FROM public.cuentas WHERE espacio_id=:s AND moneda IS NOT NULL""" + opening + """
+          UNION ALL
+          SELECT moneda, 0::numeric, importe AS entrada, 0::numeric AS salida,
               0::numeric AS transferencia_entrada, 0::numeric AS transferencia_salida
           FROM public.ingresos WHERE espacio_id=:s AND anulado_en IS NULL""" + clause + """
           UNION ALL
-          SELECT moneda, 0::numeric, importe, 0::numeric, 0::numeric
+          SELECT moneda, 0::numeric, 0::numeric, importe, 0::numeric, 0::numeric
           FROM public.gastos WHERE espacio_id=:s AND anulado_en IS NULL""" + clause + """
           UNION ALL
-          SELECT moneda, 0::numeric, 0::numeric, importe, 0::numeric
+          SELECT moneda, 0::numeric, 0::numeric, 0::numeric, importe, 0::numeric
           FROM public.transferencias WHERE espacio_id=:s AND anulado_en IS NULL""" + incoming + """
           UNION ALL
-          SELECT moneda, 0::numeric, 0::numeric, 0::numeric, importe
+          SELECT moneda, 0::numeric, 0::numeric, 0::numeric, 0::numeric, importe
           FROM public.transferencias WHERE espacio_id=:s AND anulado_en IS NULL""" + outgoing + """
         ) movimientos GROUP BY moneda ORDER BY moneda"""), {'s':space,'a':account,'through':through}).mappings().all()
     by_currency = {row['moneda']:row for row in rows}
@@ -169,9 +174,11 @@ def savings_summary(session, user, space, month, today, offset=0):
     """), params).mappings().all()
     accounts = session.execute(text("""
         WITH pagina AS (
-            SELECT id,nombre,activa FROM public.cuentas WHERE espacio_id=:space
+            SELECT id,nombre,activa,moneda,saldo_inicial FROM public.cuentas WHERE espacio_id=:space
             ORDER BY lower(nombre), id LIMIT 101 OFFSET :offset
         ), saldos AS (
+            SELECT id AS cuenta_id, moneda, saldo_inicial AS neto FROM pagina WHERE moneda IS NOT NULL
+            UNION ALL
             SELECT cuenta_id, moneda, importe AS neto FROM public.ingresos
             WHERE espacio_id=:space AND anulado_en IS NULL AND fecha<=:today AND cuenta_id IN (SELECT id FROM pagina)
             UNION ALL
