@@ -11,8 +11,8 @@ from app.db.base import Base
 class VentaUsd(Base):
     __tablename__ = 'ventas_usd'
     __table_args__ = (
-        ForeignKeyConstraint(['espacio_id','origen_id'], ['public.cuentas.espacio_id','public.cuentas.id']),
-        ForeignKeyConstraint(['espacio_id','destino_id'], ['public.cuentas.espacio_id','public.cuentas.id']),
+        ForeignKeyConstraint(['espacio_id','origen_id'], ['public.cuentas.espacio_id','public.cuentas.id'], name='fk_ventas_usd_origen_cuentas'),
+        ForeignKeyConstraint(['espacio_id','destino_id'], ['public.cuentas.espacio_id','public.cuentas.id'], name='fk_ventas_usd_destino_cuentas'),
         Index('ix_ventas_usd_espacio_fecha', 'espacio_id', 'fecha', 'id'),
     )
 

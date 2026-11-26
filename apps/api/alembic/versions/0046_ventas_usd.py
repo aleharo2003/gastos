@@ -1,7 +1,5 @@
 """Ventas de USD con dos importes exactos y cotización de la operación."""
 from alembic import op
-from alembic.util import CommandError
-from sqlalchemy.exc import DBAPIError
 import sqlalchemy as sa
 
 revision = '0046'
@@ -11,16 +9,6 @@ depends_on = None
 
 
 def upgrade():
-    try:
-        create_sales_schema()
-    except DBAPIError as error:
-        # Solo DDL estático. No se incluye la conexión ni los parámetros de SQLAlchemy.
-        state = getattr(error.orig, 'sqlstate', None)
-        message = getattr(getattr(error.orig, 'diag', None), 'message_primary', None)
-        raise CommandError(f'Migración 0046: {state or "SQL"} · {message or "Error de esquema"}') from None
-
-
-def create_sales_schema():
     table = 'public.ventas_usd'
     op.create_table('ventas_usd',
         sa.Column('espacio_id', sa.Uuid(), nullable=False),
@@ -34,8 +22,8 @@ def create_sales_schema():
         sa.Column('tasa', sa.Numeric(), sa.Computed('round(ars / NULLIF(usd,0), 4)', persisted=True)),
         sa.Column('referencia', sa.Numeric(12, 4)),
         sa.Column('fecha_referencia', sa.Date()),
-        sa.ForeignKeyConstraint(['espacio_id','origen_id'], ['public.cuentas.espacio_id','public.cuentas.id']),
-        sa.ForeignKeyConstraint(['espacio_id','destino_id'], ['public.cuentas.espacio_id','public.cuentas.id']),
+        sa.ForeignKeyConstraint(['espacio_id','origen_id'], ['public.cuentas.espacio_id','public.cuentas.id'], name='fk_ventas_usd_origen_cuentas'),
+        sa.ForeignKeyConstraint(['espacio_id','destino_id'], ['public.cuentas.espacio_id','public.cuentas.id'], name='fk_ventas_usd_destino_cuentas'),
         sa.CheckConstraint('origen_id<>destino_id AND usd>0 AND usd<1000000000000 AND ars>0 AND ars<1000000000000', name='ck_ventas_montos'),
         sa.CheckConstraint('length(btrim(contraparte)) BETWEEN 1 AND 160', name='ck_ventas_contraparte'),
         sa.CheckConstraint('(referencia IS NULL AND fecha_referencia IS NULL) OR (referencia > 0 AND fecha_referencia <= fecha AND fecha_referencia IS NOT NULL)', name='ck_ventas_referencia'),
