@@ -1,5 +1,6 @@
 import { Component, DestroyRef, EventEmitter, Input, OnChanges, Output, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { UsdOffers } from './usd-offers';
 import { AuthSession } from './auth-session';
 import { type AccountOption, compatibleAccounts } from './account-currency';
 import { normalizeAmount, showAmount } from './expenses';
@@ -14,7 +15,7 @@ type Draft = Pick<Sale, 'origen_id' | 'destino_id' | 'fecha' | 'contraparte' | '
 type SalePage = { items: Sale[]; next_offset: number | null };
 
 @Component({
-  selector: 'app-usd-sales', imports: [FormsModule],
+  selector: 'app-usd-sales', imports: [FormsModule, UsdOffers],
   templateUrl: './usd-sales.html',
   styles: [`form { display:grid; gap:.625rem; max-width:28rem; }
     button { justify-self:start; } ul { padding-inline-start:1.25rem; } li { margin-block:.75rem; }`],
@@ -70,6 +71,11 @@ export class UsdSales implements OnChanges {
     } catch {
       if (this.alive) this.error.set('No pudimos cargar las ventas.');
     } finally { if (this.alive) this.loading.set(false); }
+  }
+
+  refreshAfterOffer(): void {
+    this.changed.emit();
+    void this.load();
   }
 
   async save(): Promise<void> {

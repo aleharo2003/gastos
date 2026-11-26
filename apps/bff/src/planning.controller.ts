@@ -46,7 +46,7 @@ export function validPlan(v:unknown):boolean {
   return true;
 }
 
-type PlanningResource = 'spending-plan' | 'reminder-preferences' | 'spending-plan/category-limits' | 'usd-reference' | 'usd-reference/settings' | 'usd-sales';
+type PlanningResource = 'spending-plan' | 'reminder-preferences' | 'spending-plan/category-limits' | 'usd-reference' | 'usd-reference/settings' | 'usd-sales' | 'usd-offers';
 
 function validReminderPreferences(value: unknown): boolean {
   if (!record(value) || !keys(value, [
@@ -81,6 +81,27 @@ function validSaleRow(data: unknown): boolean {
     && validSaleFields(data) && typeof data.tasa === 'string' && /^\d{1,14}\.\d{4}$/.test(data.tasa)
     && ((data.referencia === null && data.fecha_referencia === null && data.diferencia_pct === null)
       || (typeof data.referencia === 'string' && rateDate(data.fecha_referencia) && typeof data.diferencia_pct === 'string'));
+}
+
+function validOfferRow(value: unknown): boolean {
+  return record(value) && keys(value, ['id','ronda','fecha','contraparte','tasa','referencia','fecha_referencia','venta_id','estado'])
+    && typeof value.id === 'string' && UUID.test(value.id) && typeof value.ronda === 'string' && UUID.test(value.ronda)
+    && typeof value.contraparte === 'string' && validManualRate({ fecha: value.fecha, tasa: value.tasa })
+    && ['vigente','aceptada','rechazada'].includes(String(value.estado));
+}
+
+function validOfferWrite(value: unknown): boolean {
+  if (!record(value)) return false;
+  if ('oferta_id' in value) {
+    return keys(value, ['oferta_id','origen_id','destino_id','fecha','usd','confirmar_mejor'])
+      && [value.oferta_id,value.origen_id,value.destino_id].every(id => typeof id === 'string' && UUID.test(id))
+      && value.origen_id !== value.destino_id && rateDate(value.fecha) && saleMoney(value.usd)
+      && typeof value.confirmar_mejor === 'boolean';
+  }
+  return keys(value, ['id','ronda','contraparte','tasa'])
+    && typeof value.id === 'string' && UUID.test(value.id) && typeof value.ronda === 'string' && UUID.test(value.ronda)
+    && typeof value.contraparte === 'string' && value.contraparte.trim().length > 0 && [...value.contraparte].length <= 160
+    && validManualRate({ fecha: '2000-01-01', tasa: value.tasa });
 }
 
 @Controller('api/spaces/:space')
@@ -156,6 +177,19 @@ export class PlanningController {
     return this.forward(space, request, response, body, true, 'usd-sales');
   }
 
+  @Get('usd-offers')
+  readUsdOffers(@Param('space') space: string, @Query('offset') offset: unknown,
+    @Req() request: Request, @Res({ passthrough: true }) response: Response) {
+    return this.forward(space, request, response, undefined, false, 'usd-offers', offset);
+  }
+
+  @Post('usd-offers')
+  @HttpCode(200)
+  writeUsdOffer(@Param('space') space: string, @Body() body: unknown,
+    @Req() request: Request, @Res({ passthrough: true }) response: Response) {
+    return this.forward(space, request, response, body, true, 'usd-offers');
+  }
+
   private async forward(
     space: string, request: Request, response: Response, body?: unknown,
     writing = false, resource: PlanningResource = 'spending-plan', month?: unknown,
@@ -171,7 +205,12 @@ export class PlanningController {
     const usd = resource === 'usd-reference';
     const market = resource === 'usd-reference/settings';
     const sale = resource === 'usd-sales';
-    const validate = sale ? (data: unknown) => writing ? validSaleRow(data) :
+    const offers = resource === 'usd-offers';
+    const validate = offers ? (data: unknown) => record(data) && (writing
+      ? (keys(data, ['oferta']) && validOfferRow(data.oferta)) || (keys(data, ['venta']) && validSaleRow(data.venta))
+      : keys(data, ['items','next_offset']) && Array.isArray(data.items) && data.items.length <= 100
+        && data.items.every(validOfferRow) && (data.next_offset === null || data.next_offset === Number(month ?? 0) + 100))
+      : sale ? (data: unknown) => writing ? validSaleRow(data) :
       record(data) && keys(data, ['items','next_offset']) && Array.isArray(data.items) && data.items.length <= 100
       && data.items.every(validSaleRow) && (data.next_offset === null || data.next_offset === Number(month ?? 0) + 100)
       : market ? (data: unknown) => record(data) && keys(data, ['tipo']) &&
@@ -182,8 +221,8 @@ export class PlanningController {
       : usd ? (data: unknown) => record(data) && keys(data, ['cotizacion']) &&
           (data.cotizacion === null || validManualRate(data.cotizacion))
         : resource === 'spending-plan' ? validPlan : validReminderPreferences;
-    if (!UUID.test(space) || (writing && !(sale ? record(body) && keys(body, saleFields) && validSaleFields(body) : usd ? validManualRate(body) : validate(body))) ||
-        (sale && month !== undefined && (typeof month !== 'string' || !/^\d{1,6}$/.test(month) || Number(month) > 100000)) ||
+    if (!UUID.test(space) || (writing && !(offers ? validOfferWrite(body) : sale ? record(body) && keys(body, saleFields) && validSaleFields(body) : usd ? validManualRate(body) : validate(body))) ||
+        ((sale || offers) && month !== undefined && (typeof month !== 'string' || !/^\d{1,6}$/.test(month) || Number(month) > 100000)) ||
         (usd && month !== undefined && !rateDate(month)) ||
         (history && (typeof month !== 'string' || !/^(19[0-9]{2}|20[0-9]{2})-(0[1-9]|1[0-2])$/.test(month)))) {
       throw new BadRequestException(sale ? 'Venta inválida' : history ? 'Mes o espacio invalido'
@@ -197,7 +236,7 @@ export class PlanningController {
       if(!/^\d+$/.test(raw)||!Number.isSafeInteger(timeout)||timeout<1||timeout>2147483647)throw new Error();
       const url = new URL(`/spaces/${space.toLowerCase()}/${resource}`, base);
       if (history) url.searchParams.set('mes', String(month));
-      if (sale && month !== undefined) url.searchParams.set('offset', String(month));
+      if ((sale || offers) && month !== undefined) url.searchParams.set('offset', String(month));
       if (usd && month !== undefined) url.searchParams.set('fecha', String(month));
       const result=await fetch(url,{
         method:writing?(resource==='reminder-preferences'?'PUT':'POST'):'GET',redirect:'error',signal:AbortSignal.timeout(timeout),

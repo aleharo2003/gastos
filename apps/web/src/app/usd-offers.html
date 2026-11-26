@@ -1,0 +1,56 @@
+<details #panel (toggle)="panel.open && load()">
+  <summary>Ofertas de compra de USD</summary>
+  <h4>Anotar una oferta</h4>
+  @if (error()) { <p role="alert">{{ error() }}</p> }
+  @if (notice()) { <p role="status">{{ notice() }}</p> }
+  <form #offerForm="ngForm" (ngSubmit)="add()">
+    <label for="offer-round">Ronda de la venta</label>
+    <select id="offer-round" name="round" [ngModel]="round" (ngModelChange)="changeRound($event)" [disabled]="busy()">
+      <option value="">Nueva ronda</option>
+      @for (o of rounds(); track o.ronda) { <option [value]="o.ronda">{{ o.fecha }} · {{ o.contraparte }} · {{ o.ronda.slice(0,6) }}</option> }
+    </select>
+    <label for="offer-name">Quién ofrece</label>
+    <input id="offer-name" name="name" [(ngModel)]="counterparty" required maxlength="160" [disabled]="busy()">
+    <label for="offer-price">Pesos por 1 USD</label>
+    <input id="offer-price" name="rate" [(ngModel)]="rate" inputmode="decimal" required [disabled]="busy()">
+    <button type="submit" [disabled]="offerForm.invalid || busy()">Guardar oferta</button>
+  </form>
+  <h4>Ofertas registradas</h4>
+  <ul>
+    @for (o of items(); track o.id) {
+      <li><strong>{{ o.contraparte }} · {{ o.tasa }} ARS por USD</strong>
+        <p>{{ o.fecha }} · Ronda {{ o.ronda.slice(0,6) }} · {{ o.estado }}</p>
+        @if (o.referencia) { <p>Referencia al registrar · {{ o.referencia }} ARS del {{ o.fecha_referencia }}</p> }
+        @if (o.estado === 'vigente') { <button type="button" (click)="select(o)" [disabled]="busy()">Aceptar oferta</button> }
+      </li>
+    }
+  </ul>
+  @if (offset() !== null && items().length) {
+    <button type="button" [disabled]="busy()" (click)="load(true)">Ver más ofertas</button>
+  }
+  @if (selected(); as offer) {
+    <form #acceptForm="ngForm" (ngSubmit)="accept()">
+      <h4>Confirmar venta a {{ offer.contraparte }}</h4>
+      <label for="offer-source">Cuenta de origen · USD</label>
+      <select id="offer-source" name="source" [(ngModel)]="source" required [disabled]="busy()">
+        <option value="">Elegí una cuenta</option>
+        @for (a of sources; track a.id) { <option [value]="a.id">{{ a.nombre }}</option> }
+      </select>
+      <label for="offer-destination">Cuenta de destino · ARS</label>
+      <select id="offer-destination" name="destination" [(ngModel)]="destination" required [disabled]="busy()">
+        <option value="">Elegí una cuenta</option>
+        @for (a of destinations; track a.id) { <option [value]="a.id">{{ a.nombre }}</option> }
+      </select>
+      <label for="offer-usd">USD vendidos a {{ offer.tasa }} ARS por USD</label>
+      <input id="offer-usd" name="usd" [(ngModel)]="usd" inputmode="decimal" required [disabled]="busy()">
+      <label for="offer-date">Fecha de la venta</label>
+      <input id="offer-date" name="date" [(ngModel)]="date" type="date" required [disabled]="busy()">
+      @if (warning() || conflict) {
+        <label><input type="checkbox" name="better" [(ngModel)]="confirmBetter" [disabled]="busy()">
+          Confirmo esta oferta aunque haya otra mejor.</label>
+      }
+      <button type="submit" [disabled]="acceptForm.invalid || busy() || ((warning() || conflict) && !confirmBetter)">Registrar venta</button>
+      <button type="button" [disabled]="busy()" (click)="select(null)">Volver a las ofertas</button>
+    </form>
+  }
+</details>
