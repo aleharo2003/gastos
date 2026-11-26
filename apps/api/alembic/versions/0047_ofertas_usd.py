@@ -10,6 +10,7 @@ depends_on = None
 
 def upgrade():
     table = 'public.ofertas_usd'
+    op.create_unique_constraint('uq_ventas_usd_espacio_id', 'ventas_usd', ['espacio_id','id'], schema='public')
     op.create_table('ofertas_usd',
         sa.Column('espacio_id', sa.Uuid(), sa.ForeignKey('public.espacios.id', ondelete='CASCADE'), nullable=False),
         sa.Column('id', sa.Uuid(), primary_key=True),
@@ -20,7 +21,9 @@ def upgrade():
         sa.Column('referencia', sa.Numeric(12,4)),
         sa.Column('fecha_referencia', sa.Date()),
         sa.Column('estado', sa.Text(), nullable=False, server_default='vigente'),
-        sa.Column('venta_id', sa.Uuid(), sa.ForeignKey('public.ventas_usd.id'), unique=True),
+        sa.Column('venta_id', sa.Uuid(), unique=True),
+        sa.ForeignKeyConstraint(['espacio_id','venta_id'], ['public.ventas_usd.espacio_id','public.ventas_usd.id'],
+                                name='fk_ofertas_usd_espacio_venta'),
         sa.CheckConstraint("tasa > 0 AND tasa < 100000000 AND length(btrim(contraparte)) BETWEEN 1 AND 160", name='ck_ofertas_usd_datos'),
         sa.CheckConstraint("estado IN ('vigente','aceptada','rechazada') AND (estado='aceptada') = (venta_id IS NOT NULL)", name='ck_ofertas_usd_estado'),
         schema='public')
@@ -59,3 +62,4 @@ def upgrade():
 
 def downgrade():
     op.drop_table('ofertas_usd', schema='public')
+    op.drop_constraint('uq_ventas_usd_espacio_id', 'ventas_usd', schema='public', type_='unique')
