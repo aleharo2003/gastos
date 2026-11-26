@@ -85,6 +85,10 @@
         <button class="secondary step-month" type="button" aria-label="Mes siguiente"
           (click)="moveMonth(1)" [disabled]="monthLoading() || saving() || paying()">›</button>
         <button type="submit" class="secondary" [disabled]="monthLoading() || saving() || paying()">Consultar mes</button>
+        @if (!hidden()) {
+          <button type="button" id="open-month-action" (click)="openInstallmentMonth()"
+            [disabled]="monthLoading() || draftLoading() || saving() || paying()">Abrir mes</button>
+        }
       </form>
     </div>
     @if(monthError()){<p class="error" role="alert">{{ monthError() }}</p>}
@@ -235,20 +239,35 @@
   }
   @if(lastPayment();as p){<button type="button" class="secondary" (click)="receipts(p)" [disabled]="paying()">Adjuntar comprobante al pago guardado</button>}
   @if(receiptPayment()){@for(p of [receiptPayment()!];track p.id){<app-receipts [path]="receiptPath(p)" />}}
-  <details class="commitment-panel draft-review">
-    <summary>Montos por confirmar · {{ draftCount() }}</summary>
-    <p>Hay {{ draftCount() }} cuotas estimadas en este espacio. Revisá los importes antes de confirmar; la confirmación no registra pagos.</p>
+  <details class="commitment-panel draft-review" [open]="!!draftMonth()">
+    <summary id="month-drafts-title" tabindex="-1">
+      @if (draftMonth(); as period) { Importes de {{ monthTitle(period) }} }
+      @else { Montos por confirmar · {{ draftCount() }} }
+    </summary>
+    @if (draftMonth()) {
+      <p>Completá los importes que ya sabés. Los campos en blanco quedan por confirmar.</p>
+      @if (!draftLoading() && !draftError() && !draftCount()) {
+        <p>Ya están confirmados todos los importes que se pueden revisar en este mes.</p>
+      }
+    } @else {
+      <p>Hay {{ draftCount() }} cuotas estimadas en este espacio. Revisá los importes antes de confirmar; la confirmación no registra pagos.</p>
+    }
     @if(draftError()){<p class="error" role="alert">{{ draftError() }}</p>}
     @if(draftLoading()){<p role="status">Cargando estimados…</p>}
     @if(!hidden()&&drafts().length){
       <form (ngSubmit)="confirmDrafts()">
         <ul>@for(q of drafts();track q.id){<li>
-          <label class="checkbox"><input type="checkbox" [name]="'select-'+q.id" [(ngModel)]="draftValues[q.id].selected" (ngModelChange)="draftDirty=true" [disabled]="saving()||paying()"> {{ q.nombre }} · {{ q.moneda }} · Cuota {{ q.numero }}</label>
-          <p>Vence {{ q.vencimiento.split('-').reverse().join('/') }} · Monto estimado · Sin confirmar</p>
+          @if (draftMonth()) {
+            <strong>{{ q.nombre }} · {{ q.moneda }}</strong>
+            <p>Vence {{ q.vencimiento.split('-').reverse().join('/') }} · Estimado {{ q.moneda }} {{ showAmount(q.importe) }}</p>
+          } @else {
+            <label class="checkbox"><input type="checkbox" [name]="'select-'+q.id" [(ngModel)]="draftValues[q.id].selected" (ngModelChange)="draftDirty=true" [disabled]="saving()||paying()"> {{ q.nombre }} · {{ q.moneda }} · Cuota {{ q.numero }}</label>
+            <p>Vence {{ q.vencimiento.split('-').reverse().join('/') }} · Monto estimado · Sin confirmar</p>
+          }
           <label [for]="'estimate-'+q.id">Importe a confirmar en {{ q.moneda }}</label>
-          <input [id]="'estimate-'+q.id" [name]="'amount-'+q.id" inputmode="decimal" [(ngModel)]="draftValues[q.id].amount" (ngModelChange)="draftDirty=true" [disabled]="saving()||paying()||!draftValues[q.id].selected" required>
+          <input [id]="'estimate-'+q.id" [name]="'amount-'+q.id" inputmode="decimal" [(ngModel)]="draftValues[q.id].amount" (ngModelChange)="draftDirty=true" [disabled]="saving()||paying()||!draftValues[q.id].selected" [required]="!draftMonth()">
         </li>}</ul>
-        <button type="submit" [disabled]="saving()||paying()||draftLoading()">Confirmar cuotas seleccionadas</button>
+        <button type="submit" [disabled]="saving()||paying()||draftLoading()">{{ draftMonth() ? 'Guardar importes' : 'Confirmar cuotas seleccionadas' }}</button>
       </form>
     }
     @if(hidden()&&draftCount()){<p>Mostrá los importes para revisar los montos estimados.</p>}
@@ -256,6 +275,9 @@
     @if(draftDirty){<button type="button" class="secondary" (click)="discardDrafts()" [disabled]="saving()||paying()">Descartar cambios y actualizar</button>}
     @if(draftOffset>0){<button type="button" class="secondary" (click)="loadDrafts(draftOffset-100)" [disabled]="draftLoading()||saving()||paying()">Estimados anteriores</button>}
     @if(draftNext()!==null){<button type="button" class="secondary" (click)="loadDrafts(draftNext()!)" [disabled]="draftLoading()||saving()||paying()">Estimados siguientes</button>}
+    @if (draftMonth()) {
+      <button type="button" class="secondary" (click)="closeMonthReview()" [disabled]="saving() || paying()">Dejar para después</button>
+    }
   </details>
   <details class="commitment-panel management">
     <summary>Administrar deudas y gastos mensuales</summary>

@@ -201,7 +201,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
   .month-header-actions button { flex: 1 1 auto; }
   .month-nav { inline-size: 100%; gap: .35rem; }
   .month-nav input { flex: 1; min-inline-size: 0; }
-  .month-nav button[type="submit"] { inline-size: 100%; }
+  .month-nav button[type="submit"], #open-month-action { inline-size: 100%; }
   .month-ledger .month-concept { grid-column: 1 / -1; }
   .month-status { grid-column: 2 / 4; grid-row: 2; justify-self: end; }
   .month-ledger td[data-label="Vencimiento"] { grid-column: 1 / 2; grid-row: 2; }
