@@ -3,6 +3,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
 import { installmentLocalDate, prepareInstallmentPayment, submitInstallmentPayment, type InstallmentPayment } from './installment-payment';
 import { watchInstallmentDay } from './installment-date';
+import { accountCurrency, compatibleAccounts, type AccountOption } from './account-currency';
 import { AuthSession } from './auth-session';
 import { showAmount } from './expenses';
 import { money, rateUnits, reference, type CurrencyTotal } from './money-reference';
@@ -32,7 +33,7 @@ type Overview = {
 export class DueOverview implements OnChanges {
   @Input({ required: true }) space = '';
   @Input() active = true;
-  @Input() accounts: readonly { id: string; nombre: string }[] = [];
+  @Input() accounts: readonly AccountOption[] = [];
   @Input() moreAccounts = false;
   @Input() accountsLoading = false;
   @Output() loadAccounts = new EventEmitter<void>();
@@ -138,11 +139,19 @@ export class DueOverview implements OnChanges {
     }
   }
 
+  paymentAccounts(currency: string) { return compatibleAccounts(this.accounts, currency); }
+
+  pendingCurrencyConflict(item: DueItem): boolean {
+    const currency = item.cuenta_id ? accountCurrency(this.accounts, item.cuenta_id) : null;
+    return !!currency && currency !== item.moneda;
+  }
+
   startPayment(item: DueItem): void {
     if (item.estimado || item.pendiente_ajuste || this.hidden() || this.selected() || this.saving() || this.loading() || this.error()) return;
     this.paymentError.set('');
     this.notice.set('');
-    this.account = item.cuenta_id ?? (this.accounts.length === 1 ? this.accounts[0].id : '');
+    const accounts = this.paymentAccounts(item.moneda);
+    this.account = item.cuenta_id ?? (accounts.length === 1 ? accounts[0].id : '');
     this.paymentDate = installmentLocalDate();
     this.paymentAmount = item.pendiente;
     this.selected.set(item);
@@ -164,9 +173,13 @@ export class DueOverview implements OnChanges {
     const item = this.selected();
     if (!item || item.estimado || item.pendiente_ajuste || this.saving() || this.hidden()) return;
 
+    if (this.pendingCurrencyConflict(item)) {
+      this.paymentError.set('La moneda del gasto pendiente es distinta de la moneda de la cuenta.');
+      return;
+    }
     const payment = item.cuenta_id ? undefined : this.pendingPayment ?? prepareInstallmentPayment(item.id, {
       cuenta_id: this.account, fecha: this.paymentDate, importe: this.paymentAmount,
-    }, item.pendiente, this.accounts);
+    }, item.pendiente, this.paymentAccounts(item.moneda));
     if (item.cuenta_id ? !this.paymentDate : !payment) {
       this.paymentError.set(item.cuenta_id ? 'Ingresá la fecha de pago.'
         : 'Elegí una cuenta, una fecha y un importe positivo que no supere el saldo de la cuota.');

@@ -2,6 +2,7 @@ import { Component, DestroyRef, EventEmitter, inject, Input, OnChanges, Output, 
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { AuthSession } from './auth-session';
+import { accountCurrency, type AccountOption } from './account-currency';
 import { CategoryCatalog } from './category-catalog';
 import { normalizeAmount, showAmount } from './expenses';
 
@@ -12,8 +13,8 @@ type Balance={totales:{moneda:string;ingresos:string;gastos:string;saldo:string;
 @Component({selector:'app-incomes',imports:[FormsModule],templateUrl:'./incomes.html',styleUrl:'./incomes.css'})
 export class Incomes implements OnChanges {
   @Input({required:true}) space='';
-  @Input({required:true}) account={id:'',nombre:''};
-  @Input() accounts:{id:string;nombre:string}[]=[];
+  @Input({required:true}) account: AccountOption = {id:'',nombre:''};
+  @Input() accounts: AccountOption[] = [];
   @Input() revision=0;
   @Output() changed=new EventEmitter<void>();
   readonly items=signal<Income[]>([]);
@@ -83,13 +84,19 @@ export class Incomes implements OnChanges {
     }catch{if(this.alive&&generation===this.generation)this.error.set('No pudimos cargar los ingresos.');}
     finally{if(this.alive&&generation===this.generation)this.loading.set(false);}
   }
+  get fixedCurrency() {
+    return this.account.id ? this.account.moneda ?? null : accountCurrency(this.accounts, this.createAccount);
+  }
+
+  get movementCurrency() { return this.fixedCurrency ?? this.currency; }
+
   async save(){
     if(this.saving()||this.loading())return;
     const account=this.account.id||this.createAccount,amount=normalizeAmount(this.amount),description=this.description.trim();
     if(!account || !this.accounts.some(row=>row.id===account) || !amount || !description || [...description].length>160 || !this.date){
       this.error.set('Elegí una cuenta y completá fecha, descripción e importe positivo, con hasta dos decimales.');return;
     }
-    const value={fecha:this.date,descripcion:description,moneda:this.currency,importe:amount,
+    const value={fecha:this.date,descripcion:description,moneda:this.movementCurrency,importe:amount,
       ...((this.category || this.pending?.payload.categoria) ? { categoria: this.category || null } : {})};
     if(!this.pending || this.pending.account!==account || Object.entries(value).some(([key,v])=>this.pending!.payload[key as keyof Payload]!==v)){
       this.pending={account,payload:{id:crypto.randomUUID(),...value}};
@@ -103,7 +110,7 @@ export class Incomes implements OnChanges {
       if(this.alive&&generation===this.generation)this.error.set(error instanceof HttpErrorResponse&&error.status===403
         ?'No tenés permiso para registrar ingresos.'
         :error instanceof HttpErrorResponse&&error.status===409?'La solicitud cambió. Actualizá los ingresos para revisar lo registrado.'
-        :error instanceof HttpErrorResponse&&error.status===422&&this.category?'Revisá los datos y elegí una categoría activa o dejala vacía.'
+        :error instanceof HttpErrorResponse&&error.status===422?'Revisá la moneda de la cuenta y elegí una categoría activa o dejala vacía.'
         :'No pudimos confirmar el guardado. Reintentá con los mismos datos; la solicitud no se duplicará.');
     }finally{if(this.alive&&generation===this.generation)this.saving.set(false);}
     if(this.alive&&generation===this.generation&&!this.pending){await this.load();await this.loadBalance();}

@@ -1,4 +1,5 @@
 import { Component, computed, DestroyRef, EventEmitter, Output, inject, Input, OnInit, signal, ViewChildren, QueryList } from '@angular/core';
+import { accountCurrency, type AccountOption } from './account-currency';
 import { CategoryCatalog } from './category-catalog';
 import { ExpenseTrend } from './expense-trend';
 import { FormsModule } from '@angular/forms';
@@ -35,8 +36,8 @@ function today() {
 @Component({ selector: 'app-expenses', imports: [ExpenseTrend, FormsModule, Receipts, SimilarExpenses, ExpenseTotals], templateUrl: './expenses.html', styleUrl: './expenses.css' })
 export class Expenses implements OnInit {
   @Input({ required: true }) space = '';
-  @Input({ required: true }) account = { id: '', nombre: '' };
-  @Input() accounts: {id:string;nombre:string}[] = [];
+  @Input({ required: true }) account: AccountOption = { id: '', nombre: '' };
+  @Input() accounts: AccountOption[] = [];
   @Output() summaryChanged=new EventEmitter<void>();
   @Output() quickSaved = new EventEmitter<void>();
   readonly quickOpen = signal(false);
@@ -51,6 +52,21 @@ export class Expenses implements OnInit {
   get quickAccountId(): string {
     return this.account.id || (this.accounts.some(row => row.id === this.quickPreferredId)
       ? this.quickPreferredId : this.accounts.length === 1 ? this.accounts[0].id : '');
+  }
+
+  get quickCurrency(): string {
+    return (this.account.id ? this.account.moneda : accountCurrency(this.accounts, this.quickAccountId)) ?? 'ARS';
+  }
+
+  get fixedCurrency(): string | null {
+    const currency = this.editing
+      ? accountCurrency(this.accounts, this.editAccount) ?? (this.account.id === this.editAccount ? this.account.moneda : null)
+      : this.account.id ? this.account.moneda : accountCurrency(this.accounts, this.createAccount);
+    return currency ? this.editing?.moneda ?? currency : null;
+  }
+
+  get movementCurrency(): string {
+    return this.fixedCurrency ?? this.currency;
   }
 
   setQuickAccount(event: Event): void {
@@ -80,9 +96,9 @@ export class Expenses implements OnInit {
     this.error.set('');
     const path = this.accountPath(account);
     const previous = this.pendingQuick;
-    if (previous?.path !== path || previous.body.importe !== amount || previous.body.categoria !== category.id) {
+    if (previous?.path !== path || previous.body.importe !== amount || previous.body.categoria !== category.id || previous.body.moneda !== this.quickCurrency) {
       this.pendingQuick = { path, body: { id: crypto.randomUUID(), fecha: today(), descripcion: category.label,
-        moneda: 'ARS', importe: amount, categoria: category.id } };
+        moneda: this.quickCurrency, importe: amount, categoria: category.id } };
     }
     await this.savePaid(path, this.pendingQuick!.body, null, true);
   }
@@ -288,10 +304,11 @@ export class Expenses implements OnInit {
     this.description = item.descripcion;
     this.clearDetails();
     this.currency = item.moneda;
-    this.amount = item.importe;
+    this.amount = this.movementCurrency === item.moneda ? item.importe : '';
     this.category = this.selectableCategories.some(row => row.id === item.categoria) ? item.categoria ?? '' : '';
     this.error.set('');
-    this.notice.set('Revisá el importe y guardá para registrar el nuevo gasto.');
+    this.notice.set(this.amount ? 'Revisá el importe y guardá para registrar el nuevo gasto.'
+      : 'Ingresá el importe en la moneda de la cuenta antes de guardar.');
   }
 
   edit(item: Expense): void {
@@ -417,7 +434,7 @@ export class Expenses implements OnInit {
     const amount = normalizeAmount(this.amount), description = this.description.trim();
     this.error.set(''); this.notice.set('');
     if (!amount) { this.error.set('Ingresá un importe mayor que cero, sin separador de miles y con hasta dos decimales.'); return; }
-    if (!description || [...description].length > 160 || !['ARS','USD','EUR'].includes(this.currency)) return;
+    if (!description || [...description].length > 160 || !['ARS','USD','EUR'].includes(this.movementCurrency)) return;
     const note = this.note.trim() || null;
     if (note && [...note].length > 500) { this.error.set('La nota admite hasta 500 caracteres.'); return; }
     const details = { nota: note, fecha_devengamiento: this.incurredDate || null, fecha_vencimiento: this.dueDate || null };
@@ -426,12 +443,12 @@ export class Expenses implements OnInit {
         this.error.set('Ingresá el vencimiento del gasto pendiente.');
         return;
       }
-      await this.savePending({ descripcion: description, moneda: this.currency, importe: amount,
+      await this.savePending({ descripcion: description, moneda: this.movementCurrency, importe: amount,
         categoria: this.category || null, ...details });
       return;
     }
     if (!this.date) return;
-    const values: Omit<Payload, 'id'> = {fecha: this.date, descripcion: description, moneda: this.currency, importe: amount, categoria: this.category || null};
+    const values: Omit<Payload, 'id'> = {fecha: this.date, descripcion: description, moneda: this.movementCurrency, importe: amount, categoria: this.category || null};
     const original = this.editing ? { ...this.editing } : null;
     for (const key of expenseDetailFields) {
       if (original) {
@@ -485,6 +502,8 @@ export class Expenses implements OnInit {
         ? 'El gasto cambió desde otra sesión o corresponde a un pago de cuota. Tu formulario se conserva. Los pagos de cuotas no se editan desde Gastos; para otros gastos, actualizá la lista y revisá los valores actuales.'
         : error instanceof HttpErrorResponse && error.status === 403
         ? 'No tenés permiso para registrar gastos en este espacio.'
+        : error instanceof HttpErrorResponse && error.status === 422
+        ? 'Revisá la moneda de la cuenta y los datos del gasto.'
         : 'No pudimos confirmar el guardado. Reintentá sin cambiar los datos para evitar duplicar esta solicitud.');
     } finally { if (this.alive) this.saving.set(false); }
     if (saved && this.alive && this.reportOpen) void this.loadCategoryReport();
@@ -511,6 +530,8 @@ export class Expenses implements OnInit {
     } catch (error) {
       if (this.alive) this.error.set(error instanceof HttpErrorResponse && error.status === 409
         ? 'La cuenta está archivada o el gasto cambió. Revisá la cuenta antes de reintentar.'
+        : error instanceof HttpErrorResponse && error.status === 422
+        ? 'Revisá la moneda de la cuenta y los datos del gasto pendiente.'
         : 'No pudimos confirmar el gasto pendiente. Reintentá con los mismos datos para evitar duplicados.');
     } finally {
       if (this.alive) this.saving.set(false);

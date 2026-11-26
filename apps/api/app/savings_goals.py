@@ -121,6 +121,9 @@ def list_goals(session,user,space,offset=0,include_archived=False):
           ORDER BY m.archivada,m.id LIMIT 101 OFFSET :offset
         ), claves AS (SELECT DISTINCT cuenta_id,moneda FROM pagina),
         movimientos AS (
+          SELECT c.id AS cuenta_id,c.moneda,c.saldo_inicial AS importe FROM public.cuentas c
+          JOIN claves k ON k.cuenta_id=c.id AND k.moneda=c.moneda WHERE c.espacio_id=:s
+          UNION ALL
           SELECT i.cuenta_id,i.moneda,i.importe AS importe FROM public.ingresos i
           JOIN claves k ON k.cuenta_id=i.cuenta_id AND k.moneda=i.moneda WHERE i.espacio_id=:s AND i.anulado_en IS NULL
           UNION ALL

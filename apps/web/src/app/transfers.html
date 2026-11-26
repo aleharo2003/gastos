@@ -26,12 +26,13 @@
     <label for="transfer-description">Descripción</label>
     <input id="transfer-description" name="transferDescription" [(ngModel)]="description" required maxlength="160" placeholder="Por ejemplo, ahorro del mes" [disabled]="saving()">
     <label for="transfer-currency">Moneda en ambas cuentas</label>
-    <select id="transfer-currency" name="transferCurrency" [(ngModel)]="currency" [disabled]="saving()"><option>ARS</option><option>USD</option><option>EUR</option></select>
+    <select id="transfer-currency" name="transferCurrency" [ngModel]="movementCurrency" (ngModelChange)="currency = $event" [disabled]="saving() || !!fixedCurrency"><option>ARS</option><option>USD</option><option>EUR</option></select>
+    @if (currencyConflict) { <p role="status">Elegí cuentas que puedan operar en la misma moneda.</p> }
     <label for="transfer-amount">Importe</label>
     <input id="transfer-amount" name="transferAmount" inputmode="decimal" [(ngModel)]="amount" required aria-describedby="transfer-amount-help" placeholder="100000,00" [disabled]="saving()">
     <small id="transfer-amount-help">Sin separador de miles; coma o punto para los decimales. No se convierte moneda.</small>
     <small>El saldo se calcula con lo registrado, incluso fechas futuras. Podés registrar una transferencia aunque deje saldo negativo.</small>
-    <button type="submit" [disabled]="transferForm.invalid||accounts.length<2||loading()||saving()">{{ saving()?'Guardando…':'Registrar transferencia' }}</button>
+    <button type="submit" [disabled]="transferForm.invalid||accounts.length<2||currencyConflict||loading()||saving()">{{ saving()?'Guardando…':'Registrar transferencia' }}</button>
     <button type="button" class="secondary" (click)="clear()" [disabled]="saving()">Limpiar formulario</button>
   </form>
   <h4>Historial de transferencias</h4>

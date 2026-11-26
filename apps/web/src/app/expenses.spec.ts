@@ -1,13 +1,14 @@
 import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
 import { Expenses, normalizeAmount, showAmount } from './expenses';
+import type { AccountOption } from './account-currency';
 import { AuthSession } from './auth-session';
 describe('Gastos', () => {
-  function setup() {
+  function setup(account: AccountOption = {id:'account',nombre:'Banco'}) {
     const request = vi.fn().mockResolvedValue({items:[],next_offset:null});
     TestBed.configureTestingModule({imports:[Expenses],providers:[{provide:AuthSession,useValue:{accountRequest:(...args:unknown[]) => String(args[1]).includes('expense-summary') ? Promise.resolve({fecha:'2026-11-11',mes:'2026-11',totales:[]}) : request(...args)}}]});
     const fixture=TestBed.createComponent(Expenses);
-    fixture.componentRef.setInput('space','space');fixture.componentRef.setInput('account',{id:'account',nombre:'Banco'});fixture.detectChanges();
+    fixture.componentRef.setInput('space','space');fixture.componentRef.setInput('account',account);fixture.detectChanges();
     return {fixture,request,component:fixture.componentInstance};
   }
   it('normaliza sin float ni redondeo',()=>{
@@ -45,6 +46,27 @@ describe('Gastos', () => {
     expect(component.quickOpen()).toBe(false);
     expect(component.description).toBe('Borrador detallado');
     expect(component.undoable()).toEqual({ id: payload.id, account: 'account' });
+  });
+
+  it('fija la moneda de la cuenta tanto en el gasto detallado como en el rápido', async () => {
+    const { fixture, request, component } = setup({ id: 'account', nombre: 'Dólares', moneda: 'USD' });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const select: HTMLSelectElement = fixture.nativeElement.querySelector('#expense-currency');
+    expect(select.value).toBe('USD');
+    expect(select.disabled).toBe(true);
+    component.description = 'Compra';
+    component.amount = '15,20';
+    request.mockImplementation(async (_method, _path, payload) => ({ ...payload, espacio_id: 'space', cuenta_id: 'account' }));
+    await component.save();
+
+    component.openQuickEntry();
+    component.quickAmount = '10,10';
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('label[for="quick-expense-amount"]').textContent).toContain('USD');
+    await component.saveQuick({ id: 'alimentos', label: 'Alimentos' });
+    expect(request.mock.calls.filter(([method]) => method === 'POST').map(([, , payload]) => payload.moneda))
+      .toEqual(['USD', 'USD']);
   });
 
   it('repite como gasto nuevo con fecha actual y espera la confirmación de guardado', async () => {

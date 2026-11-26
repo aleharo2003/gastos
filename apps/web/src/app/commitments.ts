@@ -4,6 +4,7 @@ import { CommitmentPaymentTrend } from './commitment-payment-trend';
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { watchInstallmentDay } from './installment-date';
+import { accountCurrency, compatibleAccounts, type AccountOption } from './account-currency';
 import { AuthSession } from './auth-session';
 import { installmentLocalDate as today, prepareInstallmentPayment, submitInstallmentPayment, type InstallmentPayment, type Payment } from './installment-payment';
 import { Receipts } from './receipts';
@@ -27,7 +28,7 @@ export class Commitments implements OnChanges{
   @Input() active = true;
   @Input() reminder: InstallmentReminder | null = null;
   protected readonly indicesOpen = signal(false);
-  @Input() accounts:{id:string;nombre:string}[]=[];
+  @Input() accounts: AccountOption[] = [];
   @Input() moreAccounts=false;
   @Input() accountsLoading=false;
   @Output() loadAccounts=new EventEmitter<void>();
@@ -342,7 +343,9 @@ export class Commitments implements OnChanges{
   }
   async selectQuota(item:Installment){
     if(!this.canLeave()||this.saving())return;
-    this.cancelPayment();this.quota.set(item);this.payAccount=this.selected()?.cuenta_id??'';
+    this.cancelPayment();this.quota.set(item);
+    const preferred = this.selected()?.cuenta_id;
+    this.payAccount = this.paymentAccounts().find(account => account.id === preferred)?.id ?? '';
     this.payDate=today();this.payAmount=item.pendiente==='0.00'?'':item.pendiente;await this.loadPayments();
   }
   async loadPayments(more=false){
@@ -360,6 +363,14 @@ export class Commitments implements OnChanges{
     await Promise.all([this.load(),this.loadMonth(),this.loadInstallments()]);
   }
 
+  get fixedCurrency() { return accountCurrency(this.accounts, this.account); }
+  get movementCurrency() { return this.fixedCurrency ?? this.currency; }
+
+  paymentAccounts() {
+    const currency = this.selected()?.moneda;
+    return currency ? compatibleAccounts(this.accounts, currency) : this.accounts;
+  }
+
   async save(){
     if(this.saving()||this.loading()||this.paying())return;
     const importe=normalizeAmount(this.amount),nombre=this.name.trim();
@@ -375,7 +386,7 @@ export class Commitments implements OnChanges{
       this.error.set('Ingresá la TNA como porcentaje, por ejemplo 12,5.');
       return;
     }
-    const value={...(system?{sistema_amortizacion:system,tna:rate}:{}),...(index===undefined?{}:{indice_ajuste:index}),variable:this.indefinite&&this.variable,cuenta_id:this.account,nombre,moneda:this.currency,importe,categoria:this.category||null,primer_vencimiento:this.first,total_cuotas:this.indefinite?null:this.count};
+    const value={...(system?{sistema_amortizacion:system,tna:rate}:{}),...(index===undefined?{}:{indice_ajuste:index}),variable:this.indefinite&&this.variable,cuenta_id:this.account,nombre,moneda:this.movementCurrency,importe,categoria:this.category||null,primer_vencimiento:this.first,total_cuotas:this.indefinite?null:this.count};
     if(!this.pending||this.pending.indice_ajuste!==index||this.pending.sistema_amortizacion!==system||Object.entries(value).some(([key,v])=>this.pending![key as keyof Create]!==v))this.pending={id:crypto.randomUUID(),...value};
     const context=this.context;this.saving.set(true);this.error.set('');this.notice.set('');let saved:Commitment|null=null;
     try{saved=await this.auth.accountRequest<Commitment>('POST',this.path+'/commitments',this.pending);}
@@ -489,7 +500,7 @@ export class Commitments implements OnChanges{
     if (this.correcting()) return;
     const quota=this.quota();if(quota?.estado==='no_aplica')return;if(quota?.pendiente_ajuste){this.error.set('Esperá el ajuste del índice antes de pagar.');return;}if(quota?.estimado){this.error.set('Confirmá el monto estimado antes de registrar pagos.');return;}if(!quota||this.paying()||this.detailLoading()||this.saving()||this.receiptBusy())return;
     const pending=prepareInstallmentPayment(quota.id,{cuenta_id:this.payAccount,fecha:this.payDate,importe:this.payAmount},
-      quota.pendiente,this.accounts,this.payPending);
+      quota.pendiente,this.paymentAccounts(),this.payPending);
     if(!pending){this.error.set('Elegí una cuenta y un importe positivo que no supere el saldo de la cuota.');return;}
     this.payPending=pending;
     const context=this.context;this.paying.set(true);this.payDirty=true;this.error.set('');this.notice.set('');let saved:Payment|null=null;

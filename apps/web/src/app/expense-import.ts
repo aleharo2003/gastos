@@ -1,6 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, DestroyRef, computed, inject, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { accountCurrency, type AccountOption } from './account-currency';
 import { AuthSession } from './auth-session';
 import { ImportMapping, ImportRow, MAX_CSV_BYTES, parseImportCsv, previewImport } from './expense-import-csv';
 
@@ -15,7 +16,7 @@ const movementLabels = { gasto: 'gastos', ingreso: 'ingresos', transferencia: 't
 })
 export class ExpenseImport {
   readonly space = input.required<string>();
-  readonly accounts = input<readonly { id: string; nombre: string }[]>([]);
+  readonly accounts = input<readonly AccountOption[]>([]);
   readonly moreAccounts = input(false);
   readonly loadAccounts = output<void>();
   readonly changed = output<void>();
@@ -35,6 +36,20 @@ export class ExpenseImport {
   destination = '';
   kind: keyof typeof movementLabels = 'gasto';
   get movementLabel() { return movementLabels[this.kind]; }
+  get fixedCurrency() {
+    return accountCurrency(this.accounts(), this.account)
+      ?? (this.kind === 'transferencia' ? accountCurrency(this.accounts(), this.destination) : null);
+  }
+
+  get currencyConflict(): boolean {
+    if (this.kind !== 'transferencia') return false;
+    const origin = accountCurrency(this.accounts(), this.account);
+    const destination = accountCurrency(this.accounts(), this.destination);
+    return !!origin && !!destination && origin !== destination;
+  }
+
+  get movementCurrency() { return this.fixedCurrency ?? this.currency; }
+
   get accountsReady(): boolean {
     return !!this.account && (this.kind !== 'transferencia' || (!!this.destination && this.account !== this.destination));
   }
@@ -97,7 +112,7 @@ export class ExpenseImport {
 
   refresh(): void {
     this.invalidate();
-    this.rows.set(previewImport(this.records, this.headers().length, this.mapping, this.currency));
+    this.rows.set(previewImport(this.records, this.headers().length, this.mapping, this.movementCurrency));
   }
 
   invalidate(): void {
@@ -120,7 +135,7 @@ export class ExpenseImport {
   }
 
   async chooseAccount(): Promise<void> {
-    this.invalidate();
+    this.refresh();
     this.batches.set([]);
     if (this.accountsReady) await this.run(() => this.loadBatches());
   }
@@ -131,7 +146,7 @@ export class ExpenseImport {
   }
 
   async check(includeManualMatches = false): Promise<void> {
-    if (!this.accountsReady || !this.valid().length || (this.invalidCount() && !this.skipInvalid)) return;
+    if (!this.accountsReady || this.currencyConflict || !this.valid().length || (this.invalidCount() && !this.skipInvalid)) return;
     await this.run(async () => {
       const result = await this.auth.accountRequest<Checked>('POST', this.path('/preview'), {
         filas: this.valid(), incluir_coincidencias_manuales: includeManualMatches,
@@ -185,6 +200,7 @@ export class ExpenseImport {
         this.checked.set(null);
         this.error.set('Revisá que la cuenta esté activa y volvé a comprobar los duplicados.');
       } else if (status === 413) this.error.set('El lote supera el tamaño permitido. Dividí el archivo en partes.');
+      else if (status === 422) this.error.set('Revisá los datos del CSV y la moneda de las cuentas.');
       else if (status === 403) this.error.set('No tenés permiso para importar en esta cuenta.');
       else this.error.set('No pudimos completar la operación. Volvé a intentar.');
     } finally {

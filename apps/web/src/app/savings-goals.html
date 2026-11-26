@@ -20,7 +20,7 @@
         </select>
         <small>Podés crear una cuenta nueva desde Cuentas.</small>
         <label for="goal-currency">Moneda</label>
-        <select id="goal-currency" name="goalCurrency" [(ngModel)]="currency" [disabled]="saving()"><option>ARS</option><option>USD</option><option>EUR</option></select>
+        <select id="goal-currency" name="goalCurrency" [ngModel]="movementCurrency" (ngModelChange)="currency = $event" [disabled]="saving() || !!fixedCurrency"><option>ARS</option><option>USD</option><option>EUR</option></select>
       }
       <label for="goal-target">Cuánto querés juntar {{ editing?'('+editing.moneda+')':'' }}</label>
       <input id="goal-target" name="goalTarget" [(ngModel)]="target" inputmode="decimal" required placeholder="100000,00" [disabled]="saving()">
