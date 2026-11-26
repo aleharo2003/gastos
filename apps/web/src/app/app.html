@@ -7,10 +7,35 @@
     </label>
   </header>
   <app-install-piggo />
-  <section class="card" [class.workspace]="auth.verified() && !!auth.personalSpace()" aria-labelledby="page-title">
+  <section class="card" [class.workspace]="!recoveryMode && auth.verified() && !!auth.personalSpace()" aria-labelledby="page-title">
+    @if (recoveryNotice) { <p class="success" role="status">{{ recoveryNotice }}</p> }
     @if (!auth.ready()) {
       <h1 id="page-title">Bienvenido a Piggo</h1>
       <p role="status">Preparando tu sesión…</p>
+    } @else if (recoveryMode) {
+      <h1 id="page-title">{{ recoveryMode === 'request' ? 'Recuperar contraseña' : 'Elegir una contraseña nueva' }}</h1>
+      @if (recoveryError) { <p class="error" role="alert">{{ recoveryError }}</p> }
+      @if (!auth.available()) { <p role="alert">La recuperación no está disponible en este momento.</p> }
+      @if (recoveryMode === 'request') {
+        <form #recoveryForm="ngForm" (ngSubmit)="requestRecovery()">
+          <label for="recovery-email">Email</label>
+          <input id="recovery-email" name="email" type="email" autocomplete="email" [(ngModel)]="email"
+            required email [disabled]="recoveryBusy || !auth.available()">
+          <button type="submit" [disabled]="recoveryForm.invalid || recoveryBusy || !auth.available()">Enviar enlace</button>
+        </form>
+      } @else {
+        <form #newPasswordForm="ngForm" (ngSubmit)="submitNewPassword()">
+          <label for="new-password">Nueva contraseña</label>
+          <input id="new-password" name="newPassword" type="password" autocomplete="new-password"
+            [(ngModel)]="newPassword" required minlength="8" [disabled]="recoveryBusy || !auth.available()">
+          <small>Usá al menos 8 caracteres.</small>
+          <label for="repeat-password">Repetí la nueva contraseña</label>
+          <input id="repeat-password" name="repeatedPassword" type="password" autocomplete="new-password"
+            [(ngModel)]="repeatedPassword" required [disabled]="recoveryBusy || !auth.available()">
+          <button type="submit" [disabled]="newPasswordForm.invalid || recoveryBusy || !auth.available()">Guardar contraseña</button>
+        </form>
+      }
+      <button type="button" class="secondary" (click)="closeRecovery()" [disabled]="recoveryBusy">Volver al inicio</button>
     } @else if (auth.signedIn()) {
       <p class="eyebrow">TU ESPACIO PERSONAL</p>
       <h1 id="page-title" [class.sr-only]="!!auth.personalSpace()">Hola, bienvenido</h1>
@@ -51,6 +76,9 @@
           {{ auth.busy() ? 'Ingresando…' : 'Ingresar' }}
         </button>
       </form>
+      <button type="button" class="secondary" (click)="startRecovery()" [disabled]="auth.busy() || !auth.available()">
+        Olvidé mi contraseña
+      </button>
       <p class="note">Acceso para usuarios de prueba. El registro de nuevas cuentas estará disponible más adelante.</p>
     }
   </section>
