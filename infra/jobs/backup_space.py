@@ -19,13 +19,13 @@ TABLES = (
     'perfiles', 'espacios', 'miembros_espacio', 'cuentas', 'categorias_movimientos',
     'variaciones_indice', 'compromisos', 'cuotas', 'ingresos', 'gastos', 'transferencias',
     'pagos_cuota', 'metas_ahorro', 'planes_gasto', 'comprobantes', 'preferencias_avisos', 'gastos_pendientes',
-    'cotizaciones_manuales', 'preferencias_cotizacion',
+    'cotizaciones_manuales', 'preferencias_cotizacion', 'ventas_usd',
 )
 
 
 def tables_for(revisions):
     head = max(revisions, default='')
-    introduced = {'gastos_pendientes': '0040', 'cotizaciones_manuales': '0044', 'preferencias_cotizacion': '0045'}
+    introduced = {'gastos_pendientes': '0040', 'cotizaciones_manuales': '0044', 'preferencias_cotizacion': '0045', 'ventas_usd': '0046'}
     return tuple(table for table in TABLES if table not in introduced or head >= introduced[table])
 
 

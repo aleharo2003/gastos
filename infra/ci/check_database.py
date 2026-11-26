@@ -24,6 +24,7 @@ from check_read_rls import check_read_rls
 from check_personal_space import check_personal_space
 from check_accounts_api import check_accounts_api
 from check_planning import check_planning
+from check_fx_sales import check_fx_sales
 from check_commitments import check_commitments
 from check_recurrences import check_recurrences
 from check_indexed_commitments import check_indexed_commitments
@@ -322,6 +323,7 @@ def check_database(fixture):
         check_reminder_candidates(urls[RUNTIME], urls[MIGRATOR], jobs_url, email_jobs_url)
         check_indexed_commitments(urls[RUNTIME], urls[MIGRATOR], jobs_url)
         check_planning(urls[RUNTIME], urls[MIGRATOR])
+        check_fx_sales(urls[RUNTIME], urls[MIGRATOR])
         check_receipts(urls[RUNTIME], urls[MIGRATOR])
         try:
             check_rls_coverage(urls[MIGRATOR])

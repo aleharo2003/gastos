@@ -8,6 +8,7 @@
   <button type="button" (click)="tab.set('savings')" [attr.aria-current]="tab() === 'savings' ? 'page' : null">Ahorros</button>
   <button type="button" (click)="tab.set('debts')" [attr.aria-current]="tab() === 'debts' ? 'page' : null">Deudas</button>
   <button type="button" (click)="tab.set('reminders')" [attr.aria-current]="tab() === 'reminders' ? 'page' : null">Avisos</button>
+  <button type="button" (click)="tab.set('usd')" [attr.aria-current]="tab() === 'usd' ? 'page' : null">Cambio</button>
 </nav>
 @if (items().length) {
   <button type="button" class="quick-expense-action" (click)="openQuickExpense()"
@@ -21,6 +22,18 @@
         (click)="undoQuickExpense()">Deshacer registro</button>
     }
   </div>
+}
+@if (tab() === 'usd') {
+  @if (amountsHidden()) {
+    <section class="workspace-panel">
+      <h3>Cambio</h3>
+      <p>Importes ocultos. Podés mostrarlos desde Gastos.</p>
+    </section>
+  } @else {
+    <app-usd-sales class="workspace-panel" [space]="space" [accounts]="items()"
+      [moreAccounts]="next() !== null" [accountsLoading]="loading()" (loadAccounts)="load(true)"
+      (changed)="planRevision.update(incrementPlan)" />
+  }
 }
 @if(draftCount()>0){<p role="status">Tenés {{ draftCount() }} montos estimados por confirmar. <button type="button" class="secondary" (click)="tab.set('debts')">Revisar estimados</button></p>}
 <app-due-overview [space]="space" [active]="tab() === 'today'" [hidden]="tab() !== 'today'"
