@@ -24,6 +24,24 @@ class AccountTests(unittest.TestCase):
                 AccountInput(id=uuid4(), nombre=name)
         self.assertEqual(AccountInput(id=uuid4(), nombre=' Efectivo ').nombre, 'Efectivo')
 
+    def test_requires_the_fields_of_each_typed_account(self):
+        common = {'id': str(uuid4()), 'nombre': 'Cuenta', 'moneda': 'USD', 'saldo_inicial': '125.25'}
+        card = {'tipo': 'tarjeta_credito', 'dia_cierre': 20, 'dia_vencimiento': 3}
+        investment = {'tipo': 'inversion', 'fecha_vencimiento': '2027-01-31', 'tasa_anual': '4.5000'}
+        self.assertEqual(AccountInput(**common, **card).dia_cierre, 20)
+        self.assertEqual(str(AccountInput(**common, **investment).saldo_inicial), '125.25')
+        incomplete = [
+            {**common, 'tipo': 'tarjeta_credito'},
+            {**common, **card, 'dia_cierre': 32},
+            {**common, **investment, 'fecha_vencimiento': '2027-02-31'},
+            {**common, **investment, 'saldo_inicial': '0.00'},
+            {**common, 'tipo': 'banco', 'saldo_inicial': '0.001'},
+            {**common, 'tipo': 'banco', 'saldo_inicial': 0.1},
+        ]
+        for body in incomplete:
+            with self.subTest(body=body), self.assertRaises(ValidationError):
+                AccountInput(**body)
+
     def test_rejects_client_identity_and_bad_pagination(self):
         result = self.client.post(self.path, json={'id':str(uuid4()),'nombre':'Efectivo','usuario_id':str(uuid4())})
         self.assertEqual(result.status_code, 422)

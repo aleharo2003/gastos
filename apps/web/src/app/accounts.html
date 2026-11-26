@@ -91,10 +91,76 @@
       }
     </section>
   }
+  <details class="account-create" [open]="!items().length">
+    <summary>Nueva cuenta</summary>
+    <form #accountForm="ngForm" (ngSubmit)="save()">
+      <label for="account-name">Nombre de la nueva cuenta</label>
+      <input id="account-name" name="accountName" [(ngModel)]="name" required maxlength="80"
+        placeholder="Por ejemplo, Efectivo" [disabled]="saving()">
+      <div class="account-create-fields">
+        <div>
+          <label for="account-type">Tipo de cuenta</label>
+          <select id="account-type" name="accountType" [(ngModel)]="accountType" [disabled]="saving()">
+            @for (option of accountTypeOptions; track option[0]) {
+              <option [value]="option[0]">{{ option[1] }}</option>
+            }
+          </select>
+        </div>
+        <div>
+          <label for="account-currency">Moneda</label>
+          <select id="account-currency" name="accountCurrency" [(ngModel)]="accountCurrency" [disabled]="saving()">
+            <option value="ARS">Pesos argentinos (ARS)</option>
+            <option value="USD">Dólares (USD)</option>
+            <option value="EUR">Euros (EUR)</option>
+          </select>
+        </div>
+        <div>
+          <label for="account-opening">{{ accountType === 'inversion' ? 'Capital inicial' : 'Saldo inicial' }}</label>
+          <input id="account-opening" name="openingBalance" [(ngModel)]="openingBalance" inputmode="decimal"
+            placeholder="0,00" maxlength="16" [required]="accountType === 'inversion'" [disabled]="saving()">
+        </div>
+        @if (accountType === 'tarjeta_credito') {
+          <div>
+            <label for="account-statement">Día de cierre</label>
+            <input id="account-statement" name="statementDay" type="number" min="1" max="31" step="1"
+              [(ngModel)]="statementDay" required [disabled]="saving()">
+          </div>
+          <div>
+            <label for="card-due-day">Día de vencimiento</label>
+            <input id="card-due-day" name="cardDueDay" type="number" min="1" max="31" step="1"
+              [(ngModel)]="cardDueDay" required [disabled]="saving()">
+          </div>
+        }
+        @if (accountType === 'inversion') {
+          <div>
+            <label for="investment-due">Fecha de vencimiento</label>
+            <input id="investment-due" name="investmentDue" type="date" [(ngModel)]="investmentDue" required [disabled]="saving()">
+          </div>
+          <div>
+            <label for="investment-rate">Tasa anual (%)</label>
+            <input id="investment-rate" name="annualRate" inputmode="decimal" [(ngModel)]="annualRate"
+              maxlength="8" required [disabled]="saving()">
+          </div>
+        }
+      </div>
+      <button type="submit" [disabled]="accountForm.invalid || !name.trim() || saving() || loading()">
+        {{ saving() ? 'Guardando…' : 'Agregar cuenta' }}
+      </button>
+    </form>
+  </details>
   <ul class="account-grid">
     @for (account of items(); track account.id) {
       <li class="account-card">
         <h4>{{ account.nombre }}</h4>
+        @if (account.tipo) {
+          <p>{{ accountTypes[account.tipo] }} · {{ account.moneda }}</p>
+          @if (account.tipo === 'tarjeta_credito') {
+            <p>Cierre el día {{ account.dia_cierre }} · Vence el día {{ account.dia_vencimiento }}</p>
+          }
+          @if (account.tipo === 'inversion' && account.fecha_vencimiento) {
+            <p>Vence el {{ account.fecha_vencimiento.split('-').reverse().join('/') }} · Tasa anual {{ account.tasa_anual }} %</p>
+          }
+        }
         <div class="account-actions">
           <button type="button" class="secondary" (click)="toggleBalance(account.id)"
             [attr.aria-label]="(expandedBalance() === account.id ? 'Ocultar saldo de ' : 'Ver saldo de ') + account.nombre"
@@ -190,14 +256,6 @@
       }
     </section>
   }
-  <form #accountForm="ngForm" (ngSubmit)="save()">
-    <label for="account-name">Nombre de la nueva cuenta</label>
-    <input id="account-name" name="accountName" [(ngModel)]="name" required maxlength="80"
-      placeholder="Por ejemplo, Efectivo" [disabled]="saving()">
-    <button type="submit" [disabled]="accountForm.invalid || !name.trim() || saving() || loading()">
-      {{ saving() ? 'Guardando…' : 'Agregar cuenta' }}
-    </button>
-  </form>
 </section>
 
 @if (tab() === 'accounts') {

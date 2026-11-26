@@ -18,7 +18,7 @@ FILENAME = 'piggo-datos.zip'
 
 # Include only explicitly portable fields. Never use SELECT * in an export.
 TABLES = (
-    ('cuentas', 'id nombre activa', 'id'),
+    ('cuentas', 'id nombre activa tipo moneda saldo_inicial dia_cierre dia_vencimiento fecha_vencimiento tasa_anual', 'id'),
     ('ingresos', 'id cuenta_id fecha descripcion moneda importe categoria anulado_en', 'fecha, id'),
     ('gastos', 'id cuenta_id fecha descripcion moneda importe categoria nota anulado_en '
      'fecha_devengamiento fecha_vencimiento', 'fecha, id'),

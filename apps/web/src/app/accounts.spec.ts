@@ -95,6 +95,25 @@ describe('Cuentas', () => {
     expect(component.editingAccount()).toBeNull();
   });
 
+  it('crea una inversión con moneda, capital y datos de vencimiento', async () => {
+    const { fixture, request, component } = setup();
+    await fixture.whenStable();
+    component.name = 'Plazo fijo';
+    component.accountType = 'inversion';
+    component.accountCurrency = 'USD';
+    component.openingBalance = '250,75';
+    component.investmentDue = '2027-01-31';
+    component.annualRate = '4,25';
+    request.mockImplementation(async (_method, _path, body) => ({ ...body, espacio_id: 'space-1' }));
+    await component.save();
+    const [, , payload] = request.mock.calls.find(([method]) => method === 'POST')!;
+    expect(payload).toEqual({
+      id: expect.any(String), nombre: 'Plazo fijo', tipo: 'inversion', moneda: 'USD',
+      saldo_inicial: '250.75', fecha_vencimiento: '2027-01-31', tasa_anual: '4.25',
+    });
+    expect(component.items()[0].saldo_inicial).toBe('250.75');
+  });
+
   it('conserva ID ante respuesta perdida y evita doble envio', async () => {
     const {fixture,request,component}=setup(); await fixture.whenStable();
     request.mockRejectedValue(new Error()); component.name='Banco';

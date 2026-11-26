@@ -4,12 +4,43 @@ import { AuthService } from './auth.service.js';
 import { boundedJson } from './token-verifier.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-type Account = { id: string; espacio_id: string; nombre: string };
+const profileKeys = ['tipo', 'moneda', 'saldo_inicial', 'dia_cierre', 'dia_vencimiento',
+  'fecha_vencimiento', 'tasa_anual'] as const;
+type Profile = {
+  tipo: string; moneda: string; saldo_inicial: string;
+  dia_cierre?: number | null; dia_vencimiento?: number | null;
+  fecha_vencimiento?: string | null; tasa_anual?: string | null;
+};
+type Account = { id: string; espacio_id: string; nombre: string } & Partial<Profile>;
+type CreateAccount = { id: string; nombre: string } & Partial<Profile>;
+
+function profile(value: Partial<Profile>): Partial<Profile> {
+  if (profileKeys.every(key => value[key] == null)) return {};
+  const { tipo, moneda, saldo_inicial, dia_cierre, dia_vencimiento, fecha_vencimiento, tasa_anual } = value;
+  if (typeof tipo !== 'string' || !['efectivo', 'banco', 'tarjeta_credito', 'billetera', 'inversion'].includes(tipo)
+    || typeof moneda !== 'string' || !['ARS', 'USD', 'EUR'].includes(moneda)
+    || typeof saldo_inicial !== 'string' || !/^-?(?:0|[1-9][0-9]{0,11})\.[0-9]{2}$/.test(saldo_inicial)) throw new Error();
+  const details: Profile = { tipo, moneda, saldo_inicial };
+  if (tipo === 'tarjeta_credito') {
+    const validDay = (day: unknown): day is number => typeof day === 'number' && Number.isInteger(day) && day >= 1 && day <= 31;
+    if (!validDay(dia_cierre) || !validDay(dia_vencimiento)) throw new Error();
+    details.dia_cierre = dia_cierre;
+    details.dia_vencimiento = dia_vencimiento;
+  } else if (dia_cierre != null || dia_vencimiento != null) throw new Error();
+  if (tipo === 'inversion') {
+    if (typeof fecha_vencimiento !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(fecha_vencimiento)
+      || typeof tasa_anual !== 'string' || !/^(?:0|[1-9][0-9]{0,2})(?:\.[0-9]{1,4})?$/.test(tasa_anual)
+      || saldo_inicial.startsWith('-') || saldo_inicial === '0.00') throw new Error();
+    details.fecha_vencimiento = fecha_vencimiento;
+    details.tasa_anual = tasa_anual;
+  } else if (fecha_vencimiento != null || tasa_anual != null) throw new Error();
+  return details;
+}
 function account(value: unknown, space: string): Account {
   const row = value as Account;
   if (!row || typeof row.id !== 'string' || !UUID.test(row.id) || row.espacio_id !== space ||
       typeof row.nombre !== 'string' || row.nombre.length === 0 || row.nombre.length > 160) throw new Error();
-  return { id: row.id, espacio_id: row.espacio_id, nombre: row.nombre };
+  return { id: row.id, espacio_id: row.espacio_id, nombre: row.nombre, ...profile(row) };
 }
 
 @Controller('api/spaces/:space/accounts')
@@ -30,12 +61,15 @@ export class AccountsController {
   async create(@Param('space') space: string, @Body() body: unknown, @Req() request: Request, @Res({ passthrough: true }) response: Response) {
     response.setHeader('Cache-Control', 'no-store');
     const token = await this.token(request, response);
-    const data = body as { id?: unknown; nombre?: unknown };
-    if (!data || Object.keys(data).some(key => !['id', 'nombre'].includes(key)) ||
+    const data = body as { id?: unknown; nombre?: unknown } & Partial<Profile>;
+    if (!data || Object.keys(data).some(key => !['id', 'nombre', ...profileKeys].includes(key)) ||
         typeof data.id !== 'string' || !UUID.test(data.id) ||
         typeof data.nombre !== 'string' || [...data.nombre.trim()].length < 1 ||
         [...data.nombre.trim()].length > 80 || /[\x00-\x1f\x7f]/.test(data.nombre)) throw new BadRequestException('Cuenta invalida');
-    return this.forward(token, space, { id: data.id.toLowerCase(), nombre: data.nombre.trim() });
+    let details: Partial<Profile>;
+    try { details = profile(data); }
+    catch { throw new BadRequestException('Revisá los datos del tipo de cuenta'); }
+    return this.forward(token, space, { id: data.id.toLowerCase(), nombre: data.nombre.trim(), ...details });
   }
 
   @Patch(':account')
@@ -87,7 +121,7 @@ export class AccountsController {
     }
   }
 
-  private async forward(token: string, rawSpace: string, body?: { id: string; nombre: string } | { nombre: string; nombre_anterior: string } | { activa: boolean }, offset = 0, accountId?: string,
+  private async forward(token: string, rawSpace: string, body?: CreateAccount | { nombre: string; nombre_anterior: string } | { activa: boolean }, offset = 0, accountId?: string,
       action?: 'detail' | 'status', inactive = false) {
     if (!UUID.test(rawSpace)) throw new BadRequestException('Espacio invalido');
     const space = rawSpace.toLowerCase();

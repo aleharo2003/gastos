@@ -12,7 +12,7 @@ import { Incomes } from './incomes';
 import { SavingsSummary } from './savings-summary';
 import { ReminderPreferences } from './reminder-preferences';
 import { Planning } from './planning';
-import { Expenses, showAmount } from './expenses';
+import { Expenses, normalizeAmount, showAmount } from './expenses';
 import { money, rateUnits, reference } from './money-reference';
 import { ChangeDetectorRef, Component, computed, DestroyRef, effect, inject, Input, OnInit, signal, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
@@ -20,7 +20,16 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { DOCUMENT } from '@angular/common';
 import { AuthSession } from './auth-session';
 
-type Account = { id: string; espacio_id: string; nombre: string };
+const accountTypes = {
+  efectivo: 'Efectivo', banco: 'Cuenta bancaria', billetera: 'Billetera virtual',
+  tarjeta_credito: 'Tarjeta de crédito', inversion: 'Inversión',
+} as const;
+type AccountProfile = {
+  tipo: keyof typeof accountTypes; moneda: 'ARS' | 'USD' | 'EUR'; saldo_inicial: string;
+  dia_cierre?: number; dia_vencimiento?: number; fecha_vencimiento?: string; tasa_anual?: string;
+};
+type Account = { id: string; espacio_id: string; nombre: string } & Partial<AccountProfile>;
+type NewAccount = { id: string; nombre: string } & AccountProfile;
 type Page = { items: Account[]; next_offset: number | null };
 type AccountBalance = { totales: { moneda: string; saldo: string }[] };
 
@@ -164,14 +173,23 @@ export class Accounts implements OnInit {
   readonly draftCount=signal(0);
   readonly planRevision=signal(0);
   readonly incrementPlan=(value:number)=>value+1;
+  readonly accountTypes = accountTypes;
+  readonly accountTypeOptions = Object.entries(accountTypes);
   name = '';
+  accountType: AccountProfile['tipo'] = 'efectivo';
+  accountCurrency: AccountProfile['moneda'] = 'ARS';
+  openingBalance = '';
+  statementDay: number | null = null;
+  cardDueDay: number | null = null;
+  investmentDue = '';
+  annualRate = '';
   readonly editingAccount = signal<Account | null>(null);
   readonly renameError = signal('');
   readonly renaming = signal(false);
   editedName = '';
   private readonly auth = inject(AuthSession);
   private alive = true;
-  private pending?: { id: string; nombre: string };
+  private pending?: NewAccount;
   private balanceRequest = 0;
   private balancesRequest = 0;
   private readonly rateListener = (event: Event) => {
@@ -400,18 +418,68 @@ export class Accounts implements OnInit {
   async save(): Promise<void> {
     const name = this.name.trim();
     if (this.saving() || this.loading() || !name || [...name].length > 80) return;
-    this.saving.set(true); this.error.set(''); this.notice.set('');
-    if (!this.pending || this.pending.nombre !== name) this.pending = { id: crypto.randomUUID(), nombre: name };
+    this.error.set(''); this.notice.set('');
+    const profile = this.accountProfile();
+    if (!profile) return;
+    this.saving.set(true);
+    const values = { nombre: name, ...profile };
+    if (!this.pending || Object.keys(this.pending).length !== Object.keys(values).length + 1
+      || Object.entries(values).some(([key, value]) => this.pending?.[key as keyof NewAccount] !== value)) {
+      this.pending = { id: crypto.randomUUID(), ...values };
+    }
     try {
       const row = await this.auth.accountRequest<Account>('POST', this.path, this.pending);
       if (!this.alive) return;
       this.items.update(items => [...items.filter(item => item.id !== row.id), row]);
-      this.pending = undefined; this.name = '';
+      this.pending = undefined;
+      this.name = '';
+      this.openingBalance = '';
+      this.statementDay = null;
+      this.cardDueDay = null;
+      this.investmentDue = '';
+      this.annualRate = '';
       this.notice.set('Cuenta guardada.');
+      this.planRevision.update(this.incrementPlan);
+      if (this.tab() === 'accounts') {
+        this.toggleBalance(row.id);
+        void this.loadBalances();
+      }
     } catch (error) {
       if (this.alive) this.error.set(error instanceof HttpErrorResponse && error.status === 403
         ? 'No tenés permiso para crear cuentas en este espacio.'
-        : 'No pudimos confirmar el guardado. Reintentá con el mismo nombre; no se duplicará esta solicitud.');
+        : 'No pudimos confirmar el guardado. Reintentá con los mismos datos; no se duplicará esta solicitud.');
     } finally { if (this.alive) this.saving.set(false); }
+  }
+  private accountProfile(): AccountProfile | null {
+    const rawAmount = this.openingBalance.trim();
+    const amount = normalizeAmount(rawAmount.replace(/^-/, ''));
+    const isZero = rawAmount === '' || /^-?0+(?:[.,]0{1,2})?$/.test(rawAmount);
+    if (!isZero && !amount) {
+      this.error.set('Ingresá el saldo inicial con hasta dos decimales y sin separador de miles.');
+      return null;
+    }
+    const profile: AccountProfile = {
+      tipo: this.accountType, moneda: this.accountCurrency,
+      saldo_inicial: isZero ? '0.00' : (rawAmount.startsWith('-') ? '-' : '') + amount,
+    };
+    if (profile.tipo === 'tarjeta_credito') {
+      const validDay = (day: number | null): day is number => day !== null && Number.isInteger(day) && day >= 1 && day <= 31;
+      if (!validDay(this.statementDay) || !validDay(this.cardDueDay)) {
+        this.error.set('Ingresá el día de cierre y el día de vencimiento, entre 1 y 31.');
+        return null;
+      }
+      profile.dia_cierre = this.statementDay;
+      profile.dia_vencimiento = this.cardDueDay;
+    }
+    if (profile.tipo === 'inversion') {
+      const rate = this.annualRate.trim().replace(',', '.');
+      if (isZero || rawAmount.startsWith('-') || !this.investmentDue || !/^(?:0|[1-9][0-9]{0,2})(?:\.[0-9]{1,4})?$/.test(rate)) {
+        this.error.set('Ingresá un capital positivo, una fecha y una tasa anual válida.');
+        return null;
+      }
+      profile.fecha_vencimiento = this.investmentDue;
+      profile.tasa_anual = rate;
+    }
+    return profile;
   }
 }
