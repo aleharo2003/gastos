@@ -35,6 +35,23 @@ describe('Navegación del espacio', () => {
     panel.querySelector('section > button').click();
     expect(component.tab()).toBe('debts');
   });
+  it('muestra la distribución en Hoy y abre movimientos con los filtros de la categoría', async () => {
+    const { fixture, component } = await setup(true);
+    window.dispatchEvent(new CustomEvent('gastos-privacy', { detail: false }));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const expenseReport = fixture.nativeElement.querySelector('app-today-category-report');
+    const categories = expenseReport.querySelectorAll('.category-row');
+    expect(categories).toHaveLength(3);
+    expect(categories[0].textContent).toContain('Ocio');
+    expect(categories[0].textContent).toContain('49,0%');
+    categories[0].click();
+    expect(component.tab()).toBe('movements');
+    expect(component.movementReport()).toEqual({
+      desde: '2026-11-01', hasta: '2026-11-30', categoria: 'ocio', moneda: 'ARS',
+    });
+  });
   it('abre el mes del aviso cuando coincide con el espacio autenticado', async () => {
     const previous = location.pathname + location.search + location.hash;
     try {

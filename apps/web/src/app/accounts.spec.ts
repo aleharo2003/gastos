@@ -99,10 +99,12 @@ describe('Cuentas', () => {
     const {fixture,request,component}=setup(); await fixture.whenStable();
     request.mockRejectedValue(new Error()); component.name='Banco';
     await component.save();
-    const first=request.mock.calls[1][2].id;
+    const first=request.mock.calls.find(([method]) => method === 'POST')?.[2].id;
+    expect(first).toBeDefined();
     request.mockResolvedValue({id:first,espacio_id:'space-1',nombre:'Banco'});
     await component.save();
-    expect(request.mock.calls[2][2].id).toBe(first);
+    expect(request.mock.calls.filter(([method]) => method === 'POST').map(([, , body]) => body.id))
+      .toEqual([first, first]);
     expect(component.items().length).toBe(1);
   });
   it('ignora una respuesta despues de destruir la pantalla', async () => {
