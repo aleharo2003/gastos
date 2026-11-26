@@ -159,13 +159,27 @@
     </div>
     @if(quota();as installment){
       <h4>Pagos de la cuota {{ installment.numero }}</h4>
+      @if (correcting(); as item) {
+        @if (!hidden()) {
+          <form (ngSubmit)="saveAmountCorrection()">
+            <label for="corrected-quota-amount">Nuevo importe de la cuota {{ item.numero }} en {{ debt.moneda }}</label>
+            <input id="corrected-quota-amount" name="correctedAmount" inputmode="decimal"
+              [(ngModel)]="correctedAmount" [disabled]="saving()" required>
+            <button type="submit" [disabled]="saving()">Guardar importe</button>
+          </form>
+        }
+        <button type="button" class="secondary" (click)="cancelAmountCorrection()" [disabled]="saving()">Cancelar corrección</button>
+      } @else if (!hidden() && canCorrectAmount(debt, installment)) {
+        <button type="button" class="secondary" (click)="startAmountCorrection(installment)"
+          [disabled]="saving() || paying() || detailLoading() || historyLoading() || draftDirty">Corregir importe</button>
+      }
       @if(installment.pendiente_ajuste){<p>Importe provisorio. Podés registrar el pago cuando se complete el ajuste del índice.</p>}
       @if(installment.estimado){<p>Esta cuota tiene un monto estimado. Revisalo en «Montos por confirmar» antes de pagar.</p>}
-      @if(installment.capital===undefined&&!installment.pendiente_ajuste&&installment.pagado==='0.00'&&installment.estado!=='no_aplica'){
+      @if(!correcting()&&installment.capital===undefined&&!installment.pendiente_ajuste&&installment.pagado==='0.00'&&installment.estado!=='no_aplica'){
         <button type="button" class="secondary" (click)="skipInstallment(installment)"
           [disabled]="saving()||paying()||draftDirty">Marcar como «No aplica»</button>
       }
-      @if(!installment.estimado&&!installment.pendiente_ajuste&&installment.estado!=='pagada'&&installment.estado!=='no_aplica'&&!hidden()){
+      @if(!correcting()&&!installment.estimado&&!installment.pendiente_ajuste&&installment.estado!=='pagada'&&installment.estado!=='no_aplica'&&!hidden()){
         <p>Pendiente: {{ debt.moneda }} {{ showAmount(installment.pendiente) }}. Podés pagar una parte o completar la cuota.</p>
         <form #paymentForm="ngForm" (ngSubmit)="pay()">
           <label for="payment-account">Cuenta desde la que pagaste</label><select id="payment-account" name="paymentAccount" [(ngModel)]="payAccount" (ngModelChange)="payDirty=true" required [disabled]="paying()"><option value="">Elegí una cuenta</option>@for(a of accounts;track a.id){<option [value]="a.id">{{ a.nombre }}</option>}</select>

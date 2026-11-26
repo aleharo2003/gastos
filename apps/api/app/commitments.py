@@ -119,6 +119,7 @@ def public_commitment(row):
         'pausado':row['pausado'],'version':row['version'],'variable':row['variable'],
         'total':format(total,'.2f'),'pagado':format(paid,'.2f'),'pendiente':format(total-paid,'.2f'),
         'proximo_vencimiento':row['proximo_vencimiento'].isoformat() if row['proximo_vencimiento'] else None} | (
+            {'cuotas_ajustadas': row['cuotas_ajustadas']} if row.get('cuotas_ajustadas') else {}) | (
             {'indice_ajuste': row['indice_ajuste']} if row.get('indice_ajuste') is not None else {}) | (
             {'sistema_amortizacion': row['sistema_amortizacion'], 'tna': format(row['tna'], '.8f').rstrip('0').rstrip('.')}
             if row.get('sistema_amortizacion') is not None else {})
@@ -134,6 +135,8 @@ def list_commitments(session,user,space,offset=0,identifier=None,*,page_size=101
         compromisos_resumidos AS (
         SELECT c.*,COALESCE(SUM(q.importe) FILTER (WHERE NOT q.no_aplica),0) AS total_generado,
             COUNT(*) FILTER (WHERE q.no_aplica) AS cuotas_no_aplican,COUNT(*) FILTER (WHERE COALESCE(p.pagado,0)>=q.importe) AS cuotas_pagadas,
+            COUNT(*) FILTER (WHERE NOT q.no_aplica AND NOT c.variable AND c.indice_ajuste IS NULL
+                             AND c.sistema_amortizacion IS NULL AND q.importe<>c.importe) AS cuotas_ajustadas,
             COALESCE(SUM(p.pagado),0) AS pagado,
             MIN(q.vencimiento) FILTER (WHERE NOT q.no_aplica AND COALESCE(p.pagado,0)<q.importe) AS proximo_vencimiento
         FROM public.compromisos c LEFT JOIN public.cuotas q ON q.espacio_id=c.espacio_id AND q.compromiso_id=c.id
@@ -249,7 +252,8 @@ def public_payment(row):
 
 def require_installment(session,user,space,identifier,write=False):
     require_member(session,user,space,write=write)
-    row=session.execute(text("""SELECT q.*,c.nombre,c.moneda,c.categoria,c.cuenta_id
+    row=session.execute(text("""SELECT q.*,c.nombre,c.moneda,c.categoria,c.cuenta_id,
+        c.variable,c.indice_ajuste,c.sistema_amortizacion
         FROM public.cuotas q JOIN public.compromisos c ON c.espacio_id=q.espacio_id AND c.id=q.compromiso_id
         WHERE q.espacio_id=:s AND q.id=:id"""),{'s':space,'id':identifier}).mappings().one_or_none()
     if row is None:raise HTTPException(404,'Cuota no disponible',headers=NO_STORE)
@@ -526,6 +530,45 @@ def post_confirmations(space:UUID,body:ConfirmationsInput,request:Request,respon
 class SkipInstallmentInput(BaseModel):
     model_config = ConfigDict(extra='forbid')
     version: StrictInt = Field(ge=1, le=2147483646)
+
+
+class InstallmentAmountInput(SkipInstallmentInput):
+    importe: Decimal
+
+    @field_validator('importe', mode='before')
+    @classmethod
+    def amount(cls, value):
+        return IncomeInput.amount(value)
+
+
+def correct_installment_amount(session, user, space, identifier, body):
+    require_member(session, user, space, write=True)
+    session.execute(text('SELECT pg_advisory_xact_lock(hashtextextended(:key,0))'),
+                    {'key': f'cuota:{space}:{identifier}'})
+    row = require_installment(session, user, space, identifier, write=True)
+    if (row['no_aplica'] or row['estimado'] or row['pendiente_ajuste'] or row['variable'] or
+            row['indice_ajuste'] is not None or row['sistema_amortizacion'] is not None):
+        raise HTTPException(409, 'El importe de esta cuota no se puede corregir', headers=NO_STORE)
+    if row['importe'] == body.importe and row['version'] in (body.version, body.version + 1):
+        return {'id': str(identifier), 'importe': format(body.importe, '.2f'), 'version': row['version']}
+    if row['version'] != body.version:
+        raise HTTPException(409, 'La cuota cambió en otra sesión', headers=NO_STORE)
+    params = {'space': space, 'id': identifier, 'importe': body.importe, 'version': body.version}
+    saved = session.execute(text("""
+        UPDATE public.cuotas SET importe=:importe, version=version+1
+        WHERE espacio_id=:space AND id=:id AND version=:version
+        RETURNING version
+    """), params).scalar_one_or_none()
+    if saved is None:
+        raise HTTPException(409, 'No se puede corregir una cuota con pagos', headers=NO_STORE)
+    return {'id': str(identifier), 'importe': format(body.importe, '.2f'), 'version': saved}
+
+
+@router.post('/spaces/{space}/installments/{identifier}/amount')
+def post_installment_amount(space: UUID, identifier: UUID, body: InstallmentAmountInput,
+                            request: Request, response: Response):
+    return execute(request, response, space,
+                   lambda session, user: correct_installment_amount(session, user, space, identifier, body))
 
 
 def skip_installment(session, user, space, identifier, version):

@@ -10,7 +10,7 @@ from app.accounts import AccountInput,create_account
 from app.incomes import IncomeInput,create_income,account_balance
 from app.expenses import ExpenseInput,ExpenseEdit,create_expense,edit_expense
 from app.commitments import CommitmentInput,PaymentInput,create_commitment,list_commitments,list_installments,pay_installment,list_payments,monthly_installments,due_overview,skip_installment,today_overview
-from app.commitments import commitment_payment_trend
+from app.commitments import InstallmentAmountInput, commitment_payment_trend, correct_installment_amount
 from app.db.connection import create_runtime_engine,create_migration_engine
 from app.db.unit_of_work import runtime_transaction
 
@@ -220,6 +220,32 @@ def check_commitments(runtime_url,migration_url):
         updated=cuotas(debt['id'])['items'][0]
         assert updated['estado']=='parcial' and updated['saldo_capital']==first['saldo_capital']
         denied(lambda:cuotas(debt['id'],who=other,space=other),404)
+
+        fixed = create(body(nombre='Cuota puntual', primer_vencimiento='2031-01-10'))
+        to_correct = cuotas(fixed['id'])['items'][0]
+        before_correction = balance()
+
+        def correct(importe, version=to_correct['version'], who=owner, quota=to_correct['id']):
+            return call(lambda s, u, w: correct_installment_amount(
+                s, u, w, UUID(quota), InstallmentAmountInput(importe=importe, version=version),
+            ), who)
+
+        denied(lambda: correct('75', who=reader), 403)
+        denied(lambda: correct('75', quota=first['id'], version=first['version']), 409)
+        changed_amount = correct('75')
+        assert changed_amount['version'] == to_correct['version'] + 1
+        assert changed_amount['importe'] == '75.00' and correct('75') == changed_amount
+        denied(lambda: correct('80'), 409)
+        assert balance() == before_correction
+        revision = next(row for row in listed() if row['id'] == fixed['id'])
+        assert (revision['importe'], revision['total'], revision['pendiente'], revision['cuotas_ajustadas']) == (
+            '100.00', '275.00', '275.00', 1,
+        )
+        assert [row['importe'] for row in cuotas(fixed['id'])['items']] == ['75.00', '100.00', '100.00']
+        denied(lambda: pay(to_correct['id'], payment(importe='100')), 409)
+        pay(to_correct['id'], payment(importe='75'))
+        denied(lambda: correct('80', version=changed_amount['version']), 409)
+        assert Decimal(before_correction) - Decimal(balance()) == Decimal('75.00')
 
         invalid=body(importe='0.01', sistema_amortizacion='frances', tna='12')
         denied(lambda:create(invalid),422)
