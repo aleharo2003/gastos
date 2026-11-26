@@ -1,0 +1,27 @@
+@if (canInstall() || iosSafari()) {
+  <section class="install" aria-labelledby="install-piggo-title">
+    <div class="heading">
+      <div>
+        <h2 id="install-piggo-title">Piggo en tu pantalla de inicio</h2>
+        <p>Abrí Piggo desde su ícono para registrar un gasto o revisar el mes.</p>
+      </div>
+      @if (canInstall()) {
+        <button type="button" (click)="install()">Instalar Piggo</button>
+      } @else {
+        <button type="button" [attr.aria-expanded]="showInstructions()"
+          aria-controls="install-piggo-ios" (click)="showInstructions.set(!showInstructions())">
+          Cómo instalar en iPhone o iPad
+        </button>
+      }
+    </div>
+    @if (iosSafari()) {
+      <div id="install-piggo-ios" [hidden]="!showInstructions()">
+        <ol>
+          <li><span aria-hidden="true">↑</span> En Safari, tocá <strong>Compartir</strong>.</li>
+          <li><span aria-hidden="true">+</span> Elegí <strong>Agregar a inicio</strong> y tocá <strong>Agregar</strong>.</li>
+        </ol>
+        <p>En iOS 16.4 o posterior, instalá Piggo para poder activar las notificaciones push.</p>
+      </div>
+    }
+  </section>
+}

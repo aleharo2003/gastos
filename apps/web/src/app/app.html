@@ -6,6 +6,7 @@
       </select>
     </label>
   </header>
+  <app-install-piggo />
   <section class="card" [class.workspace]="auth.verified() && !!auth.personalSpace()" aria-labelledby="page-title">
     @if (!auth.ready()) {
       <h1 id="page-title">Bienvenido a Piggo</h1>
