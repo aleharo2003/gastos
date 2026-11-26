@@ -92,6 +92,11 @@ li.expense-item { display: block; background: var(--g-surface); padding: 0; }
   gap: 0.625rem;
 }
 
+.quick-expense .expense-amount {
+  font-size: 1.5rem;
+  font-weight: 800;
+}
+
 .quick-expense h3 {
   margin-block: 0 0.25rem;
 }
