@@ -5,6 +5,8 @@ import { boundedJson } from './token-verifier.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CATEGORIES = ["alimentos", "transporte", "vivienda", "servicios", "salud", "educacion", "ocio", "impuestos", "auto", "bancario", "ropa", "otros"];
+// The API catalog includes up to 100 built-in and custom categories per space.
+const MAX_CATEGORY_SUMMARY_ROWS = 3 * (100 + 1);
 const isExpenseCategory = (value: unknown): value is string =>
   typeof value === 'string' && (CATEGORIES.includes(value) || UUID.test(value));
 type ExpenseInput = { id: string; fecha: string; descripcion: string; moneda: string; importe: string;
@@ -249,7 +251,7 @@ export class ExpensesController {
         if (!value || typeof value.desde !== 'string' || !/^\d{4}-(0[1-9]|1[0-2])-01$/.test(value.desde) ||
             typeof value.hasta !== 'string' || !/^\d{4}-\d{2}-(28|29|30|31)$/.test(value.hasta) ||
             value.hasta.slice(0, 7) !== value.desde.slice(0, 7) || !Array.isArray(value.items) ||
-            value.items.length > 3 * (CATEGORIES.length + 1) || value.items.some(row =>
+            value.items.length > MAX_CATEGORY_SUMMARY_ROWS || value.items.some(row =>
               !row || !['ARS', 'USD', 'EUR'].includes(row.moneda) ||
               (row.categoria !== null && !isExpenseCategory(row.categoria)) ||
               typeof row.total !== 'string' || !/^(?:0|[1-9][0-9]{0,30})\.[0-9]{2}$/.test(row.total)

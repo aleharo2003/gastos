@@ -51,6 +51,17 @@ describe('Gastos HTTP', () => {
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ ...report, items: [items[0], items[0]] })));
     await request(app.getHttpServer()).get(reportPath).set('Authorization', auth).expect(502);
   });
+  it('acepta el resumen de un mes con categorías personalizadas en varias monedas', async () => {
+    const items = Array.from({ length: 14 }, () => randomUUID()).flatMap(categoria =>
+      ['ARS', 'USD', 'EUR'].map(moneda => ({ moneda, categoria, total: '25.00' })),
+    );
+    const report = { desde: '2026-11-01', hasta: '2026-11-30', items };
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(report)));
+
+    await request(app.getHttpServer()).get(`/api/spaces/${space}/expense-category-summary`)
+      .set('Authorization', 'Bearer token').expect(200).expect(report);
+  });
+
   it('reenvia filtros codificados y conserva categoria',async()=>{
     const page={items:[{...row,categoria:'alimentos'}],next_offset:null};
     fetchMock.mockResolvedValue(new Response(JSON.stringify(page)));
