@@ -13,7 +13,7 @@ def verify_jobs_role(cursor):
         raise RuntimeError('La conexion no cumple el contrato de app_jobs.')
 
 
-def generate(connector=psycopg.connect):
+def run_jobs_count(query, connector=psycopg.connect):
     dsn=os.environ.get('JOBS_DATABASE_URL','')
     if not dsn:raise RuntimeError('Falta configurar JOBS_DATABASE_URL.')
     with connector(dsn,connect_timeout=10) as connection:
@@ -21,10 +21,14 @@ def generate(connector=psycopg.connect):
             verify_jobs_role(cursor)
             cursor.execute("SET LOCAL statement_timeout='120s'")
             cursor.execute("SET LOCAL lock_timeout='30s'")
-            cursor.execute('SELECT public.generar_cuotas_mes()')
+            cursor.execute(query)
             count=cursor.fetchone()[0]
-            if not isinstance(count,int) or count<0:raise RuntimeError('Respuesta de generacion invalida.')
+            if not isinstance(count,int) or count<0:raise RuntimeError('Respuesta del proceso invalida.')
     return count
+
+
+def generate(connector=psycopg.connect):
+    return run_jobs_count('SELECT public.generar_cuotas_mes()', connector)
 
 
 def main():

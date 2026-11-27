@@ -62,6 +62,20 @@ Reutilizar un UUID para otra operación devuelve 409. Un bloqueo transaccional p
 cuota serializa pagos simultáneos y vuelve a calcular el saldo antes de insertar.
 La migración 0016 debe ejecutarse antes de desplegar los servicios.
 
+## Marcado diario de vencimientos
+
+En test, GitHub Actions ejecuta **Marcar cuotas vencidas test** a las 01:29 de
+Buenos Aires. La tarea usa `JOBS_DATABASE_URL` del rol dedicado, guarda la
+fecha del primer marcado para cada cuota confirmada con saldo pendiente y
+se puede ejecutar manualmente desde Actions. La migración 0051 concede el
+permiso al rol de tareas ya habilitado para generar cuotas.
+
+Una cuota que vence hoy entra al proceso a partir del día siguiente en
+Argentina. Los pagos parciales conservan el saldo vencido. Al pagar toda la
+cuota, Piggo la muestra como pagada y conserva la fecha de marcado en el
+historial exportable. La pantalla calcula el vencimiento por fecha aun si
+una ejecución se demora.
+
 ## Validación
 
 Pruebas de API, BFF y Angular; PostgreSQL comprueba reintentos concurrentes,

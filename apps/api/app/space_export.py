@@ -28,7 +28,7 @@ TABLES = (
     ('compromisos', 'id cuenta_id nombre moneda importe categoria primer_vencimiento total_cuotas '
      'sistema_amortizacion tna indice_ajuste variable pausado version', 'id'),
     ('cuotas', 'id compromiso_id numero vencimiento periodo importe no_aplica estimado '
-     'pendiente_ajuste version capital interes saldo_capital', 'compromiso_id, numero'),
+     'pendiente_ajuste version capital interes saldo_capital marcada_vencida_el', 'compromiso_id, numero'),
     ('pagos_cuota', 'id cuota_id', 'cuota_id, id'),
     ('variaciones_indice', 'indice periodo variacion', 'indice, periodo'),
     ('metas_ahorro', 'id cuenta_id nombre moneda objetivo fecha_objetivo archivada version', 'id'),
