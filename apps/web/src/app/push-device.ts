@@ -139,7 +139,8 @@ export class PushDevice implements OnChanges {
       this.registered.set(false);
       this.status.set('Dispositivo desactivado.');
       this.canSubscribe.set(!!this.registration?.active && !!this.key);
-      if (await this.subscription?.unsubscribe()) this.subscription = null;
+      await this.subscription?.unsubscribe();
+      this.subscription = null;
     } catch {
       if (this.current(generation)) this.error.set('No pudimos completar la desactivación. Volvé a comprobar.');
     } finally { if (this.current(generation)) this.busy.set(false); }

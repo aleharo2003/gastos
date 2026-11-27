@@ -20,7 +20,9 @@ describe('Dispositivo push', () => {
     const workers = { getRegistration: vi.fn().mockResolvedValue({ active: {}, pushManager }) };
     const previous = Object.getOwnPropertyDescriptor(navigator, 'serviceWorker');
     Object.defineProperty(navigator, 'serviceWorker', { configurable: true, value: workers });
-    vi.stubGlobal('isSecureContext', true);
+    const browser = document.defaultView!;
+    const securityContext = Object.getOwnPropertyDescriptor(browser, 'isSecureContext');
+    Object.defineProperty(browser, 'isSecureContext', { configurable: true, value: true });
     vi.stubGlobal('Notification', { permission: 'granted' });
     vi.stubGlobal('PushManager', function PushManager() {});
     const request = vi.fn().mockResolvedValueOnce({ active: false, public_key: keys.p256dh })
@@ -32,26 +34,33 @@ describe('Dispositivo push', () => {
       const fixture = TestBed.createComponent(PushDevice);
       fixture.componentRef.setInput('space', 'space');
       fixture.detectChanges();
-      await fixture.whenStable();
-      fixture.detectChanges();
       const screen = fixture.nativeElement as HTMLElement;
+      await vi.waitFor(() => {
+        fixture.detectChanges();
+        expect(screen.textContent).toContain('Activar en este dispositivo');
+      });
       expect(pushManager.subscribe).not.toHaveBeenCalled();
       screen.querySelector('button')!.click();
       expect(pushManager.subscribe).toHaveBeenCalledWith({ userVisibleOnly: true, applicationServerKey: expect.any(Uint8Array) });
-      await fixture.whenStable();
-      fixture.detectChanges();
+      await vi.waitFor(() => {
+        fixture.detectChanges();
+        expect(screen.textContent).toContain('Dispositivo registrado');
+      });
       const device = localStorage.getItem('piggo.push.device');
       expect(request).toHaveBeenNthCalledWith(2, 'POST', '/api/spaces/space/push-subscriptions',
         { device_id: device, subscription: { endpoint, keys } });
-      expect(screen.textContent).toContain('Dispositivo registrado');
       screen.querySelector('button')!.click();
-      await fixture.whenStable();
-      fixture.detectChanges();
+      await vi.waitFor(() => {
+        fixture.detectChanges();
+        expect(subscription.unsubscribe).toHaveBeenCalledOnce();
+      });
       expect(request).toHaveBeenNthCalledWith(3, 'POST', '/api/spaces/space/push-subscriptions',
         { device_id: device, subscription: null });
       expect(subscription.unsubscribe).toHaveBeenCalledOnce();
       expect(screen.textContent).toContain('Dispositivo desactivado');
     } finally {
+      if (securityContext) Object.defineProperty(browser, 'isSecureContext', securityContext);
+      else Reflect.deleteProperty(browser, 'isSecureContext');
       if (previous) Object.defineProperty(navigator, 'serviceWorker', previous);
       else Reflect.deleteProperty(navigator, 'serviceWorker');
     }
