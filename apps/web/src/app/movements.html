@@ -101,9 +101,9 @@
         <span><strong>{{ row.descripcion }}</strong><small>{{ row.fecha }} · {{ movementLabel(row) }}@if (row.anulado) { · Anulado }@if (row.tipo === 'gasto' && row.categoria !== undefined) { · {{ categoryName(row.categoria) }} }@if (row.tipo === 'ingreso' && row.categoria) { · {{ categoryName(row.categoria, 'ingreso') }} }</small></span>
         <span>{{ row.origen }}{{ row.origen && row.destino ? ' → ' : '' }}{{ row.destino }}</span>
         <strong>{{ row.moneda }} {{ amount(row.importe) }}@if (row.moneda_destino && row.importe_destino) { → {{ row.moneda_destino }} {{ amount(row.importe_destino) }} }</strong>
-        @if (!row.anulado && (row.tipo === 'ingreso' || row.tipo === 'transferencia')) {
+        @if (!row.anulado && row.tipo !== 'gasto') {
           <button type="button" class="secondary" (click)="confirmVoid(row)" [disabled]="loading() || voiding() || exporting()"
-            [attr.aria-label]="'Anular ' + labels[row.tipo].toLowerCase() + ' ' + row.descripcion">
+            [attr.aria-label]="'Anular ' + movementLabel(row).toLowerCase() + ' ' + row.descripcion">
             Anular
           </button>
         }

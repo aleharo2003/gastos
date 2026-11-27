@@ -51,7 +51,7 @@ export class MovementsController {
             (row.anulado !== undefined && typeof row.anulado !== 'boolean')) throw new Error();
         const { id, fecha, tipo, descripcion, moneda, importe, origen, destino, categoria } = row;
         const { moneda_destino, importe_destino } = row;
-        if (tipo === 'cambio' && (row.anulado || !['ARS', 'USD'].includes(moneda) || moneda_destino !== (moneda === 'ARS' ? 'USD' : 'ARS') || typeof importe_destino !== 'string' || !amount.test(importe_destino))) {
+        if (tipo === 'cambio' && (!['ARS', 'USD'].includes(moneda) || moneda_destino !== (moneda === 'ARS' ? 'USD' : 'ARS') || typeof importe_destino !== 'string' || !amount.test(importe_destino))) {
           throw new Error();
         }
         return { id, fecha, tipo, descripcion, moneda, importe, origen, destino,
@@ -82,7 +82,7 @@ export class MovementsController {
   async voidMovement(@Param('space') space: string, @Param('kind') kind: string, @Param('id') id: string,
       @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const token = await this.authorize(req, res);
-    if (!uuid.test(space) || !uuid.test(id) || (kind !== 'ingreso' && kind !== 'transferencia')) {
+    if (!uuid.test(space) || !uuid.test(id) || (kind !== 'ingreso' && kind !== 'transferencia' && kind !== 'cambio')) {
       throw new BadRequestException('Movimiento inválido');
     }
     try {

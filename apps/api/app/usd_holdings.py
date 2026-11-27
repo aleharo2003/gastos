@@ -56,7 +56,7 @@ def usd_holding(session, space, account):
               CASE WHEN tipo='venta' THEN origen_id END,
               CASE WHEN tipo='compra' THEN destino_id END,
               usd,CASE WHEN tipo='compra' THEN ars END
-            FROM public.ventas_usd WHERE espacio_id=:s
+            FROM public.ventas_usd WHERE espacio_id=:s AND anulado_en IS NULL
             UNION ALL
             SELECT fecha,3,NULL,id,origen_id,destino_id,importe,NULL FROM public.transferencias
             WHERE espacio_id=:s AND moneda='USD' AND anulado_en IS NULL

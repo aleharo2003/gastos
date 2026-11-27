@@ -11,6 +11,7 @@ type Operation = 'venta' | 'compra';
 
 type Sale = {
   tipo?: Operation;
+  anulado?: true;
   id: string; origen_id: string; destino_id: string; fecha: string; contraparte: string;
   usd: string; ars: string; tasa: string; referencia: string | null;
   fecha_referencia: string | null; diferencia_pct: string | null;

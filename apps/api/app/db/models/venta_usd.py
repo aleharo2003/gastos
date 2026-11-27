@@ -31,3 +31,4 @@ class VentaUsd(Base):
     referencia: Mapped[Decimal | None] = mapped_column(Numeric(12, 4))
     fecha_referencia: Mapped[date | None] = mapped_column(Date)
     registrada_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    anulado_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
