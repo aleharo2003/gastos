@@ -1,4 +1,4 @@
-import { BadGatewayException, BadRequestException, Controller, Get, HttpException, Param, Query, Req, Res, UnauthorizedException } from '@nestjs/common';
+import { BadGatewayException, BadRequestException, Controller, Get, HttpCode, HttpException, Param, Post, Query, Req, Res, UnauthorizedException } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { AuthService } from './auth.service.js';
 import { boundedJson } from './token-verifier.js';
@@ -22,16 +22,7 @@ export class MovementsController {
   @Get()
   async list(@Param('space') space: string, @Query() query: Record<string, unknown>, @Req() req: Request,
       @Res({ passthrough: true }) res: Response) {
-    res.setHeader('Cache-Control', 'no-store');
-    const parts = req.headers.authorization?.trim().split(/\s+/) ?? [];
-    const count = req.rawHeaders.filter((value, i) => i % 2 === 0 && value.toLowerCase() === 'authorization').length;
-    try {
-      if (count !== 1 || parts.length !== 2 || parts[0].toLowerCase() !== 'bearer') throw new UnauthorizedException();
-      await this.auth.verifyIdentity(parts[1]);
-    } catch (error) {
-      if (error instanceof UnauthorizedException) res.setHeader('WWW-Authenticate', 'Bearer');
-      throw error;
-    }
+    const token = await this.authorize(req, res);
     if (!uuid.test(space) || Object.entries(query).some(([key, value]) => !keys.includes(key) ||
         typeof value !== 'string' || [...value].length > 160 || /[\x00-\x1f\x7f]/.test(value))) {
       throw new BadRequestException('Filtros inválidos');
@@ -45,19 +36,7 @@ export class MovementsController {
     }
 
     try {
-      const base = new URL(process.env.API_BASE_URL ?? 'http://127.0.0.1:8000');
-      const local = ['localhost', '127.0.0.1', '[::1]', 'api'].includes(base.hostname);
-      if (base.username || base.password || base.search || base.hash || base.pathname !== '/' ||
-          (base.protocol !== 'https:' && !(base.protocol === 'http:' && local))) throw new Error();
-      const rawTimeout = process.env.API_TIMEOUT_MS ?? '5000';
-      const timeout = Number(rawTimeout);
-      if (!/^\d+$/.test(rawTimeout) || !Number.isSafeInteger(timeout) || timeout < 1 || timeout > 2147483647) throw new Error();
-      const url = new URL(`/spaces/${space.toLowerCase()}/movements`, base);
-      for (const [key, value] of Object.entries(query)) if (value) url.searchParams.set(key, String(value));
-      const result = await fetch(url, {
-        headers: { Accept: 'application/json', Authorization: `Bearer ${parts[1]}` },
-        redirect: 'error', signal: AbortSignal.timeout(timeout),
-      });
+      const result = await this.requestApi(space, 'GET', token, '', query);
       if ([400, 401, 403, 422, 503].includes(result.status)) throw new HttpException('No se pudo consultar el historial', result.status);
       if (!result.ok) throw new Error();
       const page = await boundedJson(result, 131072) as Page;
@@ -88,5 +67,59 @@ export class MovementsController {
       if (error instanceof HttpException) throw error;
       throw new BadGatewayException('No se pudo consultar FastAPI');
     }
+  }
+
+  @Post(':kind/:id/void')
+  @HttpCode(200)
+  async voidMovement(@Param('space') space: string, @Param('kind') kind: string, @Param('id') id: string,
+      @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    const token = await this.authorize(req, res);
+    if (!uuid.test(space) || !uuid.test(id) || (kind !== 'ingreso' && kind !== 'transferencia')) {
+      throw new BadRequestException('Movimiento inválido');
+    }
+    try {
+      const result = await this.requestApi(space, 'POST', token, `/${kind}/${id.toLowerCase()}/void`);
+      if ([400, 401, 403, 404, 422, 503].includes(result.status)) {
+        throw new HttpException('No se pudo anular el movimiento', result.status);
+      }
+      if (!result.ok) throw new Error();
+      const row = await boundedJson(result, 1024) as { id?: unknown; anulado?: unknown } | null;
+      if (row?.id !== id.toLowerCase() || row?.anulado !== true) throw new Error();
+      return { id: row.id, anulado: true };
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new BadGatewayException('No se pudo consultar FastAPI');
+    }
+  }
+
+  private async authorize(req: Request, res: Response): Promise<string> {
+    res.setHeader('Cache-Control', 'no-store');
+    const parts = req.headers.authorization?.trim().split(/\s+/) ?? [];
+    const count = req.rawHeaders.filter((value, i) => i % 2 === 0 && value.toLowerCase() === 'authorization').length;
+    try {
+      if (count !== 1 || parts.length !== 2 || parts[0].toLowerCase() !== 'bearer') throw new UnauthorizedException();
+      await this.auth.verifyIdentity(parts[1]);
+    } catch (error) {
+      if (error instanceof UnauthorizedException) res.setHeader('WWW-Authenticate', 'Bearer');
+      throw error;
+    }
+    return parts[1];
+  }
+
+  private requestApi(space: string, method: 'GET' | 'POST', token: string, path: string, query: Record<string, unknown> = {}) {
+    const base = new URL(process.env.API_BASE_URL ?? 'http://127.0.0.1:8000');
+    const local = ['localhost', '127.0.0.1', '[::1]', 'api'].includes(base.hostname);
+    if (base.username || base.password || base.search || base.hash || base.pathname !== '/' ||
+        (base.protocol !== 'https:' && !(base.protocol === 'http:' && local))) throw new Error();
+    const rawTimeout = process.env.API_TIMEOUT_MS ?? '5000';
+    const timeout = Number(rawTimeout);
+    if (!/^\d+$/.test(rawTimeout) || !Number.isSafeInteger(timeout) || timeout < 1 || timeout > 2147483647) throw new Error();
+    const url = new URL(`/spaces/${space.toLowerCase()}/movements${path}`, base);
+    for (const [key, value] of Object.entries(query)) if (value) url.searchParams.set(key, String(value));
+    return fetch(url, {
+      method,
+      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+      redirect: 'error', signal: AbortSignal.timeout(timeout),
+    });
   }
 }

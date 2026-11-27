@@ -71,4 +71,24 @@ describe('Paginación de Movimientos', () => {
     expect(component.items()).toHaveLength(51);
     expect(component.error()).toBe('');
   });
+
+  it('anula una transferencia y vuelve a cargar el filtro que se estaba mostrando', async () => {
+    vi.stubGlobal('confirm', vi.fn().mockReturnValueOnce(false).mockReturnValueOnce(true));
+    const transfer = { ...page(7, 1, null).items[0], tipo: 'transferencia' as const, origen: 'Banco', destino: 'Efectivo' };
+    const request = vi.fn()
+      .mockResolvedValueOnce({ ...page(0, 0, null), items: [transfer] })
+      .mockResolvedValueOnce({ id: transfer.id, anulado: true })
+      .mockResolvedValueOnce(page(0, 0, null));
+    const { component } = await setup(request);
+    component.filters.texto = 'borrador sin aplicar';
+
+    await component.confirmVoid(transfer);
+    expect(request).toHaveBeenCalledTimes(1);
+
+    await component.confirmVoid(transfer);
+    expect(request).toHaveBeenNthCalledWith(2, 'POST', '/api/spaces/test-space/movements/transferencia/7/void');
+    expect(request).toHaveBeenNthCalledWith(3, 'GET', '/api/spaces/test-space/movements?');
+    expect(component.items()).toEqual([]);
+    expect(component.voidNotice()).toBe('Transferencia anulada.');
+  });
 });

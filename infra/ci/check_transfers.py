@@ -9,7 +9,7 @@ from sqlalchemy.exc import DBAPIError
 from app.accounts import AccountInput,create_account
 from app.transfers import TransferInput,create_transfer,list_transfers
 from app.incomes import IncomeInput,create_income,account_balance
-from app.movements import list_movements, parse_cursor
+from app.movements import list_movements, parse_cursor, void_movement
 from app.expenses import ExpenseInput,create_expense,expense_summary
 from app.db.connection import create_runtime_engine,create_migration_engine
 from app.db.unit_of_work import runtime_transaction
@@ -189,6 +189,19 @@ def check_transfers(runtime_url,migration_url):
         with migrator.begin() as c:
             c.execute(text('DELETE FROM public.miembros_espacio WHERE usuario_id=:u AND espacio_id=:s'),{'u':editor,'s':owner})
         denied(lambda:transfer(editor,owner,body()),403)
+        manual = body(descripcion='Transferencia manual a anular', importe='12.00')
+        before = balance(source), balance(savings), balance()
+        transfer(owner, owner, manual)
+        assert balance(source) != before[0] and balance(savings) != before[1]
+        assert balance()['ARS']['saldo'] == before[2]['ARS']['saldo']
+        with runtime_transaction(runtime, usuario_id=editor, espacio_id=owner) as session:
+            assert void_movement(session, editor, owner, 'transferencia', manual.id) == {'id': str(manual.id), 'anulado': True}
+            search = dict(desde=None, hasta=None, tipo='transferencia', moneda=None, cuenta=savings, texto=manual.descripcion)
+            assert list_movements(session, editor, owner, search, None)['items'] == []
+            audit = list_movements(session, editor, owner, search | {'anulados': True}, None)
+            assert [(row['id'], row['anulado']) for row in audit['items']] == [(str(manual.id), True)]
+            assert audit['totales'] == []
+        assert (balance(source), balance(savings), balance()) == before
         print('OK: transferencias atomicas, conservacion por moneda, retiro de ahorros, >100 filas, concurrencia, rollback, roles y ambas FK.',flush=True)
     finally:
         with migrator.begin() as c:
