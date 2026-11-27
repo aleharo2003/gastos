@@ -6,10 +6,12 @@ import { movementCsv } from './movement-csv';
 import { showAmount } from './expenses';
 
 type Movement = {
-  id: string; fecha: string; tipo: 'gasto' | 'ingreso' | 'transferencia'; descripcion: string;
+  id: string; fecha: string; tipo: 'gasto' | 'ingreso' | 'transferencia' | 'cambio'; descripcion: string;
   moneda: string; importe: string; origen: string | null; destino: string | null; categoria?: string | null; anulado?: boolean;
+  moneda_destino?: string; importe_destino?: string;
 };
-type Totals = { moneda: string; ingresos: string; gastos: string; transferencias: string; variacion_cuenta?: string };
+type Totals = { moneda: string; ingresos: string; gastos: string; transferencias: string; variacion_cuenta?: string;
+  cambio_entrada?: string; cambio_salida?: string };
 type Page = { items: Movement[]; totales: Totals[]; next_cursor: string | null };
 const emptyFilters = { desde: '', hasta: '', tipo: '', moneda: '', cuenta: '', texto: '', categoria: '', anulados: '' };
 
@@ -87,7 +89,12 @@ export class Movements implements OnInit {
   private readonly catalog = inject(CategoryCatalog);
   get categories() { return this.catalog.expenseOptions(this.space()); }
   get incomeCategories() { return this.catalog.categories(this.space(), 'ingreso'); }
-  readonly labels = { gasto: 'Gasto', ingreso: 'Ingreso', transferencia: 'Transferencia' };
+  readonly labels = { gasto: 'Gasto', ingreso: 'Ingreso', transferencia: 'Transferencia', cambio: 'Cambio' };
+  movementLabel(row: Movement): string {
+    if (row.tipo === 'cambio') return row.moneda === 'ARS' ? 'Compra de USD' : 'Venta de USD';
+    return this.labels[row.tipo];
+  }
+
   filters = { ...emptyFilters };
   private applied = { ...emptyFilters };
   private request = 0;
@@ -233,7 +240,7 @@ export class Movements implements OnInit {
   }
 
   async confirmVoid(row: Movement): Promise<void> {
-    if (this.loading() || this.voiding() || this.exporting() || row.anulado || row.tipo === 'gasto') return;
+    if (this.loading() || this.voiding() || this.exporting() || row.anulado || (row.tipo !== 'ingreso' && row.tipo !== 'transferencia')) return;
     const label = row.tipo === 'ingreso' ? 'el ingreso' : 'la transferencia';
     if (!window.confirm(`¿Anular ${label} «${row.descripcion}»? Los saldos se actualizarán y el movimiento quedará en Anulados.`)) return;
     this.voiding.set(true);

@@ -6,13 +6,13 @@ import { boundedJson } from './token-verifier.js';
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const day = /^\d{4}-\d{2}-\d{2}$/;
 const amount = /^(?:0|[1-9][0-9]*)\.[0-9]{2}$/;
-const kinds = ['gasto', 'ingreso', 'transferencia'];
+const kinds = ['gasto', 'ingreso', 'transferencia', 'cambio'];
 const currencies = ['ARS', 'USD', 'EUR'];
 const keys = ['desde', 'hasta', 'tipo', 'moneda', 'cuenta', 'texto', 'cursor', 'categoria', 'categoria_ingreso', 'anulados'];
 const isName = (value: unknown) => value === null || (typeof value === 'string' && value.length <= 160);
 
-type Item = { id: string; fecha: string; tipo: string; descripcion: string; moneda: string; importe: string; origen: string | null; destino: string | null; categoria?: string | null; anulado?: boolean };
-type Totals = { moneda: string; ingresos: string; gastos: string; transferencias: string };
+type Item = { id: string; fecha: string; tipo: string; descripcion: string; moneda: string; importe: string; origen: string | null; destino: string | null; categoria?: string | null; anulado?: boolean; moneda_destino?: string; importe_destino?: string };
+type Totals = { moneda: string; ingresos: string; gastos: string; transferencias: string; cambio_entrada?: string; cambio_salida?: string };
 type Page = { items: Item[]; totales: (Totals & { variacion_cuenta?: string })[]; next_cursor: string | null };
 
 @Controller('api/spaces/:space/movements')
@@ -50,16 +50,24 @@ export class MovementsController {
             !isName(row.origen) || !isName(row.destino) || (row.categoria !== undefined && !isName(row.categoria)) ||
             (row.anulado !== undefined && typeof row.anulado !== 'boolean')) throw new Error();
         const { id, fecha, tipo, descripcion, moneda, importe, origen, destino, categoria } = row;
+        const { moneda_destino, importe_destino } = row;
+        if (tipo === 'cambio' && (row.anulado || !['ARS', 'USD'].includes(moneda) || moneda_destino !== (moneda === 'ARS' ? 'USD' : 'ARS') || typeof importe_destino !== 'string' || !amount.test(importe_destino))) {
+          throw new Error();
+        }
         return { id, fecha, tipo, descripcion, moneda, importe, origen, destino,
+          ...(tipo === 'cambio' ? { moneda_destino, importe_destino } : {}),
           ...(categoria === undefined ? {} : { categoria }), ...(row.anulado ? { anulado: true } : {}) };
       });
       const totales = page.totales.map(row => {
         if (!row || !currencies.includes(row.moneda) ||
             ![row.ingresos, row.gastos, row.transferencias].every(value => typeof value === 'string' && amount.test(value))) throw new Error();
-        const { moneda, ingresos, gastos, transferencias, variacion_cuenta } = row;
+        const { moneda, ingresos, gastos, transferencias, variacion_cuenta, cambio_entrada, cambio_salida } = row;
+        const hasExchange = cambio_entrada !== undefined || cambio_salida !== undefined;
+        if (hasExchange && ![cambio_entrada, cambio_salida].every(value => typeof value === 'string' && amount.test(value))) throw new Error();
         if (variacion_cuenta !== undefined &&
             (typeof variacion_cuenta !== 'string' || !/^-?(?:0|[1-9][0-9]*)\.[0-9]{2}$/.test(variacion_cuenta))) throw new Error();
         return { moneda, ingresos, gastos, transferencias,
+          ...(hasExchange ? { cambio_entrada, cambio_salida } : {}),
           ...(variacion_cuenta === undefined ? {} : { variacion_cuenta }) };
       });
       return { items, totales, next_cursor: page.next_cursor };

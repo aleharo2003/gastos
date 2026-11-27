@@ -7,6 +7,7 @@ from sqlalchemy import text
 from app.db.connection import create_migration_engine, create_runtime_engine
 from app.db.unit_of_work import runtime_transaction
 from app.incomes import account_balance
+from app.movements import list_movements, parse_cursor
 from app.usd_holdings import usd_holding
 from app.usd_reference import ManualRate, save_rate
 from app.usd_offers import AcceptOffer, OfferInput, accept_offer, save_offer
@@ -109,6 +110,25 @@ def check_fx_sales(runtime_url, migration_url):
             assert usd_holding(s, owner, purchased)['usd'] == '100.00'
             assert usd_holding(s, owner, receiving)['costo_promedio'] == '1666.6667'
             assert usd_holding(s, owner, origin)['resultado_ars'] is None
+            filters = {'desde': day, 'hasta': day, 'tipo': 'cambio', 'moneda': None,
+                       'cuenta': purchased, 'texto': ''}
+            exchange = list_movements(s, owner, owner, filters, None)
+            assert len(exchange['items']) == 3
+            by_id = {row['id']: row for row in exchange['items']}
+            assert (by_id[str(buy.id)]['moneda'], by_id[str(buy.id)]['importe'],
+                    by_id[str(buy.id)]['moneda_destino'], by_id[str(buy.id)]['importe_destino']) == (
+                        'ARS', '160000.00', 'USD', '100.00')
+            assert exchange['totales'] == [{
+                'moneda': 'USD', 'ingresos': '0.00', 'gastos': '0.00', 'transferencias': '0.00',
+                'cambio_entrada': '150.00', 'cambio_salida': '25.00', 'variacion_cuenta': '125.00',
+            }]
+            pesos = filters | {'cuenta': destination, 'moneda': 'ARS', 'texto': 'compra'}
+            result = list_movements(s, owner, owner, pesos, None)
+            assert len(result['items']) == 2 and result['totales'][0]['variacion_cuenta'] == '-250000.00'
+            assert list_movements(s, owner, owner, pesos | {'moneda': 'USD'}, None)['items'] == []
+            assert list_movements(s, owner, owner, filters | {'anulados': True}, None)['items'] == []
+            assert parse_cursor(f'{day.isoformat()}/cambio/{buy.id}') == (day, 'cambio', buy.id)
+            print('OK: cambios en historial, filtros por cuenta y moneda y variación de saldo.', flush=True)
             assert 'Compra prueba' not in {row['contraparte'] for row in sale_analysis(s, owner, owner)['contrapartes']}
         print('OK: cambios USD, saldos por moneda, referencia congelada, reintentos y costo promedio.', flush=True)
     finally:
