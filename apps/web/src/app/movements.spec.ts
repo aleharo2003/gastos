@@ -81,12 +81,12 @@ describe('Paginación de Movimientos', () => {
     const row = fixture.nativeElement.querySelector('ul.movement-list li');
     expect(row.textContent).toContain('Compra de USD');
     expect(row.textContent).toContain('Pesos → Dólares');
-    expect(row.querySelector('strong:last-child').textContent).toContain('ARS');
-    expect(row.querySelector('strong:last-child').textContent).toContain('→ USD');
+    expect(row.querySelector(':scope > strong').textContent).toContain('ARS');
+    expect(row.querySelector(':scope > strong').textContent).toContain('→ USD');
     expect(row.querySelector('button').textContent).toContain('Anular');
     fixture.componentRef.setInput('amountsHidden', true);
     await refresh();
-    expect(row.querySelector('strong:last-child').textContent).toContain('ARS •••• → USD ••••');
+    expect(row.querySelector(':scope > strong').textContent).toContain('ARS •••• → USD ••••');
     component.filters.tipo = 'cambio';
     await component.load();
     expect(request).toHaveBeenLastCalledWith('GET', '/api/spaces/test-space/movements?tipo=cambio');
