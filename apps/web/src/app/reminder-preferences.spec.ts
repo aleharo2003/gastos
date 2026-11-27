@@ -7,9 +7,9 @@ describe('Preferencias de recordatorios', () => {
   it('consulta al abrir la pestaña y permite desactivar conservando los ajustes', async () => {
     const settings = {
       canal: 'email', dias_anticipacion: 5, hora_local: '18:45',
-      vencimientos: true, vencidas: true, resumen_semanal: false,
+      vencimientos: true, vencidas: true, resumen_semanal: true,
     };
-    const saved = { ...settings, canal: 'ninguno' };
+    const saved = { ...settings, canal: 'ninguno', dia_resumen_semanal: 7 };
     const request = vi.fn().mockResolvedValueOnce(settings).mockResolvedValueOnce(saved);
     TestBed.configureTestingModule({
       imports: [ReminderPreferences],
@@ -27,6 +27,12 @@ describe('Preferencias de recordatorios', () => {
     await fixture.whenStable();
     fixture.detectChanges();
     const screen = fixture.nativeElement as HTMLElement;
+    const weekday = screen.querySelector<HTMLSelectElement>('#weekly-summary-day')!;
+    expect(weekday.selectedOptions[0].textContent).toBe('Lunes');
+    weekday.selectedIndex = 6;
+    weekday.dispatchEvent(new Event('change', { bubbles: true }));
+    await fixture.whenStable();
+    fixture.detectChanges();
     const channel = screen.querySelector<HTMLSelectElement>('#reminder-channel')!;
     expect(channel.value).toBe('email');
     channel.value = 'ninguno';
@@ -44,5 +50,6 @@ describe('Preferencias de recordatorios', () => {
     ]);
     expect(screen.textContent).toContain('Preferencias guardadas.');
     expect(screen.querySelector<HTMLInputElement>('#reminder-time')!.value).toBe('18:45');
+    expect(weekday.selectedOptions[0].textContent).toBe('Domingo');
   });
 });

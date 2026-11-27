@@ -27,6 +27,7 @@ class ReminderPreferences(BaseModel):
     vencidas: StrictBool
     resumen_semanal: StrictBool
     exceso_presupuesto: StrictBool | None = None
+    dia_resumen_semanal: StrictInt | None = Field(default=None, ge=1, le=7)
 
     @field_validator('hora_local', mode='before')
     @classmethod
@@ -40,13 +41,15 @@ def public_preferences(row):
     result = dict(row) | {'hora_local': row['hora_local'].isoformat(timespec='minutes')}
     if not result.get('exceso_presupuesto'):
         result.pop('exceso_presupuesto', None)
+    if result.get('dia_resumen_semanal') == 1:
+        result.pop('dia_resumen_semanal', None)
     return result
 
 
 def read_preferences(session, user, space):
     require_member(session, user, space)
     row = session.execute(text("""
-        SELECT canal, dias_anticipacion, hora_local, vencimientos, vencidas, resumen_semanal, exceso_presupuesto
+        SELECT canal, dias_anticipacion, hora_local, vencimientos, vencidas, resumen_semanal, exceso_presupuesto, dia_resumen_semanal
         FROM public.preferencias_avisos WHERE usuario_id = :user AND espacio_id = :space
     """), {'user': user, 'space': space}).mappings().one_or_none()
     return public_preferences(row) if row is not None else DEFAULTS.copy()
@@ -57,13 +60,14 @@ def save_preferences(session, user, space, body):
     require_member(session, user, space)
     row = session.execute(text("""
         INSERT INTO public.preferencias_avisos
-            (usuario_id, espacio_id, canal, dias_anticipacion, hora_local, vencimientos, vencidas, resumen_semanal, exceso_presupuesto)
-        VALUES (:user, :space, :canal, :dias_anticipacion, :hora_local, :vencimientos, :vencidas, :resumen_semanal, COALESCE(:exceso_presupuesto,false))
+            (usuario_id, espacio_id, canal, dias_anticipacion, hora_local, vencimientos, vencidas, resumen_semanal, exceso_presupuesto, dia_resumen_semanal)
+        VALUES (:user, :space, :canal, :dias_anticipacion, :hora_local, :vencimientos, :vencidas, :resumen_semanal, COALESCE(:exceso_presupuesto,false), COALESCE(:dia_resumen_semanal,1))
         ON CONFLICT (usuario_id, espacio_id) DO UPDATE SET
             canal = EXCLUDED.canal, dias_anticipacion = EXCLUDED.dias_anticipacion, hora_local = EXCLUDED.hora_local,
             vencimientos = EXCLUDED.vencimientos, vencidas = EXCLUDED.vencidas, resumen_semanal = EXCLUDED.resumen_semanal,
-            exceso_presupuesto = COALESCE(:exceso_presupuesto, preferencias_avisos.exceso_presupuesto)
-        RETURNING canal, dias_anticipacion, hora_local, vencimientos, vencidas, resumen_semanal, exceso_presupuesto
+            exceso_presupuesto = COALESCE(:exceso_presupuesto, preferencias_avisos.exceso_presupuesto),
+            dia_resumen_semanal = COALESCE(:dia_resumen_semanal, preferencias_avisos.dia_resumen_semanal)
+        RETURNING canal, dias_anticipacion, hora_local, vencimientos, vencidas, resumen_semanal, exceso_presupuesto, dia_resumen_semanal
     """), {'user': user, 'space': space, **body.model_dump()}).mappings().one()
     return public_preferences(row)
 

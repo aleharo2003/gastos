@@ -10,6 +10,7 @@ type Preferences = {
   vencidas: boolean;
   resumen_semanal: boolean;
   exceso_presupuesto?: boolean;
+  dia_resumen_semanal?: number;
 };
 
 @Component({
@@ -26,6 +27,7 @@ export class ReminderPreferences implements OnChanges {
   private readonly destroy = inject(DestroyRef);
   private generation = 0;
 
+  protected readonly weekdays = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
   protected draft: Preferences | null = null;
   protected readonly loading = signal(false);
   protected readonly saving = signal(false);

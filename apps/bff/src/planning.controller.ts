@@ -51,7 +51,7 @@ type PlanningResource = 'spending-plan' | 'reminder-preferences' | 'spending-pla
 
 function validReminderPreferences(value: unknown): boolean {
   if (!record(value) || !keys(value, [
-    'canal', 'dias_anticipacion', 'hora_local', 'vencimientos', 'vencidas', 'resumen_semanal', 'exceso_presupuesto',
+    'canal', 'dias_anticipacion', 'hora_local', 'vencimientos', 'vencidas', 'resumen_semanal', 'exceso_presupuesto', 'dia_resumen_semanal',
   ])) return false;
   return (value.canal === 'ninguno' || value.canal === 'email' || value.canal === 'push') &&
     typeof value.dias_anticipacion === 'number' && Number.isInteger(value.dias_anticipacion) &&
@@ -59,7 +59,9 @@ function validReminderPreferences(value: unknown): boolean {
     typeof value.hora_local === 'string' && /^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(value.hora_local) &&
     typeof value.vencimientos === 'boolean' && typeof value.vencidas === 'boolean' &&
     typeof value.resumen_semanal === 'boolean' &&
-    (value.exceso_presupuesto === undefined || typeof value.exceso_presupuesto === 'boolean');
+    (value.exceso_presupuesto === undefined || typeof value.exceso_presupuesto === 'boolean') &&
+    (value.dia_resumen_semanal === undefined || (typeof value.dia_resumen_semanal === 'number' &&
+      Number.isInteger(value.dia_resumen_semanal) && value.dia_resumen_semanal >= 1 && value.dia_resumen_semanal <= 7));
 }
 
 const rateDate = (value: unknown) => typeof value === 'string' && /^(?!0000)\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$/.test(value);
