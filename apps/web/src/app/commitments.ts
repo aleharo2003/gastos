@@ -19,9 +19,10 @@ export type Commitment={sistema_amortizacion?:LoanSystem;tna?:string;indice_ajus
 export type Installment={capital?:string;interes?:string;saldo_capital?:string;pendiente_ajuste?:boolean;estimado?:boolean;version?:number;id:string;espacio_id:string;compromiso_id:string;numero:number;vencimiento:string;importe:string;pagado:string;pendiente:string;estado:string;vencida:boolean};
 type OutstandingTotal={moneda:string;pendiente:string};
 export type MonthlyItem=Installment & {nombre:string;moneda:string;cuenta_id:string;categoria?:string|null;
-  ultimo_pago?: { fecha: string; cuenta: string }};
+  cuenta_prevista?: string; ultimo_pago?: { fecha: string; cuenta: string }};
 export type MonthlyTotal={no_aplican?:number;borradores?:number;estimado?:string;moneda:string;cuotas:number;cuotas_pagadas:number;total:string;pagado:string;pendiente:string;vencido:string};
-export type MonthlyPage={mes:string;items:MonthlyItem[];totales:MonthlyTotal[];next_offset:number|null};
+type MonthlyAccountPayment = { moneda: string; cuenta_id: string | null; cuenta: string; importe: string };
+export type MonthlyPage={mes:string;items:MonthlyItem[];totales:MonthlyTotal[];pagos_por_cuenta?:MonthlyAccountPayment[];next_offset:number|null};
 type Create={sistema_amortizacion?:LoanSystem;tna?:string;indice_ajuste?:string;variable:boolean;id:string;cuenta_id:string;nombre:string;moneda:string;importe:string;categoria:string|null;primer_vencimiento:string;total_cuotas:number|null};
 export type InstallmentReminder = { month: string } & ({ action: 'importe' | 'ajuste' } | { action: 'pago'; quota: string });
 @Component({selector:'app-commitments',imports:[FormsModule, PaymentQuoteEditor,Receipts,AdjustmentIndices,CommitmentPaymentTrend],templateUrl:'./commitments.html',styleUrl:'./commitments.css'})
@@ -53,6 +54,7 @@ export class Commitments implements OnChanges{
   readonly appliedMonth=signal('');
   readonly monthItems=signal<MonthlyItem[]>([]);
   readonly monthTotals=signal<MonthlyTotal[]>([]);
+  readonly monthAccountPayments = signal<MonthlyAccountPayment[]>([]);
   readonly monthNext=signal<number|null>(null);
   readonly monthLoading=signal(false);
   readonly monthError=signal('');
@@ -92,7 +94,7 @@ export class Commitments implements OnChanges{
   ngOnChanges(changes:SimpleChanges){if(changes['space']){
     this.draftMonth.set(this.reminder?.action === 'importe' ? this.reminder.month : '');
     this.draftVersion++;this.drafts.set([]);this.draftCount.set(0);this.draftsChanged.emit(0);this.draftNext.set(null);this.draftOffset=0;this.draftValues={};this.draftDirty=false;this.draftLoading.set(false);this.draftError.set('');
-    this.context++;this.detailVersion++;this.historyVersion++;this.monthVersion++;this.monthLoading.set(false);this.monthItems.set([]);this.monthTotals.set([]);this.monthNext.set(null);this.appliedMonth.set('');this.monthError.set('');this.month=this.reminder?.month ?? today().slice(0,7);this.loading.set(false);this.saving.set(false);this.paying.set(false);
+    this.context++;this.detailVersion++;this.historyVersion++;this.monthVersion++;this.monthLoading.set(false);this.monthItems.set([]);this.monthTotals.set([]);this.monthAccountPayments.set([]);this.monthNext.set(null);this.appliedMonth.set('');this.monthError.set('');this.month=this.reminder?.month ?? today().slice(0,7);this.loading.set(false);this.saving.set(false);this.paying.set(false);
     this.detailLoading.set(false);this.historyLoading.set(false);this.items.set([]);this.outstanding.set(null);this.selected.set(null);this.quota.set(null);
     this.cancelAmountCorrection();
     this.createOpen.set(false);
@@ -224,6 +226,7 @@ export class Commitments implements OnChanges{
       if(!this.alive||context!==this.context||version!==this.monthVersion)return;
       if(page.mes!==month||!Array.isArray(page.items)||!Array.isArray(page.totales))throw new Error('Resumen mensual inválido');
       this.appliedMonth.set(page.mes);this.monthTotals.set(page.totales);
+      this.monthAccountPayments.set(page.pagos_por_cuenta ?? []);
       this.monthItems.set([...new Map((more?[...this.monthItems(),...page.items]:page.items).map(row=>[row.id,row])).values()]);
       this.monthNext.set(page.next_offset);
     }catch{if(this.alive&&context===this.context&&version===this.monthVersion)this.monthError.set('No pudimos cargar el resumen mensual. Los datos visibles conservan su mes indicado.');}
@@ -259,6 +262,10 @@ export class Commitments implements OnChanges{
 
   monthTitle(month: string): string {
     return this.monthLabel.format(new Date(month + '-01T00:00:00Z'));
+  }
+
+  monthPayments(currency: string) {
+    return this.monthAccountPayments().filter(payment => payment.moneda === currency);
   }
 
   paidPercent(total: MonthlyTotal): number {

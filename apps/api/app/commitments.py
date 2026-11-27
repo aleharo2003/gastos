@@ -386,15 +386,34 @@ def monthly_installments(session,user,space,month,offset=0,day=None):
     day=day or commitment_local_date()
     require_member(session,user,space)
     # Una sola sentencia: resumen y pagina comparten la misma fotografia de pagos.
-    rows=session.execute(text("""WITH pagos AS (
-        SELECT p.cuota_id,SUM(g.importe) AS pagado FROM public.pagos_cuota p
-        JOIN public.gastos g ON g.espacio_id=p.espacio_id AND g.id=p.id
-        WHERE p.espacio_id=:s GROUP BY p.cuota_id),
-    del_mes AS (
-        SELECT q.*,c.nombre,c.moneda,c.cuenta_id,c.categoria,COALESCE(p.pagado,0) AS pagado
+    rows=session.execute(text("""WITH cuotas_mes AS (
+        SELECT q.*,c.nombre,c.moneda,c.cuenta_id,c.categoria,cuenta.nombre AS cuenta_prevista
         FROM public.cuotas q JOIN public.compromisos c ON c.espacio_id=q.espacio_id AND c.id=q.compromiso_id
-        LEFT JOIN pagos p ON p.cuota_id=q.id
-        WHERE q.espacio_id=:s AND q.vencimiento BETWEEN :first AND :last),
+        JOIN public.cuentas cuenta ON cuenta.espacio_id=c.espacio_id AND cuenta.id=c.cuenta_id
+        WHERE q.espacio_id=:s AND q.vencimiento BETWEEN :first AND :last
+    ), pagos_detalle AS (
+        SELECT p.cuota_id,g.id,g.fecha,g.cuenta_id,cuenta.nombre AS cuenta,q.moneda,g.importe
+        FROM cuotas_mes q
+        JOIN public.pagos_cuota p ON p.espacio_id=q.espacio_id AND p.cuota_id=q.id
+        JOIN public.gastos g ON g.espacio_id=p.espacio_id AND g.id=p.id
+        JOIN public.cuentas cuenta ON cuenta.espacio_id=g.espacio_id AND cuenta.id=g.cuenta_id
+    ), pagos AS (
+        SELECT cuota_id,SUM(importe) AS pagado FROM pagos_detalle GROUP BY cuota_id
+    ), del_mes AS (
+        SELECT q.*,COALESCE(p.pagado,0) AS pagado FROM cuotas_mes q LEFT JOIN pagos p ON p.cuota_id=q.id
+    ), por_cuenta AS (
+        SELECT moneda,cuenta_id,cuenta,SUM(importe) AS importe,
+               row_number() OVER (PARTITION BY moneda ORDER BY SUM(importe) DESC,cuenta,cuenta_id) AS posicion
+        FROM pagos_detalle GROUP BY moneda,cuenta_id,cuenta
+    ), cuentas_visibles AS (
+        SELECT moneda,cuenta_id,cuenta,importe,posicion FROM por_cuenta WHERE posicion<=10
+        UNION ALL
+        SELECT moneda,NULL::uuid,'Otras cuentas',SUM(importe),11 FROM por_cuenta WHERE posicion>10 GROUP BY moneda
+    ), resumen_cuentas AS (
+        SELECT COALESCE(jsonb_agg(jsonb_build_object('moneda',moneda,'cuenta_id',cuenta_id,'cuenta',cuenta,
+                    'importe',round(importe,2)::text) ORDER BY moneda,posicion),'[]'::jsonb) AS pagos_por_cuenta
+        FROM cuentas_visibles
+    ),
     totales AS (
         SELECT moneda,COUNT(*)::int AS cuotas,
             COUNT(*) FILTER (WHERE no_aplica)::int AS no_aplican,
@@ -407,17 +426,14 @@ def monthly_installments(session,user,space,month,offset=0,day=None):
         FROM del_mes GROUP BY moneda),
     resumen AS (
         SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY t.moneda),'[]'::jsonb) AS totales FROM totales t)
-    SELECT pagina.*,resumen.totales,ultimo.fecha AS ultima_fecha_pago,ultimo.cuenta AS ultima_cuenta_pago
-    FROM resumen LEFT JOIN (
+    SELECT pagina.*,resumen.totales,resumen_cuentas.pagos_por_cuenta,
+           ultimo.fecha AS ultima_fecha_pago,ultimo.cuenta AS ultima_cuenta_pago
+    FROM resumen CROSS JOIN resumen_cuentas LEFT JOIN (
         SELECT * FROM del_mes ORDER BY vencimiento,id LIMIT 101 OFFSET :offset
     ) pagina ON true
     LEFT JOIN LATERAL (
-        SELECT g.fecha, a.nombre AS cuenta
-        FROM public.pagos_cuota p
-        JOIN public.gastos g ON g.espacio_id=p.espacio_id AND g.id=p.id
-        JOIN public.cuentas a ON a.espacio_id=g.espacio_id AND a.id=g.cuenta_id
-        WHERE p.espacio_id=:s AND p.cuota_id=pagina.id
-        ORDER BY g.fecha DESC,g.id DESC LIMIT 1
+        SELECT p.fecha,p.cuenta FROM pagos_detalle p WHERE p.cuota_id=pagina.id
+        ORDER BY p.fecha DESC,p.id DESC LIMIT 1
     ) ultimo ON true
     ORDER BY pagina.vencimiento,pagina.id"""),
         {'s':space,'first':first,'last':last,'day':day,'offset':offset}).mappings().all()
@@ -426,10 +442,11 @@ def monthly_installments(session,user,space,month,offset=0,day=None):
     # SUM de cuotas numeric(14,2) conserva escala; normalizar tambien el cero de CASE.
     for total in totals:
         for key in ('total','pagado','pendiente','vencido','estimado'):total[key]=format(Decimal(total[key]),'.2f')
-    return {'mes':month,'totales':totals,'items':[
+    by_account = rows[0]['pagos_por_cuenta']
+    return {'mes':month,'totales':totals, **({'pagos_por_cuenta': by_account} if by_account else {}), 'items':[
         public_installment(row,day)|{
             'nombre':row['nombre'],'moneda':row['moneda'],'cuenta_id':str(row['cuenta_id']),
-            'categoria': row['categoria'],
+            'categoria': row['categoria'], 'cuenta_prevista': row['cuenta_prevista'],
         } | ({'ultimo_pago': {'fecha': row['ultima_fecha_pago'].isoformat(), 'cuenta': row['ultima_cuenta_pago']}}
              if row['ultima_fecha_pago'] is not None else {})
         for row in items[:100]],'next_offset':offset+100 if len(items)>100 else None}

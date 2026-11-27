@@ -208,3 +208,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
   .month-row-actions { grid-column: 1 / -1; justify-self: stretch; }
   .month-row-actions button { inline-size: 100%; }
 }
+
+.month-account-payments { margin-top: .75rem; }
+.month-account-payments dl { display: flex; flex-wrap: wrap; gap: .375rem 1.25rem; margin: 0; }
+.month-account-payments dl div { display: flex; flex-wrap: wrap; gap: .125rem .5rem; }
+.month-account-payments dd { margin: 0; font-weight: 600; }

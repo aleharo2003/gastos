@@ -177,14 +177,26 @@ describe('Deudas fijas',()=>{
     c.openExpense.subscribe(openExpense);
     const installment = { ...quota, nombre: 'Casa', moneda: 'ARS', cuenta_id: 'bank',
       estado: 'parcial', pagado: '30.00', pendiente: '70.00',
-      ultimo_pago: { fecha: '2026-11-22', cuenta: 'Mercado Pago' } };
-    request.mockResolvedValueOnce({ mes: '2026-11', items: [installment], totales: [], next_offset: null });
+      cuenta_prevista: 'Banco', ultimo_pago: { fecha: '2026-11-22', cuenta: 'Mercado Pago' } };
+    request.mockResolvedValueOnce({
+      mes: '2026-11',
+      items: [installment],
+      totales: [{ moneda: 'ARS', cuotas: 1, cuotas_pagadas: 0, total: '100.00', pagado: '30.00', pendiente: '70.00', vencido: '0.00' }],
+      pagos_por_cuenta: [{ moneda: 'ARS', cuenta_id: 'wallet', cuenta: 'Mercado Pago', importe: '30.00' }],
+      next_offset: null,
+    });
     await c.loadMonth(false, '2026-11');
     f.detectChanges();
     const row = f.nativeElement.querySelector('.month-ledger tbody tr');
     expect(row.textContent).toContain('Pago parcial');
     expect(row.textContent).toContain('Mercado Pago');
     expect(row.textContent).toContain('22/11/2026');
+    expect(row.textContent).toContain('Cuenta prevista');
+    expect(row.textContent).toContain('Banco');
+    const paymentSummary = f.nativeElement.querySelector('.month-account-payments');
+    expect(paymentSummary.querySelector('h4').textContent).toBe('Pagado por cuenta');
+    expect(paymentSummary.querySelector('dt').textContent).toBe('Mercado Pago');
+    expect(paymentSummary.querySelector('dd').textContent).toBe(c.monthAmount('ARS', '30.00'));
     expect(row.querySelector('button').textContent).toContain('Registrar pago');
     const header = f.nativeElement.querySelector('.month-header-actions');
     header.querySelector('.secondary').click();

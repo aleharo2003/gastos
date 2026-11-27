@@ -76,7 +76,7 @@ class MonthlyCommitmentTests(unittest.TestCase):
         from unittest.mock import Mock,patch
         from app.commitments import monthly_installments
         session=Mock()
-        session.execute.return_value.mappings.return_value.all.return_value=[{'id':None,'totales':[]}]
+        session.execute.return_value.mappings.return_value.all.return_value=[{'id':None,'totales':[],'pagos_por_cuenta':[]}]
         with patch('app.commitments.require_member'):
             for month,last in [('0001-01',date(1,1,31)),('2024-02',date(2024,2,29)),('9999-12',date(9999,12,31))]:
                 result=monthly_installments(session,uuid4(),uuid4(),month,100)

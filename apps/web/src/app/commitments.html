@@ -111,6 +111,17 @@
               <dt>Vencido <small>Incluido en por pagar</small></dt><dd>{{ monthAmount(total.moneda, total.vencido) }}</dd>
             </div>
           </dl>
+          @let payments = monthPayments(total.moneda);
+          @if (payments.length) {
+            <div class="month-account-payments">
+              <h4>Pagado por cuenta</h4>
+              <dl>
+                @for (payment of payments; track payment.cuenta_id) {
+                  <div><dt>{{ payment.cuenta }}</dt><dd>{{ monthAmount(total.moneda, payment.importe) }}</dd></div>
+                }
+              </dl>
+            </div>
+          }
           @if (total.borradores) { <p class="estimated-note">{{ total.borradores }} por confirmar · {{ monthAmount(total.moneda, total.estimado ?? '0.00') }} estimados</p> }
         </div>
       } @empty { <p class="month-empty">No hay cuotas con vencimiento en este mes.</p> }
@@ -122,7 +133,7 @@
                 <th role="columnheader" scope="col">Concepto</th><th role="columnheader" scope="col">Estado</th>
                 <th role="columnheader" scope="col">Vencimiento</th><th class="numeric" role="columnheader" scope="col">Importe</th>
                 <th class="numeric" role="columnheader" scope="col">Pagado</th><th class="numeric" role="columnheader" scope="col">Falta</th>
-                <th role="columnheader" scope="col">Último pago</th><th role="columnheader" scope="col"><span class="sr-only">Acción</span></th>
+                <th role="columnheader" scope="col">Último pago / cuenta prevista</th><th role="columnheader" scope="col"><span class="sr-only">Acción</span></th>
               </tr>
             </thead>
             <tbody role="rowgroup">
@@ -138,11 +149,15 @@
                   <td role="cell" data-label="Importe" class="numeric">{{ row.estado === 'no_aplica' ? '—' : monthAmount(row.moneda, row.importe) }}</td>
                   <td role="cell" data-label="Pagado" class="numeric">{{ monthAmount(row.moneda, row.pagado) }}</td>
                   <td role="cell" data-label="Falta" class="numeric balance">{{ monthAmount(row.moneda, row.pendiente) }}</td>
-                  <td role="cell" data-label="Último pago" class="month-last-payment">
+                  <td role="cell" data-label="Pago y cuenta" class="month-last-payment">
                     @if (row.ultimo_pago; as payment) {
                       <time [attr.datetime]="payment.fecha">{{ payment.fecha.split('-').reverse().join('/') }}</time>
                       <small>{{ payment.cuenta }}</small>
-                    } @else { <span class="empty-payment">—</span> }
+                    }
+                    @if (row.cuenta_prevista && row.estado !== 'no_aplica' && row.estado !== 'pagada' && row.cuenta_prevista !== row.ultimo_pago?.cuenta) {
+                      <small class="month-planned-account">Cuenta prevista</small>
+                      <span>{{ row.cuenta_prevista }}</span>
+                    } @else if (!row.ultimo_pago) { <span class="empty-payment">—</span> }
                   </td>
                   <td role="cell" class="month-row-actions">
                     <button type="button" class="secondary" [class.pay-action]="payable && !hidden()"

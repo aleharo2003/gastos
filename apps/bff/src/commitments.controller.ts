@@ -84,13 +84,15 @@ function payment(v:unknown,space:string,id:string):Payment{
   return {...savedQuote(r),id:r.id,espacio_id:space,cuota_id:id,cuenta_id:r.cuenta_id,fecha:r.fecha,moneda:r.moneda,importe:r.importe};
 }
 type MonthlyItem=Installment & {nombre:string;moneda:string;cuenta_id:string;categoria?:string|null;
-  ultimo_pago?: { fecha: string; cuenta: string }};
+  cuenta_prevista?: string; ultimo_pago?: { fecha: string; cuenta: string }};
+type AccountPayment = { moneda: string; cuenta_id: string | null; cuenta: string; importe: string };
 type MonthlyTotal={no_aplican:number;borradores:number;estimado:string;moneda:string;cuotas:number;cuotas_pagadas:number;total:string;pagado:string;pendiente:string;vencido:string};
 function validMonth(value:unknown):value is string{
   return typeof value==='string'&&/^[0-9]{4}-(0[1-9]|1[0-2])$/.test(value)&&!value.startsWith('0000');
 }
+const accountName = (value: unknown) => typeof value === 'string' && !!value.trim() && [...value].length <= 160;
 function monthlyPage(value:unknown,space:string,month:string,offset:number){
-  const page=value as {mes:string;items:MonthlyItem[];totales:MonthlyTotal[];next_offset:number|null};
+  const page=value as {mes:string;items:MonthlyItem[];totales:MonthlyTotal[];pagos_por_cuenta?:AccountPayment[];next_offset:number|null};
   if(!page||page.mes!==month||!Array.isArray(page.items)||page.items.length>100||!Array.isArray(page.totales)||page.totales.length>3||
     !(page.next_offset===null||page.next_offset===offset+100))throw new Error();
   const seen=new Set<string>();
@@ -107,15 +109,32 @@ function monthlyPage(value:unknown,space:string,month:string,offset:number){
     if(!t||!validId(t.compromiso_id)||!validId(t.cuenta_id)||typeof t.nombre!=='string'||!t.nombre.trim()||
       [...t.nombre].length>160||!seen.has(t.moneda)||typeof t.vencimiento!=='string'||!t.vencimiento.startsWith(month+'-')||ids.has(t.id))throw new Error();
     if (t.categoria != null && !categories.includes(t.categoria)) throw new Error();
+    if (t.cuenta_prevista !== undefined && !accountName(t.cuenta_prevista)) throw new Error();
     const payment = t.ultimo_pago;
     if (payment !== undefined && (!payment || !date(payment.fecha) || typeof payment.cuenta !== 'string' ||
         !payment.cuenta.trim() || [...payment.cuenta].length > 160 || t.pagado === '0.00')) throw new Error();
     const row=installment(t,space,t.compromiso_id);ids.add(row.id);
     return {...row,nombre:t.nombre,moneda:t.moneda,cuenta_id:t.cuenta_id,
       ...(t.categoria ? { categoria: t.categoria } : {}),
+      ...(t.cuenta_prevista === undefined ? {} : { cuenta_prevista: t.cuenta_prevista }),
       ...(payment ? { ultimo_pago: { fecha: payment.fecha, cuenta: payment.cuenta } } : {})};
   });
-  return {mes:month,items,totales,next_offset:page.next_offset};
+  const grouped = page.pagos_por_cuenta;
+  if (grouped === undefined) return {mes:month,items,totales,next_offset:page.next_offset};
+  if (!Array.isArray(grouped) || grouped.length > 33) throw new Error();
+  const accountKeys = new Set<string>();
+  const paid = new Map<string, bigint>();
+  const pagos_por_cuenta = grouped.map(row => {
+    if (!row || !seen.has(row.moneda) || (row.cuenta_id !== null && !validId(row.cuenta_id)) ||
+        !accountName(row.cuenta) || !sum(row.importe) || cents(row.importe) <= 0n) throw new Error();
+    const key = row.moneda + '/' + row.cuenta_id;
+    if (accountKeys.has(key)) throw new Error();
+    accountKeys.add(key);
+    paid.set(row.moneda, (paid.get(row.moneda) ?? 0n) + cents(row.importe));
+    return {moneda:row.moneda,cuenta_id:row.cuenta_id,cuenta:row.cuenta,importe:row.importe};
+  });
+  if (totales.some(row => (paid.get(row.moneda) ?? 0n) !== cents(row.pagado))) throw new Error();
+  return {mes:month,items,totales,pagos_por_cuenta,next_offset:page.next_offset};
 }
 const dueGroups = ['hoy','semana','vencidas','proximos'] as const;
 type DueGroupKey = typeof dueGroups[number];
