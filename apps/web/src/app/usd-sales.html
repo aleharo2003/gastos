@@ -27,6 +27,34 @@
     <button type="submit" [disabled]="form.invalid || saving()">{{ saving() ? 'Registrando…' : 'Registrar venta' }}</button>
   </form>
   <app-usd-offers [space]="space" [accounts]="accounts" (sold)="refreshAfterOffer()" />
+  <details #analysisPanel (toggle)="analysisPanel.open && loadAnalysis()">
+    <summary>Análisis de contrapartes</summary>
+    @if (analysisLoading()) { <p role="status">Calculando el análisis…</p> }
+    @if (analysisError()) {
+      <p role="alert">{{ analysisError() }}</p>
+      <button type="button" (click)="loadAnalysis()">Reintentar</button>
+    }
+    @if (analysis(); as report) {
+      <h4>Ranking por diferencia promedio</h4>
+      @if (!report.contrapartes.length) { <p>Todavía no hay ventas ni ofertas registradas.</p> }
+      <ul>@for (row of report.contrapartes; track row.contraparte) {
+        <li><strong>{{ row.contraparte }}</strong>
+          <p>{{ row.operaciones }} ventas · {{ row.ofertas }} ofertas</p>
+          @if (row.diferencia !== null) { <p>{{ row.diferencia }} % respecto de la referencia · {{ row.comparadas }} ventas comparadas</p> }
+          @else { <p>Sin ventas con referencia para comparar.</p> }
+        </li>
+      }</ul>
+      <h4>Rondas con varias ofertas</h4>
+      @if (!report.rondas.length) { <p>Todavía no hay rondas cerradas con varias ofertas.</p> }
+      <ul>@for (row of report.rondas; track row.ronda) {
+        <li><strong>{{ row.fecha }} · USD {{ showAmount(row.usd) }}</strong>
+          <p>Aceptada · {{ row.contraparte }} · {{ row.aceptada }} ARS por USD</p>
+          <p>Mejor recibida · {{ row.mejor_contraparte }} · {{ row.mejor }} ARS por USD</p>
+          <p>Diferencia sobre la venta · ARS {{ showAmount(row.diferencia_ars) }}</p>
+        </li>
+      }</ul>
+    }
+  </details>
   <h4>Ventas registradas</h4>
   @if (loading()) { <p role="status">Cargando ventas…</p> }
   @else if (!sales().length) { <p>Todavía no hay ventas registradas.</p> }

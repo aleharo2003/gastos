@@ -9,7 +9,7 @@ from app.db.unit_of_work import runtime_transaction
 from app.incomes import account_balance
 from app.usd_reference import ManualRate, save_rate
 from app.usd_offers import AcceptOffer, OfferInput, accept_offer, save_offer
-from app.usd_sales import SaleInput, list_sales, local_today, save_sale
+from app.usd_sales import SaleInput, list_sales, local_today, sale_analysis, save_sale
 
 
 def check_fx_sales(runtime_url, migration_url):
@@ -65,6 +65,12 @@ def check_fx_sales(runtime_url, migration_url):
             states = dict(s.execute(text('SELECT id,estado FROM public.ofertas_usd WHERE ronda=:r'),
                                     {'r': round_id}).tuples().all())
             assert states == {low.id: 'aceptada', high.id: 'rechazada'}
+            report = sale_analysis(s, owner, owner)
+            assert report['rondas'][0]['diferencia_ars'] == '500.00'
+            assert report['rondas'][0]['mejor_contraparte'] == 'Luis'
+            ranks = {row['contraparte']: row for row in report['contrapartes']}
+            assert ranks['Luis']['operaciones'] == 0 and ranks['Luis']['diferencia'] is None
+            assert ranks['Ana']['operaciones'] == 1 and ranks['Ana']['comparadas'] == 1
         print('OK: venta USD, saldos por moneda, referencia congelada y reintento.', flush=True)
     finally:
         with migrator.begin() as c:
