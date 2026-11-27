@@ -7,7 +7,8 @@
     </label>
   </header>
   <app-install-piggo />
-  <section class="card" [class.workspace]="!recoveryMode && auth.verified() && !!auth.personalSpace()" aria-labelledby="page-title">
+  <section class="card" [class.workspace]="!recoveryMode && !registrationMode && auth.verified() && !!auth.personalSpace()" aria-labelledby="page-title">
+    @if (registrationNotice) { <p class="success" role="status">{{ registrationNotice }}</p> }
     @if (recoveryNotice) { <p class="success" role="status">{{ recoveryNotice }}</p> }
     @if (!auth.ready()) {
       <h1 id="page-title">Bienvenido a Piggo</h1>
@@ -36,6 +37,31 @@
         </form>
       }
       <button type="button" class="secondary" (click)="closeRecovery()" [disabled]="recoveryBusy">Volver al inicio</button>
+    } @else if (registrationMode) {
+      <h1 id="page-title">{{ registrationMode === 'form' ? 'Creá tu cuenta' : 'Confirmá tu email' }}</h1>
+      @if (registrationError) { <p class="error" role="alert">{{ registrationError }}</p> }
+      @if (registrationMode === 'form') {
+        <form #registrationForm="ngForm" (ngSubmit)="submitRegistration()">
+          <label for="register-email">Email</label>
+          <input id="register-email" name="email" type="email" autocomplete="username" inputmode="email"
+            [(ngModel)]="email" required email [disabled]="auth.busy() || !auth.available()">
+          <label for="register-password">Contraseña</label>
+          <input id="register-password" name="password" type="password" autocomplete="new-password"
+            [(ngModel)]="password" required minlength="8" aria-describedby="register-password-hint"
+            [disabled]="auth.busy() || !auth.available()">
+          <small id="register-password-hint">Usá al menos 8 caracteres.</small>
+          <button type="submit" [disabled]="registrationForm.invalid || auth.busy() || !auth.available()">
+            {{ auth.busy() ? 'Enviando…' : 'Crear cuenta' }}
+          </button>
+        </form>
+      } @else if (auth.signedIn()) {
+        <p>Cerrá la sesión actual para confirmar otra cuenta. Después volvé a abrir el enlace.</p>
+      } @else if (registrationToken) {
+        <button type="button" (click)="confirmRegistration()" [disabled]="auth.busy() || !auth.available()">
+          {{ auth.busy() ? 'Confirmando…' : 'Confirmar email e ingresar' }}
+        </button>
+      }
+      <button type="button" class="secondary" (click)="closeRegistration()" [disabled]="auth.busy()">Volver al inicio</button>
     } @else if (auth.signedIn()) {
       <p class="eyebrow">TU ESPACIO PERSONAL</p>
       <h1 id="page-title" [class.sr-only]="!!auth.personalSpace()">Hola, bienvenido</h1>
@@ -48,7 +74,8 @@
           <h2>{{ auth.personalSpace() }}</h2>
           <app-accounts [space]="auth.personalSpaceId()" />
         } @else {
-          <p>Prepará tu espacio personal para empezar a organizar tus gastos.</p>
+          @if (auth.creatingSpace()) { <p role="status">Preparando tu espacio personal…</p> }
+          @else { <p>Prepará tu espacio personal para empezar a organizar tus gastos.</p> }
           <button (click)="auth.createPersonalSpace()" [disabled]="auth.creatingSpace()">
             {{ auth.creatingSpace() ? 'Preparando tu espacio…' : 'Abrir mi espacio' }}
           </button>
@@ -79,7 +106,9 @@
       <button type="button" class="secondary" (click)="startRecovery()" [disabled]="auth.busy() || !auth.available()">
         Olvidé mi contraseña
       </button>
-      <p class="note">Acceso para usuarios de prueba. El registro de nuevas cuentas estará disponible más adelante.</p>
+      <button type="button" class="secondary" (click)="startRegistration()" [disabled]="auth.busy() || !auth.available()">
+        Crear cuenta
+      </button>
     }
   </section>
   <footer>Tu futuro, gasto a gasto</footer>

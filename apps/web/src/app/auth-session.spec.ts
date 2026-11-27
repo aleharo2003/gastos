@@ -17,6 +17,8 @@ describe('AuthSession', () => {
     auth = {
       onAuthStateChange: vi.fn((callback) => { event = callback; return { data: { subscription: { unsubscribe: vi.fn() } } }; }),
       getSession: vi.fn().mockResolvedValue({ data: { session: null }, error: null }),
+      signUp: vi.fn().mockResolvedValue({ data: { session }, error: null }),
+      verifyOtp: vi.fn().mockResolvedValue({ data: { session }, error: null }),
       signInWithPassword: vi.fn().mockResolvedValue({ data: { session }, error: null }),
       signOut: vi.fn().mockResolvedValue({ error: null }),
       resetPasswordForEmail: vi.fn().mockResolvedValue({ error: null }),
@@ -42,6 +44,49 @@ describe('AuthSession', () => {
     http.expectOne('/auth-config.json').flush({ projectRef: 'cyxhyfbiacfayixbmotq', publishableKey: 'sb_publishable_test' });
     await pending;
   }
+  async function assertOnboarding() {
+    http.expectOne('/api/me').flush({ usuario_id: 'user-1' });
+    await Promise.resolve();
+    const pending = http.expectOne('/api/personal-space');
+    expect(pending.request.method).toBe('POST');
+    expect(pending.request.headers.get('Authorization')).toBe('Bearer test-token');
+    pending.flush({ usuario_id: 'user-1', espacio_id: 'user-1', nombre: 'Mi espacio' });
+    await Promise.resolve();
+    expect(service.personalSpace()).toBe('Mi espacio');
+  }
+
+  it('registra y prepara el espacio con una sesión que ya emitió SIGNED_IN', async () => {
+    await initialize();
+    auth.signUp.mockImplementationOnce(async () => {
+      event('SIGNED_IN', session);
+      return { data: { session }, error: null };
+    });
+    expect(await service.register(' test@example.com ', 'example-password', 'https://piggo.example/?registro=1')).toBe('signed-in');
+    expect(auth.signUp).toHaveBeenCalledWith({
+      email: 'test@example.com', password: 'example-password', options: { emailRedirectTo: 'https://piggo.example/?registro=1' },
+    });
+    await assertOnboarding();
+  });
+
+  it('presenta el mismo resultado al esperar confirmación y ante un email existente', async () => {
+    await initialize();
+    auth.signUp.mockResolvedValueOnce({ data: { session: null }, error: null })
+      .mockResolvedValueOnce({ data: { session: null }, error: { message: 'private detail' } });
+    for (let i = 0; i < 2; i++) {
+      expect(await service.register('test@example.com', 'example-password', 'https://piggo.example/?registro=1')).toBe('check-email');
+    }
+    expect(service.signedIn()).toBe(false);
+    http.expectNone('/api/me');
+    http.expectNone('/api/personal-space');
+  });
+
+  it('confirma el email y abre el espacio con la sesión verificada', async () => {
+    await initialize();
+    expect(await service.confirmRegistration('signed-token')).toBe(true);
+    expect(auth.verifyOtp).toHaveBeenCalledWith({ type: 'email', token_hash: 'signed-token' });
+    await assertOnboarding();
+  });
+
   it('solicita la recuperación sin exponer errores del proveedor', async () => {
     await initialize();
     auth.resetPasswordForEmail.mockRejectedValueOnce(new Error('private detail'));

@@ -37,6 +37,7 @@ export class AuthSession {
   private storageKey = '';
   private recoveryFactory?: () => Promise<SupabaseClient>;
   private recoveryClient?: SupabaseClient;
+  private autoSpaceUser?: string;
 
   async requestPasswordReset(email: string, redirectTo: string): Promise<void> {
     await this.client?.auth.resetPasswordForEmail(email.trim(), { redirectTo }).catch(() => undefined);
@@ -96,12 +97,51 @@ export class AuthSession {
     } finally { this.ready.set(true); }
   }
 
+  async register(email: string, password: string, emailRedirectTo: string): Promise<'signed-in' | 'check-email' | 'retry'> {
+    if (!this.client || this.busy() || this.signedIn() || password.length < 8) return 'retry';
+    this.busy.set(true);
+    this.signingOut = false;
+    try {
+      const { data, error } = await this.client.auth.signUp({ email: email.trim(), password, options: { emailRedirectTo } });
+      if (error || !data.session) return 'check-email';
+      this.acceptRegisteredSession(data.session);
+      return 'signed-in';
+    } catch {
+      return 'retry';
+    } finally { this.busy.set(false); }
+  }
+
+  async confirmRegistration(token: string): Promise<boolean> {
+    if (!this.client || this.busy() || this.signedIn() || !token) return false;
+    this.busy.set(true);
+    this.signingOut = false;
+    try {
+      const { data, error } = await this.client.auth.verifyOtp({ type: 'email', token_hash: token });
+      if (error || !data.session) return false;
+      this.acceptRegisteredSession(data.session);
+      return true;
+    } catch {
+      return false;
+    } finally { this.busy.set(false); }
+  }
+
+  private acceptRegisteredSession(session: Session): void {
+    this.autoSpaceUser = session.user.id;
+    this.acceptSession(session);
+    if (this.verified() && !this.personalSpace()) void this.createPersonalSpace();
+    void this.client?.auth.startAutoRefresh().catch(() => {});
+  }
+
   private acceptSession(session: Session | null): void {
     if (session?.access_token && session.access_token === this.session?.access_token) return;
     this.generation++;
+    const sameUser = !!session && session.user.id === this.session?.user.id;
     this.session = session;
-    this.personalSpace.set('');
-    this.personalSpaceId.set('');
+    if (this.autoSpaceUser !== session?.user.id) this.autoSpaceUser = undefined;
+    if (!sameUser) {
+      this.personalSpace.set('');
+      this.personalSpaceId.set('');
+    }
     this.creatingSpace.set(false);
     this.signedIn.set(!!session);
     this.email.set(session?.user.email ?? '');
@@ -142,6 +182,7 @@ export class AuthSession {
       if (revision !== this.generation) return;
       if (identity.usuario_id !== session.user.id) throw new Error();
       this.verified.set(true);
+      if (this.autoSpaceUser === session.user.id && !this.personalSpace()) void this.createPersonalSpace();
     } catch (error) {
       if (revision !== this.generation) return;
       this.message.set(error instanceof HttpErrorResponse && error.status === 401

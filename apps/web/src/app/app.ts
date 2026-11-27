@@ -20,6 +20,10 @@ export class App implements OnInit {
   protected recoveryBusy = false;
   protected newPassword = '';
   protected repeatedPassword = '';
+  protected registrationMode: 'form' | 'confirm' | null = null;
+  protected registrationNotice = '';
+  protected registrationError = '';
+  protected registrationToken = '';
   private recoveryToken = '';
   private readonly browser = inject(DOCUMENT).defaultView;
 
@@ -33,12 +37,21 @@ export class App implements OnInit {
         url.searchParams.delete('recuperar');
         url.hash = '';
         this.browser.history.replaceState(this.browser.history.state, '', url);
+      } else if (url.searchParams.has('registro')) {
+        this.registrationMode = 'confirm';
+        const token = new URLSearchParams(url.hash.slice(1)).get('token_hash') ?? '';
+        this.registrationToken = token.length <= 512 ? token : '';
+        if (!this.registrationToken) this.registrationError = 'El enlace no es válido. Volvé a iniciar el registro.';
+        url.searchParams.delete('registro');
+        url.hash = '';
+        this.browser.history.replaceState(this.browser.history.state, '', url);
       }
     }
     void this.auth.initialize();
   }
 
   protected startRecovery(): void {
+    this.closeRegistration();
     this.recoveryMode = 'request';
     this.recoveryNotice = '';
     this.recoveryError = '';
@@ -88,7 +101,47 @@ export class App implements OnInit {
       }
     } finally { this.recoveryBusy = false; }
   }
+  protected startRegistration(): void {
+    this.registrationMode = 'form';
+    this.registrationError = '';
+    this.registrationNotice = '';
+    this.recoveryNotice = '';
+    this.password = '';
+  }
+
+  protected closeRegistration(): void {
+    this.registrationMode = null;
+    this.registrationError = '';
+    this.registrationToken = '';
+    this.password = '';
+  }
+
+  protected async submitRegistration(): Promise<void> {
+    if (!this.browser || this.auth.busy() || this.password.length < 8) return;
+    this.registrationError = '';
+    const redirectTo = new URL('/?registro=1', this.browser.location.origin);
+    const password = this.password;
+    this.password = '';
+    const result = await this.auth.register(this.email, password, redirectTo.href);
+    if (result === 'retry') {
+      this.registrationError = 'No pudimos enviar la solicitud. Revisá la conexión y volvé a intentar.';
+      return;
+    }
+    this.closeRegistration();
+    if (result === 'check-email') {
+      this.registrationNotice = 'Si recibís un correo de Piggo, seguí el enlace para confirmar tu email. Si ya tenés acceso, iniciá sesión o recuperá tu contraseña.';
+    }
+  }
+
+  protected async confirmRegistration(): Promise<void> {
+    if (this.auth.busy() || !this.registrationToken) return;
+    this.registrationError = '';
+    if (await this.auth.confirmRegistration(this.registrationToken)) this.closeRegistration();
+    else this.registrationError = 'No pudimos confirmar el email. El enlace puede haber vencido o estar usado. Volvé a intentar o iniciá sesión.';
+  }
+
   protected async submit(): Promise<void> {
+    this.registrationNotice = '';
     try { await this.auth.login(this.email, this.password); }
     finally { this.password = ''; }
   }
