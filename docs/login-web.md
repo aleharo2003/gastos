@@ -1,7 +1,8 @@
-# Inicio de sesión web
+# Registro e inicio de sesión web
 
-La pantalla permite ingresar con un usuario existente de Supabase Auth y cerrar
-su sesión en este navegador. No crea perfiles, espacios, membresías ni cuentas.
+La pantalla permite crear una cuenta con email y contraseña, ingresar y cerrar
+sesión. En un registro, Piggo verifica la identidad antes de pedir al BFF que
+prepare el espacio personal con la operación existente, que se puede reintentar.
 
 ## Recorrido
 1. Angular carga /auth-config.json, con la referencia del proyecto y su Publishable key.
@@ -16,6 +17,24 @@ Esto implica que código malicioso ejecutado en el origen podría acceder a la
 sesión: evitar HTML no confiable y mantener las dependencias actualizadas.
 Cerrar sesión usa scope local; otros dispositivos mantienen sus sesiones.
 Un access token ya emitido puede seguir vigente hasta su expiración.
+
+## Registro con confirmación por email
+
+En el proyecto de Supabase del ambiente, habilitar el registro por email con
+confirmación y configurar una longitud mínima de 8 caracteres. Agregar
+`https://gastos-test-web.onrender.com/?registro=1` a las URLs de redirección
+para test y usar la URL correspondiente en otros ambientes.
+
+En la plantilla **Confirm sign up**, configurar el enlace del correo:
+
+```html
+<a href="{{ .RedirectTo }}#token_hash={{ .TokenHash }}">Confirmar mi email</a>
+```
+
+Piggo retira el token de la URL al mostrar la pantalla. Al pulsar **Confirmar
+email e ingresar**, Supabase verifica el enlace y abre la sesión. Si el
+ambiente entrega la sesión en el registro, Piggo prepara el espacio directamente.
+En cada ambiente verificar entrega del correo, confirmación y acceso al espacio.
 
 ## Render: gastos-test-web
 Agregar estas variables al sitio estático:
@@ -43,4 +62,3 @@ proyecto. No mezclar proyectos entre capas.
 
 La verificación de sesión no concede acceso a datos financieros: cada operación
 de negocio debe aplicar autorización y contexto transaccional con RLS.
-Este incremento no completa el alta de usuario ni el registro de gastos.

@@ -10,6 +10,7 @@ describe('Login web', () => {
       ready: signal(true), available: signal(true), busy: signal(false),
       checking: signal(false), signedIn: signal(false), verified: signal(false),
       email: signal(''), message: signal(''), personalSpace: signal(''), creatingSpace: signal(false), createPersonalSpace: vi.fn(),
+      register: vi.fn().mockResolvedValue('check-email'), confirmRegistration: vi.fn().mockResolvedValue(true),
       resetPassword: vi.fn().mockResolvedValue('updated'), endPasswordRecovery: vi.fn(),
       initialize: vi.fn().mockResolvedValue(undefined),
       login: vi.fn().mockResolvedValue(undefined), logout: vi.fn(), verify: vi.fn(),
@@ -34,6 +35,39 @@ describe('Login web', () => {
     await fixture.whenStable(); fixture.detectChanges();
     expect(auth.login).toHaveBeenCalledWith('test@example.com', 'example-password');
     expect(fixture.nativeElement.querySelector('#password').value).toBe('');
+  });
+  it('deshabilita el registro con menos de ocho caracteres', async () => {
+    const { fixture, auth } = setup();
+    [...fixture.nativeElement.querySelectorAll('button')].find(button => button.textContent.trim() === 'Crear cuenta').click();
+    fixture.detectChanges();
+    const fill = async (field: string, value: string) => {
+      const input = fixture.nativeElement.querySelector('#register-' + field);
+      input.value = value;
+      input.dispatchEvent(new Event('input'));
+      await fixture.whenStable();
+      fixture.detectChanges();
+    };
+    await fill('email', 'test@example.com');
+    await fill('password', 'short');
+    const submit = fixture.nativeElement.querySelector('button[type=submit]');
+    expect(submit.disabled).toBe(true);
+    await fill('password', 'example-password');
+    expect(submit.disabled).toBe(false);
+    submit.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(auth.register).toHaveBeenCalledWith('test@example.com', 'example-password', expect.stringContaining('?registro=1'));
+    expect(fixture.nativeElement.textContent).toContain('Si recibís un correo de Piggo');
+  });
+
+  it('quita el token de confirmación del URL y espera a que se pulse el botón', async () => {
+    window.history.replaceState(null, '', '/?registro=1#token_hash=sample-signup');
+    const { fixture, auth } = setup();
+    expect(window.location.search + window.location.hash).toBe('');
+    expect(auth.confirmRegistration).not.toHaveBeenCalled();
+    fixture.nativeElement.querySelector('button').click();
+    await fixture.whenStable();
+    expect(auth.confirmRegistration).toHaveBeenCalledWith('sample-signup');
   });
   it('abre un enlace de recuperación, limpia la URL y permite elegir contraseña', async () => {
     window.history.replaceState(null, '', '/?recuperar=1#token_hash=sample-hash');
