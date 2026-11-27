@@ -75,8 +75,11 @@ def run(command, *, cwd=ROOT, env=None, timeout=120):
 def checked(label, command, **kwargs):
     result = run(command, **kwargs)
     if result.returncode:
-        # No volcar stdout/stderr: el CLI puede incluir URLs y claves locales.
-        raise CheckError(f"{label} fallo (codigo {result.returncode}).")
+        # Solo registrar códigos conocidos. La salida puede contener credenciales de la fixture.
+        codes = set(re.findall(r"\b(?:EAI_AGAIN|ECONNREFUSED|ECONNRESET|ENETUNREACH|ENOTFOUND|ETARGET|ETIMEDOUT|E401|E403|E404|E429|E500|E502|E503)\b",
+                               result.stderr))
+        detail = f" [{', '.join(sorted(codes))}]" if codes else ''
+        raise CheckError(f"{label} fallo (codigo {result.returncode}){detail}.")
     return result
 
 
@@ -372,7 +375,13 @@ def main():
             finally:
                 fixture.guard()
                 step("Retirar los contenedores y volumenes del proyecto temporal.")
-                checked("Limpieza de la fixture", fixture.cli("stop", "--no-backup"), timeout=180)
+                failed = sys.exc_info()[0] is not None
+                try:
+                    checked("Limpieza de la fixture", fixture.cli("stop", "--no-backup"), timeout=180)
+                except (CheckError, OSError, subprocess.TimeoutExpired):
+                    if not failed:
+                        raise
+                    step("La limpieza falló después del error principal.")
         step("OK: reconstruccion, roles, migraciones, deteccion de drift y esquemas externos.")
         return 0
     except (CheckError, LocalError) as error:

@@ -11,7 +11,7 @@ from app.incomes import IncomeInput, create_income, list_incomes, account_balanc
 from app.expenses import ExpenseInput, ExpenseEdit, create_expense, edit_expense
 from app.db.connection import create_runtime_engine, create_migration_engine
 from app.db.unit_of_work import runtime_transaction
-from app.movements import list_movements, parse_cursor
+from app.movements import list_movements, parse_cursor, void_movement
 from app.expense_import import ImportRequest, cancel_batch, import_rows, recent_batches
 
 
@@ -170,6 +170,29 @@ def check_incomes(runtime_url, migration_url):
             assert len(audited['items']) == 1 and audited['items'][0]['anulado']
         assert totals()['ARS']['saldo'] == before_import
         assert call(list_incomes, reader, owner, account)['items'][0]['id'] == str(categorized.id)
+
+        manual = payload(descripcion='Ingreso manual a anular', importe='17.00')
+        before = totals()['ARS']['saldo']
+        call(create_income, owner, owner, account, manual)
+
+        def void(who, space=owner, identifier=manual.id):
+            with runtime_transaction(runtime, usuario_id=who, espacio_id=space) as session:
+                return void_movement(session, who, space, 'ingreso', identifier)
+
+        denied(lambda: void(reader), 403)
+        denied(lambda: void(other), 403)
+        denied(lambda: void(other, other), 404)
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(lambda who: void(who), (owner, editor)))
+        assert results == [{'id': str(manual.id), 'anulado': True}] * 2
+        assert totals()['ARS']['saldo'] == before
+        assert all(row['concepto'] != manual.descripcion for row in report()['ingresos'])
+        with runtime_transaction(runtime, usuario_id=owner, espacio_id=owner) as session:
+            search = dict(desde=None, hasta=None, tipo='ingreso', moneda=None, cuenta=account, texto=manual.descripcion)
+            assert list_movements(session, owner, owner, search, None)['items'] == []
+            audit = list_movements(session, owner, owner, search | {'anulados': True}, None)
+            assert [(row['id'], row['anulado']) for row in audit['items']] == [(str(manual.id), True)]
+            assert audit['totales'] == []
 
         with migrator.begin() as c:
             c.execute(text('DELETE FROM public.miembros_espacio WHERE usuario_id=:u AND espacio_id=:s'),{'u':editor,'s':owner})

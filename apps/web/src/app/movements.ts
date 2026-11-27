@@ -63,6 +63,7 @@ export class Movements implements OnInit {
   }
   readonly accountsLoading = input(false);
   readonly loadAccounts = output<void>();
+  readonly changed = output<void>();
   readonly amountsHidden = input(false);
   readonly items = signal<Movement[]>([]);
   readonly totals = signal<Totals[]>([]);
@@ -70,6 +71,9 @@ export class Movements implements OnInit {
   private readonly moreButton = viewChild<ElementRef<HTMLButtonElement>>('moreMovements');
   readonly loading = signal(false);
   readonly error = signal('');
+  readonly voiding = signal(false);
+  readonly voidNotice = signal('');
+  readonly voidError = signal('');
   readonly exporting = signal(false);
   readonly exportError = signal('');
   readonly exportedRows = signal(0);
@@ -98,7 +102,7 @@ export class Movements implements OnInit {
       if (!button || !cursor || typeof IntersectionObserver === 'undefined') return;
       const observer = new IntersectionObserver(entries => {
         if (!this.destroy.destroyed && entries.some(entry => entry.isIntersecting) && this.next() === cursor &&
-            !this.error() && !this.exporting()) void this.load(true);
+            !this.error() && !this.exporting() && !this.voiding()) void this.load(true);
       });
       observer.observe(button);
       onCleanup(() => observer.disconnect());
@@ -188,7 +192,7 @@ export class Movements implements OnInit {
   }
 
   async exportCsv(): Promise<void> {
-    if (this.exporting() || this.loading() || this.amountsHidden() || !this.loaded()) return;
+    if (this.exporting() || this.loading() || this.voiding() || this.amountsHidden() || !this.loaded()) return;
     const request = this.request;
     const exportVersion = ++this.exportVersion;
     this.exportedRows.set(0);
@@ -228,14 +232,39 @@ export class Movements implements OnInit {
     }
   }
 
-  async load(more = false, remember = true): Promise<void> {
+  async confirmVoid(row: Movement): Promise<void> {
+    if (this.loading() || this.voiding() || this.exporting() || row.anulado || row.tipo === 'gasto') return;
+    const label = row.tipo === 'ingreso' ? 'el ingreso' : 'la transferencia';
+    if (!window.confirm(`¿Anular ${label} «${row.descripcion}»? Los saldos se actualizarán y el movimiento quedará en Anulados.`)) return;
+    this.voiding.set(true);
+    this.voidNotice.set('');
+    this.voidError.set('');
+    try {
+      const path = `/api/spaces/${encodeURIComponent(this.space())}/movements/${row.tipo}/${encodeURIComponent(row.id)}/void`;
+      await this.auth.accountRequest('POST', path);
+    } catch {
+      if (!this.destroy.destroyed) this.voidError.set('No pudimos anular el movimiento. Volvé a intentar.');
+      return;
+    } finally {
+      if (!this.destroy.destroyed) this.voiding.set(false);
+    }
+    if (this.destroy.destroyed) return;
+    this.items.update(rows => rows.filter(item => item.id !== row.id || item.tipo !== row.tipo));
+    this.totals.set([]);
+    this.next.set(null);
+    this.voidNotice.set(row.tipo === 'ingreso' ? 'Ingreso anulado.' : 'Transferencia anulada.');
+    this.changed.emit();
+    await this.load(false, false, this.applied);
+  }
+
+  async load(more = false, remember = true, selectedFilters = this.filters): Promise<void> {
     const cursor = more ? this.next() : null;
-    if (this.loading() || (more && (!cursor || this.exporting()))) return;
-    if (!more && this.filters.desde && this.filters.hasta && this.filters.desde > this.filters.hasta) {
+    if (this.voiding() || this.loading() || (more && (!cursor || this.exporting()))) return;
+    if (!more && selectedFilters.desde && selectedFilters.hasta && selectedFilters.desde > selectedFilters.hasta) {
       this.error.set('La fecha inicial debe ser anterior o igual a la fecha final.');
       return;
     }
-    const filters = more ? this.applied : { ...this.filters };
+    const filters = more ? this.applied : { ...selectedFilters };
     const params = filterParams(filters);
     if (cursor) params.set('cursor', cursor);
 

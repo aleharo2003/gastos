@@ -11,6 +11,8 @@ from app.movement_categories import ExpenseFilter
 
 router = APIRouter()
 Kind = Literal['gasto', 'ingreso', 'transferencia']
+VoidKind = Literal['ingreso', 'transferencia']
+MOVEMENT_TABLES = {'ingreso': 'ingresos', 'transferencia': 'transferencias'}
 Currency = Literal['ARS', 'USD', 'EUR']
 PAGE_SIZE = 50
 
@@ -116,3 +118,27 @@ def movement_history(space: UUID, request: Request, response: Response,
                'cuenta': cuenta, 'texto': texto.strip(), 'anulados': anulados}
     after = parse_cursor(cursor)
     return execute(request, response, space, lambda session, user: list_movements(session, user, space, filters, after))
+
+
+def void_movement(session, user, space, kind, identifier):
+    require_member(session, user, space, write=True)
+    table = MOVEMENT_TABLES[kind]
+    params = {'space': space, 'id': identifier}
+    updated = session.execute(text(f"""
+        UPDATE public.{table} SET anulado_en=now()
+        WHERE espacio_id=:space AND id=:id AND anulado_en IS NULL
+        RETURNING id
+    """), params).scalar_one_or_none()
+    if updated is None:
+        voided = session.execute(text(f"""
+            SELECT id FROM public.{table}
+            WHERE espacio_id=:space AND id=:id AND anulado_en IS NOT NULL
+        """), params).scalar_one_or_none()
+        if voided is None:
+            raise HTTPException(404, 'Movimiento no disponible', headers=NO_STORE)
+    return {'id': str(identifier), 'anulado': True}
+
+
+@router.post('/spaces/{space}/movements/{kind}/{identifier}/void')
+def post_void_movement(space: UUID, kind: VoidKind, identifier: UUID, request: Request, response: Response):
+    return execute(request, response, space, lambda session, user: void_movement(session, user, space, kind, identifier))

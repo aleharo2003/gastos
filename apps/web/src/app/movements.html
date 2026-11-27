@@ -42,9 +42,9 @@
       }
     </select></label>
     <div class="movement-actions">
-      <button type="button" class="secondary" (click)="datePreset('today')" [disabled]="loading()">Hoy</button>
-      <button type="button" class="secondary" (click)="datePreset('month')" [disabled]="loading()">Mes hasta hoy</button>
-      <button type="button" class="secondary" (click)="datePreset('previous')" [disabled]="loading()">Mes anterior</button>
+      <button type="button" class="secondary" (click)="datePreset('today')" [disabled]="loading() || voiding()">Hoy</button>
+      <button type="button" class="secondary" (click)="datePreset('month')" [disabled]="loading() || voiding()">Mes hasta hoy</button>
+      <button type="button" class="secondary" (click)="datePreset('previous')" [disabled]="loading() || voiding()">Mes anterior</button>
       @if (moreAccounts()) {
         <button type="button" class="secondary" (click)="loadAccounts.emit()" [disabled]="accountsLoading()">Más cuentas</button>
       }
@@ -53,15 +53,17 @@
           {{ inactiveChoices().length ? 'Más cuentas inactivas' : 'Cargar cuentas inactivas' }}
         </button>
       }
-      <button type="submit" [disabled]="loading()">Filtrar</button>
-      <button type="button" class="secondary" (click)="reset()" [disabled]="loading()">Limpiar</button>
+      <button type="submit" [disabled]="loading() || voiding()">Filtrar</button>
+      <button type="button" class="secondary" (click)="reset()" [disabled]="loading() || voiding()">Limpiar</button>
     </div>
   </form>
   @if (inactiveError()) { <p role="alert">No pudimos cargar las cuentas inactivas.</p> }
+  @if (voidNotice()) { <p role="status">{{ voidNotice() }}</p> }
+  @if (voidError()) { <p class="error" role="alert">{{ voidError() }}</p> }
   @if (loading()) { <p role="status">Cargando movimientos…</p> }
   @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
   @if (loaded() && !amountsHidden()) {
-    <button type="button" class="secondary" (click)="exportCsv()" [disabled]="exporting() || loading()">
+    <button type="button" class="secondary" (click)="exportCsv()" [disabled]="exporting() || loading() || voiding()">
       {{ exporting() ? 'Exportando…' : 'Exportar resultados a CSV' }}
     </button>
     @if (exporting()) {
@@ -94,10 +96,16 @@
         <span><strong>{{ row.descripcion }}</strong><small>{{ row.fecha }} · {{ labels[row.tipo] }}@if (row.anulado) { · Anulado }@if (row.tipo === 'gasto' && row.categoria !== undefined) { · {{ categoryName(row.categoria) }} }@if (row.tipo === 'ingreso' && row.categoria) { · {{ categoryName(row.categoria, 'ingreso') }} }</small></span>
         <span>{{ row.origen }}{{ row.origen && row.destino ? ' → ' : '' }}{{ row.destino }}</span>
         <strong>{{ row.moneda }} {{ amount(row.importe) }}</strong>
+        @if (!row.anulado && row.tipo !== 'gasto') {
+          <button type="button" class="secondary" (click)="confirmVoid(row)" [disabled]="loading() || voiding() || exporting()"
+            [attr.aria-label]="'Anular ' + labels[row.tipo].toLowerCase() + ' ' + row.descripcion">
+            Anular
+          </button>
+        }
       </li>
     }
   </ul>
   @if (next()) {
-    <button #moreMovements type="button" class="secondary" (click)="load(true)" [disabled]="loading() || exporting()">Ver más movimientos</button>
+    <button #moreMovements type="button" class="secondary" (click)="load(true)" [disabled]="loading() || exporting() || voiding()">Ver más movimientos</button>
   }
 </section>
