@@ -4,9 +4,13 @@ import sys
 from generate_month import run_jobs_count
 
 
+def mark_overdue():
+    return run_jobs_count('SELECT public.marcar_cuotas_vencidas()')
+
+
 def main():
     try:
-        count = run_jobs_count('SELECT public.marcar_cuotas_vencidas()')
+        count = mark_overdue()
     except Exception:
         # Evitar que errores de conexión o SQL muestren credenciales.
         print('ERROR: no se confirmó el marcado de cuotas vencidas.', file=sys.stderr)
