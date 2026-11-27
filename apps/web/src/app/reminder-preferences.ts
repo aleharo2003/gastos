@@ -1,5 +1,6 @@
 import { Component, DestroyRef, inject, Input, OnChanges, output, signal, SimpleChanges } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { PushDevice } from './push-device';
 import { AuthSession } from './auth-session';
 
 type Preferences = {
@@ -15,7 +16,7 @@ type Preferences = {
 
 @Component({
   selector: 'app-reminder-preferences',
-  imports: [FormsModule],
+  imports: [FormsModule, PushDevice],
   templateUrl: './reminder-preferences.html',
   styleUrls: ['./planning.css', './reminder-preferences.css'],
 })
@@ -28,6 +29,7 @@ export class ReminderPreferences implements OnChanges {
   private generation = 0;
 
   protected readonly weekdays = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+  protected readonly pushEnabled = signal(false);
   protected draft: Preferences | null = null;
   protected readonly loading = signal(false);
   protected readonly saving = signal(false);
@@ -38,6 +40,7 @@ export class ReminderPreferences implements OnChanges {
     if (changes['space']) {
       this.generation++;
       this.draft = null;
+      this.pushEnabled.set(false);
       this.loading.set(false);
       this.saving.set(false);
       this.error.set('');
@@ -61,7 +64,10 @@ export class ReminderPreferences implements OnChanges {
     this.error.set('');
     try {
       const data = await this.auth.accountRequest<Preferences>('GET', this.path);
-      if (this.current(generation)) this.draft = { ...data };
+      if (this.current(generation)) {
+        this.draft = { ...data };
+        this.pushEnabled.set(data.canal === 'push');
+      }
     } catch {
       if (this.current(generation)) this.error.set('No pudimos cargar tus preferencias.');
     } finally {
@@ -84,6 +90,7 @@ export class ReminderPreferences implements OnChanges {
       const data = await this.auth.accountRequest<Preferences>('POST', this.path, { ...this.draft });
       if (!this.current(generation)) return;
       this.draft = { ...data };
+      this.pushEnabled.set(data.canal === 'push');
       this.notice.set('Preferencias guardadas.');
       this.changed.emit();
     } catch {

@@ -7,6 +7,7 @@ from sqlalchemy.exc import DBAPIError
 
 from app.db.connection import create_migration_engine, create_runtime_engine
 from app.db.unit_of_work import runtime_transaction
+from app.push_subscriptions import DevicePush, read_push, save_push
 from app.reminder_preferences import DEFAULTS, ReminderPreferences, read_preferences, save_preferences
 
 
@@ -69,6 +70,27 @@ def check_reminder_preferences(runtime_url, migration_url):
             assert error.orig.sqlstate == '42501'
         else:
             raise AssertionError('El propietario pudo crear preferencias de otro miembro')
+        device = uuid4()
+        sub = {'endpoint': 'https://fcm.googleapis.com/fcm/send/piggo-ci',
+               'keys': {'p256dh': 'B' + 'A' * 86, 'auth': 'A' * 22}}
+        active = DevicePush(device_id=device, subscription=sub)
+        inactive = DevicePush(device_id=device, subscription=None)
+        assert run(lambda s,u,w: read_push(s,u,w,device)) == {'active': False}
+        for _ in range(2):
+            assert run(lambda s,u,w: save_push(s,u,w,active)) == {'active': True}
+        assert run(lambda s,u,w: read_push(s,u,w,device)) == {'active': True}
+        assert run(lambda s,u,w: read_push(s,u,w,device), reader) == {'active': False}
+        assert run(lambda s,u,w: save_push(s,u,w,inactive), reader) == {'active': False}
+        try:
+            run(lambda s,u,w: save_push(s,u,w,active), reader)
+        except HTTPException as error:
+            assert error.status_code == 409
+        else:
+            raise AssertionError('El mismo endpoint quedó vinculado a dos cuentas')
+        assert run(lambda s,u,w: read_push(s,u,w,device)) == {'active': True}
+        assert run(lambda s,u,w: save_push(s,u,w,inactive)) == {'active': False}
+        assert run(lambda s,u,w: read_push(s,u,w,device)) == {'active': False}
+        print('OK: alta push idempotente, aislamiento por miembro y baja del dispositivo.', flush=True)
     finally:
         runtime.dispose()
         migrator.dispose()

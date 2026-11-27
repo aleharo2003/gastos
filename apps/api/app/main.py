@@ -2,6 +2,7 @@ import os
 
 from fastapi import FastAPI, Response
 
+from app.push_subscriptions import router as push_subscriptions_router
 from app.reminder_preferences import router as reminder_preferences_router
 from app.db.startup import lifespan
 from app.auth import router as auth_router
@@ -28,6 +29,7 @@ from app.incomes import router as incomes_router
 app = FastAPI(title="Gastos API", lifespan=lifespan)
 app.include_router(auth_router)
 app.include_router(reminder_preferences_router)
+app.include_router(push_subscriptions_router)
 app.include_router(accounts_router)
 app.include_router(movements_router)
 app.include_router(space_export_router)

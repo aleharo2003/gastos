@@ -47,7 +47,7 @@ export function validPlan(v:unknown):boolean {
   return true;
 }
 
-type PlanningResource = 'spending-plan' | 'reminder-preferences' | 'spending-plan/category-limits' | 'usd-reference' | 'usd-reference/settings' | 'usd-sales' | 'usd-offers' | 'usd-sales/analysis' | 'usd-sales/holding' | 'spending-plan/alerts';
+type PlanningResource = 'spending-plan' | 'reminder-preferences' | 'spending-plan/category-limits' | 'usd-reference' | 'usd-reference/settings' | 'usd-sales' | 'usd-offers' | 'usd-sales/analysis' | 'usd-sales/holding' | 'spending-plan/alerts' | 'push-subscriptions';
 
 function validReminderPreferences(value: unknown): boolean {
   if (!record(value) || !keys(value, [
@@ -78,6 +78,23 @@ function validBudgetAlerts(value: unknown): boolean {
 
 function validDismissBudgetAlert(value: unknown): boolean {
   return record(value) && keys(value, ['id']) && typeof value.id === 'string' && UUID.test(value.id);
+}
+
+const vapidKey = /^B[A-Za-z0-9_-]{86}$/;
+
+function validPushWrite(value: unknown): boolean {
+  if (!record(value) || !keys(value, ['device_id', 'subscription']) ||
+      typeof value.device_id !== 'string' || !UUID.test(value.device_id)) return false;
+  const sub = value.subscription;
+  return sub === null || (record(sub) && keys(sub, ['endpoint', 'keys']) &&
+    typeof sub.endpoint === 'string' && sub.endpoint.startsWith('https://') && sub.endpoint.length <= 2048 &&
+    record(sub.keys) && keys(sub.keys, ['p256dh', 'auth']) &&
+    typeof sub.keys.p256dh === 'string' && vapidKey.test(sub.keys.p256dh) &&
+    typeof sub.keys.auth === 'string' && /^[A-Za-z0-9_-]{22}$/.test(sub.keys.auth));
+}
+
+function validPushStatus(value: unknown): value is { active: boolean } {
+  return record(value) && keys(value, ['active']) && typeof value.active === 'boolean';
 }
 
 function validManualRate(value: unknown): boolean {
@@ -255,6 +272,19 @@ export class PlanningController {
     return this.forward(space, request, response, body, true, 'spending-plan/alerts');
   }
 
+  @Get('push-subscriptions')
+  readPush(@Param('space') space: string, @Query('device') device: unknown,
+    @Req() request: Request, @Res({ passthrough: true }) response: Response) {
+    return this.forward(space, request, response, undefined, false, 'push-subscriptions', device);
+  }
+
+  @Post('push-subscriptions')
+  @HttpCode(200)
+  savePush(@Param('space') space: string, @Body() body: unknown,
+    @Req() request: Request, @Res({ passthrough: true }) response: Response) {
+    return this.forward(space, request, response, body, true, 'push-subscriptions');
+  }
+
   private async forward(
     space: string, request: Request, response: Response, body?: unknown,
     writing = false, resource: PlanningResource = 'spending-plan', month?: unknown,
@@ -273,7 +303,8 @@ export class PlanningController {
     const holding = resource === 'usd-sales/holding';
     const offers = resource === 'usd-offers';
     const alerts = resource === 'spending-plan/alerts';
-    const validate = alerts ? validBudgetAlerts : holding ? validUsdHolding : resource === 'usd-sales/analysis' ? validSaleAnalysis : offers ? (data: unknown) => record(data) && (writing
+    const push = resource === 'push-subscriptions';
+    const validate = push ? validPushStatus : alerts ? validBudgetAlerts : holding ? validUsdHolding : resource === 'usd-sales/analysis' ? validSaleAnalysis : offers ? (data: unknown) => record(data) && (writing
       ? (keys(data, ['oferta']) && validOfferRow(data.oferta)) || (keys(data, ['venta']) && validSaleRow(data.venta))
       : keys(data, ['items','next_offset']) && Array.isArray(data.items) && data.items.length <= 100
         && data.items.every(validOfferRow) && (data.next_offset === null || data.next_offset === Number(month ?? 0) + 100))
@@ -288,13 +319,18 @@ export class PlanningController {
       : usd ? (data: unknown) => record(data) && keys(data, ['cotizacion']) &&
           (data.cotizacion === null || validManualRate(data.cotizacion))
         : resource === 'spending-plan' ? validPlan : validReminderPreferences;
-    if (!UUID.test(space) || (writing && !(alerts ? validDismissBudgetAlert(body) : offers ? validOfferWrite(body) : sale ? record(body) && keys(body, [...saleFields,'confirmar_atipico']) && validConfirmation(body) && validSaleFields(body) : usd ? validManualRate(body) : validate(body))) ||
+    if (!UUID.test(space) || (writing && !(push ? validPushWrite(body) : alerts ? validDismissBudgetAlert(body) : offers ? validOfferWrite(body) : sale ? record(body) && keys(body, [...saleFields,'confirmar_atipico']) && validConfirmation(body) && validSaleFields(body) : usd ? validManualRate(body) : validate(body))) ||
         ((sale || offers) && month !== undefined && (typeof month !== 'string' || !/^\d{1,6}$/.test(month) || Number(month) > 100000)) ||
-        (holding && (typeof month !== 'string' || !UUID.test(month))) ||
+        ((holding || (push && !writing)) && (typeof month !== 'string' || !UUID.test(month))) ||
         (usd && month !== undefined && !rateDate(month)) ||
         (history && (typeof month !== 'string' || !/^(19[0-9]{2}|20[0-9]{2})-(0[1-9]|1[0-2])$/.test(month)))) {
       throw new BadRequestException(holding ? 'Cuenta inválida' : sale ? 'Venta inválida' : history ? 'Mes o espacio invalido'
         : usd ? 'Cotización inválida' : resource === 'spending-plan' ? 'Presupuesto invalido' : 'Preferencias invalidas');
+    }
+    const configured = process.env.PIGGO_VAPID_PUBLIC_KEY ?? '';
+    const publicKey = vapidKey.test(configured) ? configured : null;
+    if (push && writing && record(body) && body.subscription !== null && !publicKey) {
+      throw new HttpException('Activación push no configurada', 503);
     }
     try {
       const base=new URL(process.env.API_BASE_URL??'http://127.0.0.1:8000');
@@ -303,6 +339,7 @@ export class PlanningController {
       const raw=process.env.API_TIMEOUT_MS??'5000',timeout=Number(raw);
       if(!/^\d+$/.test(raw)||!Number.isSafeInteger(timeout)||timeout<1||timeout>2147483647)throw new Error();
       const url = new URL(`/spaces/${space.toLowerCase()}/${resource}`, base);
+      if (push && !writing) url.searchParams.set('device', String(month));
       if (holding) url.searchParams.set('account', String(month));
       if (history) url.searchParams.set('mes', String(month));
       if ((sale || offers) && month !== undefined) url.searchParams.set('offset', String(month));
@@ -317,6 +354,7 @@ export class PlanningController {
       if(!result.ok)throw new Error();
       const data=await boundedJson(result, resource === 'usd-sales/analysis' ? 262144 : 65536);
       if(!validate(data))throw new Error();
+      if (push && !writing && validPushStatus(data)) return { active: data.active, public_key: publicKey };
       return data;
     } catch(error){if(error instanceof HttpException)throw error;throw new BadGatewayException('No se pudo consultar FastAPI');}
   }
