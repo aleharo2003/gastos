@@ -1,6 +1,7 @@
 import { Component, DestroyRef, EventEmitter, Input, OnChanges, Output, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { UsdOffers } from './usd-offers';
+import { AnomalyCancelled, confirmAnomaly } from './confirm-anomaly';
 import { AuthSession } from './auth-session';
 import { type AccountOption, compatibleAccounts } from './account-currency';
 import { normalizeAmount, showAmount } from './expenses';
@@ -118,7 +119,8 @@ export class UsdSales implements OnChanges {
     this.saving.set(true);
     this.error.set('');
     try {
-      await this.auth.accountRequest('POST', this.path, this.pending);
+      const payload = this.pending;
+      await confirmAnomaly(confirmation => this.auth.accountRequest('POST', this.path, { ...payload, ...confirmation }));
       if (!this.alive) return;
       this.pending = undefined;
       this.dollars = ''; this.pesos = ''; this.counterparty = '';
@@ -126,7 +128,8 @@ export class UsdSales implements OnChanges {
       this.changed.emit();
       if (this.analysis()) void this.loadAnalysis();
       await this.load();
-    } catch {
+    } catch (error) {
+      if (error instanceof AnomalyCancelled) return;
       if (this.alive) this.error.set('No pudimos confirmar la venta. Revisá los datos y reintentá.');
     } finally { if (this.alive) this.saving.set(false); }
   }

@@ -6,8 +6,9 @@ import re
 from typing import Literal
 from uuid import UUID
 from fastapi import APIRouter, HTTPException, Request, Response, Query
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, StrictBool
 from sqlalchemy import text
+from app.usd_reference import local_today
 from app.accounts import execute, require_member, NO_STORE
 from app.expense_search import ExpenseSearch
 from app.category_suggestions import suggest_category
@@ -33,6 +34,7 @@ class ExpenseDetailsInput(BaseModel):
     nota: str | None = None
     fecha_devengamiento: date | None = None
     fecha_vencimiento: date | None = None
+    confirmar_atipico: StrictBool = False
 
     @field_validator('nota')
     @classmethod
@@ -271,6 +273,17 @@ def list_expenses(session, user, space, account, offset=0, filters=None):
     return {'items':items,'next_offset':None}
 
 
+def check_expense_anomaly(session, space, body, day):
+    if body.confirmar_atipico or body.categoria is None:
+        return
+    average = session.execute(text("""
+        SELECT avg(importe) FROM public.gastos
+        WHERE espacio_id=:s AND categoria=:category AND moneda=:currency AND fecha<=:day AND anulado_en IS NULL
+    """), {'s': space, 'category': body.categoria, 'currency': body.moneda, 'day': day}).scalar_one()
+    if average is not None and body.importe > 10 * average:
+        raise HTTPException(409, {'codigo': 'importe_atipico'}, headers=NO_STORE)
+
+
 def create_expense(session, user, space, account, body, *, from_pending=False):
     require_account(session, user, space, account, write=True)
     params = {'id':body.id,'s':space,'a':account,'u':user,'f':body.fecha,
@@ -282,6 +295,7 @@ def create_expense(session, user, space, account, body, *, from_pending=False):
                                    params).scalar_one_or_none()
         if existing is None:
             require_active_category(session, space, 'gasto', body.categoria)
+            check_expense_anomaly(session, space, body, body.fecha)
     inserted = session.execute(text('''INSERT INTO public.gastos(id,espacio_id,cuenta_id,usuario_id,fecha,descripcion,moneda,importe,
                               categoria,nota,fecha_devengamiento,fecha_vencimiento)
                             VALUES (:id,:s,:a,:u,:f,:d,:m,:i,:categoria,:nota,:fecha_devengamiento,:fecha_vencimiento)
@@ -311,6 +325,7 @@ def create_pending_expense(session, user, space, account, body):
         if not active:
             raise HTTPException(409, 'La cuenta está archivada', headers=NO_STORE)
         require_active_category(session, space, 'gasto', body.categoria)
+        check_expense_anomaly(session, space, body, body.fecha_devengamiento or local_today())
     session.execute(text("""
         INSERT INTO public.gastos_pendientes (id, espacio_id, cuenta_id, usuario_id, descripcion, moneda, importe,
             categoria, nota, fecha_devengamiento, fecha_vencimiento)

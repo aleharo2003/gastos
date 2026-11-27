@@ -1,6 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, EventEmitter, Input, Output, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { AnomalyCancelled, confirmAnomaly } from './confirm-anomaly';
 import { AuthSession } from './auth-session';
 import { type AccountOption, compatibleAccounts } from './account-currency';
 import { normalizeAmount } from './expenses';
@@ -113,14 +114,16 @@ export class UsdOffers {
     this.error.set('');
     this.notice.set('');
     try {
-      await this.auth.accountRequest('POST', this.path, { oferta_id: offer.id, usd, fecha: this.date,
-        origen_id: this.source, destino_id: this.destination, confirmar_mejor: this.confirmBetter });
+      const payload = { oferta_id: offer.id, usd, fecha: this.date,
+        origen_id: this.source, destino_id: this.destination, confirmar_mejor: this.confirmBetter };
+      await confirmAnomaly(confirmation => this.auth.accountRequest('POST', this.path, { ...payload, ...confirmation }));
       if (this.round === offer.ronda) this.round = '';
       this.select(null);
       this.sold.emit();
       this.notice.set('Oferta aceptada. La venta y los saldos se actualizaron.');
       await this.list(false);
     } catch (err) {
+      if (err instanceof AnomalyCancelled) return;
       this.conflict = err instanceof HttpErrorResponse && err.status === 409;
       this.confirmBetter = false;
       this.error.set(this.conflict

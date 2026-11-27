@@ -4,6 +4,7 @@ import { CategoryCatalog } from './category-catalog';
 import { ExpenseTrend } from './expense-trend';
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
+import { AnomalyCancelled, confirmAnomaly } from './confirm-anomaly';
 import { AuthSession } from './auth-session';
 import { ExpenseTotals } from './expense-totals';
 import { Receipts } from './receipts';
@@ -378,6 +379,7 @@ export class Expenses implements OnInit {
       if (this.receiptExpense() === expenseId) this.receiptExpense.set(null);
       this.notice.set('Gasto anulado.');
     } catch (error) {
+      if (error instanceof AnomalyCancelled) return;
       if (this.alive) this.error.set(error instanceof HttpErrorResponse && error.status === 409
         ? 'Este gasto corresponde a un pago de cuota.'
         : 'No pudimos confirmar la anulación. Volvé a intentar.');
@@ -475,7 +477,7 @@ export class Expenses implements OnInit {
           original,
           nuevo: { ...payload, id: original.id },
         })
-        : await this.auth.accountRequest<Expense>('POST', path, payload);
+        : await confirmAnomaly(confirmation => this.auth.accountRequest<Expense>('POST', path, { ...payload, ...confirmation }));
       if (!this.alive) return;
       this.items.update(items => [row, ...items.filter(item => item.id !== row.id)].sort((a,b) => b.fecha.localeCompare(a.fecha) || b.id.localeCompare(a.id)));
       this.recentPage.update(items => [row, ...items.filter(item => item.id !== row.id)]
@@ -498,6 +500,7 @@ export class Expenses implements OnInit {
       if(this.appliedFilters()){this.notice.set('Guardado. La lista respeta los filtros; el gasto puede quedar fuera de los resultados.');}
       if (quick) this.quickSaved.emit();
     } catch (error) {
+      if (error instanceof AnomalyCancelled) return;
       if (this.alive) this.error.set(error instanceof HttpErrorResponse && error.status === 409 && this.editing
         ? 'El gasto cambió desde otra sesión o corresponde a un pago de cuota. Tu formulario se conserva. Los pagos de cuotas no se editan desde Gastos; para otros gastos, actualizá la lista y revisá los valores actuales.'
         : error instanceof HttpErrorResponse && error.status === 403
@@ -521,13 +524,15 @@ export class Expenses implements OnInit {
     this.clearSuggestion();
     this.saving.set(true);
     try {
-      await this.auth.accountRequest('POST', path, this.pendingExpense!.body);
+      const payload = this.pendingExpense!.body;
+      await confirmAnomaly(confirmation => this.auth.accountRequest('POST', path, { ...payload, ...confirmation }));
       if (!this.alive) return;
       this.description = ''; this.amount = ''; this.category = ''; this.date = today();
       this.clearDetails();
       this.notice.set('Gasto pendiente guardado. Podés pagarlo desde Hoy.');
       this.summaryChanged.emit();
     } catch (error) {
+      if (error instanceof AnomalyCancelled) return;
       if (this.alive) this.error.set(error instanceof HttpErrorResponse && error.status === 409
         ? 'La cuenta está archivada o el gasto cambió. Revisá la cuenta antes de reintentar.'
         : error instanceof HttpErrorResponse && error.status === 422

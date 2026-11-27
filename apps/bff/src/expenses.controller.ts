@@ -1,6 +1,7 @@
 import { BadGatewayException, BadRequestException, Body, Controller, Get, HttpCode, HttpException, Param, Patch, Post, Query, Req, Res, UnauthorizedException } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { AuthService } from './auth.service.js';
+import { movementConflict, validConfirmation } from './movement-conflict.js';
 import { boundedJson } from './token-verifier.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -10,7 +11,7 @@ const MAX_CATEGORY_SUMMARY_ROWS = 3 * (100 + 1);
 const isExpenseCategory = (value: unknown): value is string =>
   typeof value === 'string' && (CATEGORIES.includes(value) || UUID.test(value));
 type ExpenseInput = { id: string; fecha: string; descripcion: string; moneda: string; importe: string;
-  categoria?: string | null; nota?: string | null; fecha_devengamiento?: string | null; fecha_vencimiento?: string | null };
+  confirmar_atipico?: boolean; categoria?: string | null; nota?: string | null; fecha_devengamiento?: string | null; fecha_vencimiento?: string | null };
 const expenseFields = ['id', 'fecha', 'descripcion', 'moneda', 'importe', 'categoria', 'nota',
   'fecha_devengamiento', 'fecha_vencimiento'];
 const isoDate = (value: unknown): value is string => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
@@ -20,7 +21,7 @@ type PendingExpense = Omit<ExpenseInput, 'fecha'>;
 type PendingPayment = Pick<ExpenseInput, 'fecha'>;
 function valid(value: unknown): value is ExpenseInput {
   const row = value as ExpenseInput;
-  return !!row && (row.nota == null || (typeof row.nota === 'string' && [...row.nota.trim()].length <= 500 && !/[\x00-\x1f\x7f]/.test(row.nota.trim()))) && (row.categoria == null || isExpenseCategory(row.categoria)) && typeof row.id === 'string' && UUID.test(row.id) && !/^0{8}-0{4}-0{4}-0{4}-0{12}$/.test(row.id) &&
+  return !!row && validConfirmation(row) && (row.nota == null || (typeof row.nota === 'string' && [...row.nota.trim()].length <= 500 && !/[\x00-\x1f\x7f]/.test(row.nota.trim()))) && (row.categoria == null || isExpenseCategory(row.categoria)) && typeof row.id === 'string' && UUID.test(row.id) && !/^0{8}-0{4}-0{4}-0{4}-0{12}$/.test(row.id) &&
     isoDate(row.fecha) && (row.fecha_devengamiento == null || isoDate(row.fecha_devengamiento)) &&
     (row.fecha_vencimiento == null || isoDate(row.fecha_vencimiento)) &&
     typeof row.descripcion === 'string' && [...row.descripcion.trim()].length >= 1 && [...row.descripcion.trim()].length <= 160 &&
@@ -128,7 +129,7 @@ export class ExpensesController {
   async create(@Param('space') space: string, @Param('account') account: string, @Body() body: unknown, @Req() request: Request, @Res({ passthrough: true }) response: Response) {
     response.setHeader('Cache-Control', 'no-store');
     const token = await this.token(request, response);
-    if (!valid(body) || Object.keys(body).some(key => !expenseFields.includes(key))) throw new BadRequestException('Gasto invalido');
+    if (!valid(body) || Object.keys(body).some(key => !expenseFields.includes(key) && key !== 'confirmar_atipico')) throw new BadRequestException('Gasto invalido');
     return this.forward(token, space, account, { ...body, id: body.id.toLowerCase(), descripcion: body.descripcion.trim() });
   }
 
@@ -139,7 +140,7 @@ export class ExpensesController {
     response.setHeader('Cache-Control', 'no-store');
     const token = await this.token(request, response);
     if (!body || !valid({ ...body, fecha: body.fecha_vencimiento }) ||
-        Object.keys(body).some(key => key === 'fecha' || !expenseFields.includes(key))) {
+        Object.keys(body).some(key => key === 'fecha' || (!expenseFields.includes(key) && key !== 'confirmar_atipico'))) {
       throw new BadRequestException('Gasto pendiente invalido');
     }
     return this.forward(token, space, account, { ...body, id: body.id.toLowerCase(), descripcion: body.descripcion.trim() },
@@ -214,6 +215,7 @@ export class ExpensesController {
         headers: { Accept: 'application/json', Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
         ...(body ? { body: JSON.stringify(body) } : {}),
       });
+      if (result.status === 409) await movementConflict(result);
       if ([400, 401, 403, 404, 409, 422, 503].includes(result.status)) throw new HttpException('No se pudo completar la operacion', result.status);
       if (!result.ok) throw new Error();
       const data = await boundedJson(result, 131072);

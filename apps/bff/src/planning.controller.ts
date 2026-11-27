@@ -1,6 +1,7 @@
 import { BadGatewayException, BadRequestException, Body, Controller, Get, HttpCode, HttpException, Param, Post, Query, Req, Res, UnauthorizedException } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { AuthService } from './auth.service.js';
+import { movementConflict, validConfirmation } from './movement-conflict.js';
 import { boundedJson } from './token-verifier.js';
 
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -93,10 +94,10 @@ function validOfferRow(value: unknown): boolean {
 function validOfferWrite(value: unknown): boolean {
   if (!record(value)) return false;
   if ('oferta_id' in value) {
-    return keys(value, ['oferta_id','origen_id','destino_id','fecha','usd','confirmar_mejor'])
+    return keys(value, ['oferta_id','origen_id','destino_id','fecha','usd','confirmar_mejor','confirmar_atipico'])
       && [value.oferta_id,value.origen_id,value.destino_id].every(id => typeof id === 'string' && UUID.test(id))
       && value.origen_id !== value.destino_id && rateDate(value.fecha) && saleMoney(value.usd)
-      && typeof value.confirmar_mejor === 'boolean';
+      && typeof value.confirmar_mejor === 'boolean' && validConfirmation(value);
   }
   return keys(value, ['id','ronda','contraparte','tasa'])
     && typeof value.id === 'string' && UUID.test(value.id) && typeof value.ronda === 'string' && UUID.test(value.ronda)
@@ -240,7 +241,7 @@ export class PlanningController {
       : usd ? (data: unknown) => record(data) && keys(data, ['cotizacion']) &&
           (data.cotizacion === null || validManualRate(data.cotizacion))
         : resource === 'spending-plan' ? validPlan : validReminderPreferences;
-    if (!UUID.test(space) || (writing && !(offers ? validOfferWrite(body) : sale ? record(body) && keys(body, saleFields) && validSaleFields(body) : usd ? validManualRate(body) : validate(body))) ||
+    if (!UUID.test(space) || (writing && !(offers ? validOfferWrite(body) : sale ? record(body) && keys(body, [...saleFields,'confirmar_atipico']) && validConfirmation(body) && validSaleFields(body) : usd ? validManualRate(body) : validate(body))) ||
         ((sale || offers) && month !== undefined && (typeof month !== 'string' || !/^\d{1,6}$/.test(month) || Number(month) > 100000)) ||
         (usd && month !== undefined && !rateDate(month)) ||
         (history && (typeof month !== 'string' || !/^(19[0-9]{2}|20[0-9]{2})-(0[1-9]|1[0-2])$/.test(month)))) {
@@ -262,6 +263,7 @@ export class PlanningController {
         headers:{Accept:'application/json',Authorization:`Bearer ${parts[1]}`,...(writing?{'Content-Type':'application/json'}:{})},
         ...(writing?{body:JSON.stringify(body)}:{}),
       });
+      if (result.status === 409) await movementConflict(result);
       if([400,401,403,409,422,503].includes(result.status))throw new HttpException('No se pudo completar la operacion',result.status);
       if(!result.ok)throw new Error();
       const data=await boundedJson(result, resource === 'usd-sales/analysis' ? 262144 : 65536);
