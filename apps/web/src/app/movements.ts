@@ -240,8 +240,8 @@ export class Movements implements OnInit {
   }
 
   async confirmVoid(row: Movement): Promise<void> {
-    if (this.loading() || this.voiding() || this.exporting() || row.anulado || (row.tipo !== 'ingreso' && row.tipo !== 'transferencia')) return;
-    const label = row.tipo === 'ingreso' ? 'el ingreso' : 'la transferencia';
+    if (this.loading() || this.voiding() || this.exporting() || row.anulado || row.tipo === 'gasto') return;
+    const label = row.tipo === 'ingreso' ? 'el ingreso' : row.tipo === 'cambio' ? 'el cambio' : 'la transferencia';
     if (!window.confirm(`¿Anular ${label} «${row.descripcion}»? Los saldos se actualizarán y el movimiento quedará en Anulados.`)) return;
     this.voiding.set(true);
     this.voidNotice.set('');
@@ -259,7 +259,7 @@ export class Movements implements OnInit {
     this.items.update(rows => rows.filter(item => item.id !== row.id || item.tipo !== row.tipo));
     this.totals.set([]);
     this.next.set(null);
-    this.voidNotice.set(row.tipo === 'ingreso' ? 'Ingreso anulado.' : 'Transferencia anulada.');
+    this.voidNotice.set(row.tipo === 'ingreso' ? 'Ingreso anulado.' : row.tipo === 'cambio' ? 'Cambio anulado.' : 'Transferencia anulada.');
     this.changed.emit();
     await this.load(false, false, this.applied);
   }

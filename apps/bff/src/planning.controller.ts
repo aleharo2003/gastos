@@ -114,7 +114,8 @@ function validSaleFields(data: Record<string, unknown>): boolean {
 }
 
 function validSaleRow(data: unknown): boolean {
-  return record(data) && keys(data, [...saleFields,'tasa','referencia','fecha_referencia','diferencia_pct'])
+  return record(data) && keys(data, [...saleFields,'tasa','referencia','fecha_referencia','diferencia_pct','anulado'])
+    && (data.anulado === undefined || data.anulado === true)
     && validSaleFields(data) && typeof data.tasa === 'string' && /^\d{1,14}\.\d{4}$/.test(data.tasa)
     && ((data.referencia === null && data.fecha_referencia === null && data.diferencia_pct === null)
       || (typeof data.referencia === 'string' && rateDate(data.fecha_referencia) && typeof data.diferencia_pct === 'string'));

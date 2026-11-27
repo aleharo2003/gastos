@@ -137,10 +137,10 @@ def list_goals(session,user,space,offset=0,include_archived=False):
           JOIN claves k ON k.cuenta_id=t.origen_id AND k.moneda=t.moneda WHERE t.espacio_id=:s AND t.anulado_en IS NULL
           UNION ALL
           SELECT v.destino_id,k.moneda,CASE WHEN v.tipo='compra' THEN v.usd ELSE v.ars END FROM public.ventas_usd v
-          JOIN claves k ON k.cuenta_id=v.destino_id AND k.moneda=CASE WHEN v.tipo='compra' THEN 'USD' ELSE 'ARS' END WHERE v.espacio_id=:s
+          JOIN claves k ON k.cuenta_id=v.destino_id AND k.moneda=CASE WHEN v.tipo='compra' THEN 'USD' ELSE 'ARS' END WHERE v.espacio_id=:s AND v.anulado_en IS NULL
           UNION ALL
           SELECT v.origen_id,k.moneda,CASE WHEN v.tipo='compra' THEN -v.ars ELSE -v.usd END FROM public.ventas_usd v
-          JOIN claves k ON k.cuenta_id=v.origen_id AND k.moneda=CASE WHEN v.tipo='compra' THEN 'ARS' ELSE 'USD' END WHERE v.espacio_id=:s
+          JOIN claves k ON k.cuenta_id=v.origen_id AND k.moneda=CASE WHEN v.tipo='compra' THEN 'ARS' ELSE 'USD' END WHERE v.espacio_id=:s AND v.anulado_en IS NULL
         ), saldos AS (SELECT cuenta_id,moneda,SUM(importe) AS saldo FROM movimientos GROUP BY cuenta_id,moneda)
         SELECT p.*,COALESCE(s.saldo,0) AS saldo FROM pagina p LEFT JOIN saldos s
         ON s.cuenta_id=p.cuenta_id AND s.moneda=p.moneda ORDER BY p.archivada,p.id

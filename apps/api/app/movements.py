@@ -11,8 +11,8 @@ from app.movement_categories import ExpenseFilter
 
 router = APIRouter()
 Kind = Literal['gasto', 'ingreso', 'transferencia', 'cambio']
-VoidKind = Literal['ingreso', 'transferencia']
-MOVEMENT_TABLES = {'ingreso': 'ingresos', 'transferencia': 'transferencias'}
+VoidKind = Literal['ingreso', 'transferencia', 'cambio']
+MOVEMENT_TABLES = {'ingreso': 'ingresos', 'transferencia': 'transferencias', 'cambio': 'ventas_usd'}
 Currency = Literal['ARS', 'USD', 'EUR']
 PAGE_SIZE = 50
 
@@ -32,7 +32,7 @@ HISTORY = text("""
         SELECT id, fecha, 'cambio', contraparte,
                CASE WHEN tipo='compra' THEN 'ARS' ELSE 'USD' END,
                CASE WHEN tipo='compra' THEN ars ELSE usd END,
-               origen_id, destino_id, NULL, NULL, false,
+               origen_id, destino_id, NULL, NULL, anulado_en IS NOT NULL,
                CASE WHEN tipo='compra' THEN 'USD' ELSE 'ARS' END,
                CASE WHEN tipo='compra' THEN usd ELSE ars END
         FROM public.ventas_usd WHERE espacio_id=:space

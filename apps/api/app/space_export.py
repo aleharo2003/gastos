@@ -33,7 +33,7 @@ TABLES = (
     ('variaciones_indice', 'indice periodo variacion', 'indice, periodo'),
     ('metas_ahorro', 'id cuenta_id nombre moneda objetivo fecha_objetivo archivada version', 'id'),
     ('ofertas_usd', 'id ronda fecha contraparte tasa referencia fecha_referencia estado venta_id', 'fecha,id'),
-    ('ventas_usd', 'id fecha contraparte origen_id destino_id usd ars tasa referencia fecha_referencia tipo', 'fecha,id'),
+    ('ventas_usd', 'id fecha contraparte origen_id destino_id usd ars tasa referencia fecha_referencia tipo anulado_en', 'fecha,id'),
     ('preferencias_cotizacion', 'tipo', 'tipo'),
     ('cotizaciones_manuales', 'fecha tasa', 'fecha'),
     ('planes_gasto', 'version datos historial_categoria', 'version'),

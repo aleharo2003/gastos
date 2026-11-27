@@ -56,6 +56,7 @@ class SaleInput(BaseModel):
 def public_sale(row):
     ref = row['referencia']
     return {
+        **({'anulado': True} if row['anulado_en'] is not None else {}),
         **({'tipo': 'compra'} if row['tipo'] == 'compra' else {}),
         'id': str(row['id']), 'origen_id': str(row['origen_id']), 'destino_id': str(row['destino_id']),
         'fecha': row['fecha'].isoformat(), 'contraparte': row['contraparte'],
@@ -98,6 +99,8 @@ def save_sale(session, user, space, body):
         current = get_sale(session, space, body.id)
     if current is None or any(current[key] != value for key, value in values.items()):
         raise HTTPException(409, 'El identificador le corresponde a otra operación', headers=NO_STORE)
+    if current['anulado_en'] is not None:
+        raise HTTPException(409, 'La operación está anulada', headers=NO_STORE)
     return public_sale(current)
 
 
@@ -140,7 +143,7 @@ def sale_analysis(session, user, space):
             SELECT lower(btrim(contraparte)) AS key, min(contraparte) AS nombre,
                    count(*) AS operaciones, count(referencia) AS comparadas,
                    avg((ars / usd / referencia - 1) * 100) FILTER (WHERE referencia IS NOT NULL) AS diferencia
-            FROM public.ventas_usd WHERE espacio_id=:s AND tipo='venta' GROUP BY 1
+            FROM public.ventas_usd WHERE espacio_id=:s AND tipo='venta' AND anulado_en IS NULL GROUP BY 1
         ), offers AS (
             SELECT lower(btrim(contraparte)) AS key, min(contraparte) AS nombre, count(*) AS ofertas
             FROM public.ofertas_usd WHERE espacio_id=:s GROUP BY 1
@@ -156,7 +159,7 @@ def sale_analysis(session, user, space):
                best.contraparte AS mejor_contraparte, v.usd,
                greatest(round(v.usd * best.tasa,2) - v.ars,0) AS diferencia_ars
         FROM public.ofertas_usd a
-        JOIN public.ventas_usd v ON v.espacio_id=a.espacio_id AND v.id=a.venta_id
+        JOIN public.ventas_usd v ON v.espacio_id=a.espacio_id AND v.id=a.venta_id AND v.anulado_en IS NULL
         JOIN LATERAL (
             SELECT o.tasa, o.contraparte FROM public.ofertas_usd o
             WHERE o.espacio_id=a.espacio_id AND o.ronda=a.ronda

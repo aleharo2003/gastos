@@ -141,11 +141,11 @@ def account_balance(session, user, space, account=None, *, through=None):
           UNION ALL
           SELECT CASE WHEN tipo='compra' THEN 'USD' ELSE 'ARS' END, 0::numeric, 0::numeric, 0::numeric,
               CASE WHEN tipo='compra' THEN usd ELSE ars END, 0::numeric
-          FROM public.ventas_usd WHERE espacio_id=:s""" + (cutoff + (' AND destino_id=:a' if account is not None else '')) + """
+          FROM public.ventas_usd WHERE espacio_id=:s AND anulado_en IS NULL""" + (cutoff + (' AND destino_id=:a' if account is not None else '')) + """
           UNION ALL
           SELECT CASE WHEN tipo='compra' THEN 'ARS' ELSE 'USD' END, 0::numeric, 0::numeric, 0::numeric,
               0::numeric, CASE WHEN tipo='compra' THEN ars ELSE usd END
-          FROM public.ventas_usd WHERE espacio_id=:s""" + (cutoff + (' AND origen_id=:a' if account is not None else '')) + """
+          FROM public.ventas_usd WHERE espacio_id=:s AND anulado_en IS NULL""" + (cutoff + (' AND origen_id=:a' if account is not None else '')) + """
         ) movimientos GROUP BY moneda ORDER BY moneda"""), {'s':space,'a':account,'through':through}).mappings().all()
     by_currency = {row['moneda']:row for row in rows}
     return {'totales':[{'moneda':currency, **{key:format(by_currency.get(currency, {}).get(key, Decimal(0)), '.2f')
@@ -203,11 +203,11 @@ def savings_summary(session, user, space, month, today, offset=0):
             UNION ALL
             SELECT destino_id, CASE WHEN tipo='compra' THEN 'USD' ELSE 'ARS' END,
                 CASE WHEN tipo='compra' THEN usd ELSE ars END FROM public.ventas_usd
-            WHERE espacio_id=:space AND fecha<=:today AND destino_id IN (SELECT id FROM pagina)
+            WHERE espacio_id=:space AND anulado_en IS NULL AND fecha<=:today AND destino_id IN (SELECT id FROM pagina)
             UNION ALL
             SELECT origen_id, CASE WHEN tipo='compra' THEN 'ARS' ELSE 'USD' END,
                 CASE WHEN tipo='compra' THEN -ars ELSE -usd END FROM public.ventas_usd
-            WHERE espacio_id=:space AND fecha<=:today AND origen_id IN (SELECT id FROM pagina)
+            WHERE espacio_id=:space AND anulado_en IS NULL AND fecha<=:today AND origen_id IN (SELECT id FROM pagina)
         )
         SELECT a.id,a.nombre,a.activa,s.moneda,SUM(s.neto) AS saldo
         FROM pagina a LEFT JOIN saldos s ON s.cuenta_id=a.id

@@ -1,5 +1,6 @@
 """Prueba el saldo, la referencia histórica y los reintentos en la base desechable."""
-from uuid import uuid4
+from decimal import Decimal
+from uuid import UUID, uuid4
 
 from fastapi import HTTPException
 from sqlalchemy import text
@@ -7,7 +8,8 @@ from sqlalchemy import text
 from app.db.connection import create_migration_engine, create_runtime_engine
 from app.db.unit_of_work import runtime_transaction
 from app.incomes import account_balance
-from app.movements import list_movements, parse_cursor
+from app.movements import list_movements, parse_cursor, void_movement
+from app.payment_quote import PaymentQuote, resolve_payment_quote
 from app.usd_holdings import usd_holding
 from app.usd_reference import ManualRate, save_rate
 from app.usd_offers import AcceptOffer, OfferInput, accept_offer, save_offer
@@ -63,6 +65,7 @@ def check_fx_sales(runtime_url, migration_url):
             accepted = acceptance.model_copy(update={'confirmar_mejor': True})
             result = accept_offer(s, owner, owner, accepted)
             assert result['venta']['ars'] == '8500.00'
+            accepted_sale_id = UUID(result['venta']['id'])
             assert accept_offer(s, owner, owner, accepted) == result
             states = dict(s.execute(text('SELECT id,estado FROM public.ofertas_usd WHERE ronda=:r'),
                                     {'r': round_id}).tuples().all())
@@ -130,6 +133,36 @@ def check_fx_sales(runtime_url, migration_url):
             assert parse_cursor(f'{day.isoformat()}/cambio/{buy.id}') == (day, 'cambio', buy.id)
             print('OK: cambios en historial, filtros por cuenta y moneda y variación de saldo.', flush=True)
             assert 'Compra prueba' not in {row['contraparte'] for row in sale_analysis(s, owner, owner)['contrapartes']}
+            source = PaymentQuote(fuente='ultima_venta')
+            assert resolve_payment_quote(s, owner, day, 'USD', source)['tasa_pago'] == Decimal('1700.0040')
+            for operation in (buy, sell):
+                expected = {'id': str(operation.id), 'anulado': True}
+                assert void_movement(s, owner, owner, 'cambio', operation.id) == expected
+                assert void_movement(s, owner, owner, 'cambio', operation.id) == expected
+                try:
+                    save_sale(s, owner, owner, operation)
+                except HTTPException as error:
+                    assert error.status_code == 409
+                else:
+                    raise AssertionError('Un reintento volvió a registrar el cambio anulado')
+            remaining = account_balance(s, owner, owner, purchased)['totales'][1]
+            assert remaining['saldo'] == '25.00' and remaining['transferencias_entrada'] == '50.00'
+            assert account_balance(s, owner, owner, destination)['totales'][0]['transferencias_salida'] == '90000.00'
+            assert usd_holding(s, owner, purchased)['costo_promedio'] == '1800.0000'
+            assert resolve_payment_quote(s, owner, day, 'USD', source)['tasa_pago'] == Decimal('3400.0080')
+            audit = list_movements(s, owner, owner, filters | {'anulados': True}, None)
+            assert {row['id'] for row in audit['items']} == {str(buy.id), str(sell.id)}
+            assert all(row['anulado'] for row in audit['items']) and audit['totales'] == []
+            assert {row['id'] for row in list_sales(s, owner, owner, 0)['items'] if row.get('anulado')} == {
+                str(buy.id), str(sell.id),
+            }
+            void_movement(s, owner, owner, 'cambio', accepted_sale_id)
+            revised = sale_analysis(s, owner, owner)
+            assert revised['rondas'] == []
+            assert next(row for row in revised['contrapartes'] if row['contraparte'] == 'Ana')['operaciones'] == 0
+            assert s.execute(text('SELECT estado FROM public.ofertas_usd WHERE venta_id=:id'),
+                             {'id': accepted_sale_id}).scalar_one() == 'aceptada'
+            print('OK: anulaciones, reintentos, dos saldos, costo promedio y referencias vigentes.', flush=True)
         print('OK: cambios USD, saldos por moneda, referencia congelada, reintentos y costo promedio.', flush=True)
     finally:
         with migrator.begin() as c:

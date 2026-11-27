@@ -66,7 +66,7 @@
   <ul>
     @for (sale of sales(); track sale.id) {
       <li>
-        <strong>{{ sale.tipo === 'compra' ? 'Compra' : 'Venta' }} · {{ sale.fecha }} · {{ sale.contraparte }}</strong>
+        <strong>{{ sale.tipo === 'compra' ? 'Compra' : 'Venta' }} · {{ sale.fecha }} · {{ sale.contraparte }}@if (sale.anulado) { · Anulada }</strong>
         @if (sale.tipo === 'compra') {
           <p>ARS {{ showAmount(sale.ars) }} de {{ accountName(sale.origen_id) }} → USD {{ showAmount(sale.usd) }} a {{ accountName(sale.destino_id) }}</p>
         } @else {
