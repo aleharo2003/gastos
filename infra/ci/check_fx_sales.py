@@ -122,7 +122,7 @@ def check_fx_sales(runtime_url, migration_url):
                 'moneda': 'USD', 'ingresos': '0.00', 'gastos': '0.00', 'transferencias': '0.00',
                 'cambio_entrada': '150.00', 'cambio_salida': '25.00', 'variacion_cuenta': '125.00',
             }]
-            pesos = filters | {'cuenta': destination, 'moneda': 'ARS', 'texto': 'compra'}
+            pesos = filters | {'cuenta': destination, 'moneda': 'ARS', 'texto': 'compra prueba'}
             result = list_movements(s, owner, owner, pesos, None)
             assert len(result['items']) == 2 and result['totales'][0]['variacion_cuenta'] == '-250000.00'
             assert list_movements(s, owner, owner, pesos | {'moneda': 'USD'}, None)['items'] == []
