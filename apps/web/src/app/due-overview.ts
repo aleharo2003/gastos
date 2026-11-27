@@ -5,6 +5,7 @@ import { installmentLocalDate, prepareInstallmentPayment, submitInstallmentPayme
 import { watchInstallmentDay } from './installment-date';
 import { accountCurrency, compatibleAccounts, type AccountOption } from './account-currency';
 import { UsdReference } from './usd-reference';
+import { estimatedArs, PaymentQuoteEditor, type PaymentQuote } from './payment-quote';
 import { AuthSession } from './auth-session';
 import { showAmount } from './expenses';
 import { money, rateUnits, reference, type CurrencyTotal } from './money-reference';
@@ -27,7 +28,7 @@ type Overview = {
 
 @Component({
   selector: 'app-due-overview',
-  imports: [FormsModule],
+  imports: [FormsModule, PaymentQuoteEditor],
   templateUrl: './due-overview.html',
   styleUrl: './due-overview.css',
 })
@@ -94,6 +95,8 @@ export class DueOverview implements OnChanges {
   account = '';
   paymentDate = '';
   paymentAmount = '';
+  paymentQuote?: PaymentQuote;
+  readonly estimatedArs = estimatedArs;
   private readonly privacyListener = (event: Event) => {
     this.hidden.set((event as CustomEvent).detail === true);
   };
@@ -153,6 +156,7 @@ export class DueOverview implements OnChanges {
     this.account = item.cuenta_id ?? (accounts.length === 1 ? accounts[0].id : '');
     this.paymentDate = installmentLocalDate();
     this.paymentAmount = item.pendiente;
+    this.paymentQuote = undefined;
     this.selected.set(item);
   }
 
@@ -178,6 +182,7 @@ export class DueOverview implements OnChanges {
     }
     const payment = item.cuenta_id ? undefined : this.pendingPayment ?? prepareInstallmentPayment(item.id, {
       cuenta_id: this.account, fecha: this.paymentDate, importe: this.paymentAmount,
+      ...(item.moneda === 'USD' && this.paymentQuote ? { cotizacion_pago: this.paymentQuote } : {}),
     }, item.pendiente, this.paymentAccounts(item.moneda));
     if (item.cuenta_id ? !this.paymentDate : !payment) {
       this.paymentError.set(item.cuenta_id ? 'Ingresá la fecha de pago.'
@@ -195,7 +200,8 @@ export class DueOverview implements OnChanges {
         const root = '/api/spaces/' + encodeURIComponent(this.space);
         const path = root + '/accounts/' + encodeURIComponent(item.cuenta_id) +
           '/expenses/' + encodeURIComponent(item.id) + '/pay-pending';
-        await this.auth.accountRequest('POST', path, { fecha: this.paymentDate });
+        await this.auth.accountRequest('POST', path, { fecha: this.paymentDate,
+          ...(item.moneda === 'USD' && this.paymentQuote ? { cotizacion_pago: this.paymentQuote } : {}) });
       } else {
         await submitInstallmentPayment(this.auth, this.space, payment!);
       }

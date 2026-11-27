@@ -161,10 +161,12 @@ def savings_summary(session, user, space, month, today, offset=0):
     params = {'space': space, 'start': start, 'end': end, 'year': start.replace(month=1),
               'today': today, 'offset': offset}
     activity = session.execute(text("""
-        SELECT moneda, 'ingresos_anuales' AS tipo, SUM(importe) AS total FROM public.ingresos
+        SELECT moneda, 'ingresos_anuales' AS tipo, SUM(importe) AS total, 0 AS usd_fijado, 0 AS ars_fijado FROM public.ingresos
         WHERE espacio_id=:space AND anulado_en IS NULL AND fecha BETWEEN :year AND :end GROUP BY moneda
         UNION ALL
-        SELECT g.moneda, CASE WHEN p.id IS NULL THEN 'otros_gastos' ELSE 'cuotas' END, SUM(g.importe)
+        SELECT g.moneda, CASE WHEN p.id IS NULL THEN 'otros_gastos' ELSE 'cuotas' END, SUM(g.importe),
+            coalesce(sum(g.importe) FILTER (WHERE g.tasa_pago IS NOT NULL),0),
+            coalesce(sum(round(g.importe*g.tasa_pago,2)),0)
         FROM public.gastos g LEFT JOIN public.pagos_cuota p ON p.espacio_id=g.espacio_id AND p.id=g.id
         WHERE g.espacio_id=:space AND g.anulado_en IS NULL AND g.fecha BETWEEN :start AND :end GROUP BY 1,2
     """), params).mappings().all()
@@ -217,7 +219,9 @@ def savings_summary(session, user, space, month, today, offset=0):
             account['saldos'].append({'moneda': row['moneda'], 'total': format(row['saldo'], '.2f')})
     return {
         'mes': month, 'hasta': end.isoformat(), 'fecha_saldos': today.isoformat(),
-        'actividad': [{**row, 'total': format(row['total'], '.2f')} for row in activity],
+        'actividad': [{'moneda': row['moneda'], 'tipo': row['tipo'], 'total': format(row['total'], '.2f')}
+                      | ({'fijado': {'usd': format(row['usd_fijado'],'.2f'), 'ars': format(row['ars_fijado'],'.2f')}}
+                         if row['usd_fijado'] else {}) for row in activity],
         'ingresos': [{**row, 'total': format(row['total'], '.2f')} for row in income_sources],
         'cuentas': list(grouped.values())[:100],
         'next_offset': offset + 100 if len(grouped) > 100 and offset <= 99900 else None,

@@ -3,6 +3,7 @@ import type { Request,Response } from 'express';
 import { AuthService } from './auth.service.js';
 import { validateBalance } from './incomes.controller.js';
 import { validLimits } from './planning.controller.js';
+import { frozenPeriods, savedQuote, validPaymentQuote, type PaymentQuote, type SavedQuote } from './payment-quote.js';
 import { boundedJson } from './token-verifier.js';
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const validId=(v:unknown):v is string=>typeof v==='string'&&UUID.test(v)&&!/^0{8}-0{4}-0{4}-0{4}-0{12}$/.test(v);
@@ -27,11 +28,11 @@ function rateUnits(value: string): bigint {
 
 type Create={sistema_amortizacion?:'frances'|'aleman'|null;tna?:string|null;indice_ajuste?:string|null;variable?:boolean;id:string;cuenta_id:string;nombre:string;moneda:string;importe:string;categoria?:string|null;primer_vencimiento:string;total_cuotas:number|null};
 type Confirm={items:{id:string;importe:string;version:number}[]};
-type Pay={id:string;cuenta_id:string;fecha:string;importe:string};
+type Pay={id:string;cuenta_id:string;fecha:string;importe:string;cotizacion_pago?:PaymentQuote};
 type AmountCorrection = { version: number; importe: string };
 type Commitment=Create & {variable:boolean;pausado:boolean;version:number;espacio_id:string;cuotas_pagadas:number;cuotas_no_aplican:number;cuotas_ajustadas?:number;total:string;pagado:string;pendiente:string;proximo_vencimiento:string|null};
 type Installment={capital?:string;interes?:string;saldo_capital?:string;pendiente_ajuste?:boolean;estimado:boolean;version:number;id:string;espacio_id:string;compromiso_id:string;numero:number;vencimiento:string;importe:string;pagado:string;pendiente:string;estado:string;vencida:boolean};
-type Payment=Pay & {espacio_id:string;cuota_id:string;moneda:string};
+type Payment=Pay & SavedQuote & {espacio_id:string;cuota_id:string;moneda:string};
 function validCreate(v:unknown):v is Create{
   const r=v as Create;
   return !!r&&validId(r.id)&&validId(r.cuenta_id)&&typeof r.nombre==='string'&&[...r.nombre.trim()].length>=1&&[...r.nombre.trim()].length<=160&&
@@ -44,7 +45,7 @@ function validCreate(v:unknown):v is Create{
       r.total_cuotas!==null&&!r.variable&&r.indice_ajuste==null);
 }
 function validPay(v:unknown):v is Pay{
-  const r=v as Pay;return !!r&&validId(r.id)&&validId(r.cuenta_id)&&date(r.fecha)&&amount(r.importe);
+  const r=v as Pay;return !!r&&validId(r.id)&&validId(r.cuenta_id)&&date(r.fecha)&&amount(r.importe)&&validPaymentQuote(r.cotizacion_pago);
 }
 function commitment(v:unknown,space:string):Commitment{
   const r=v as Commitment;
@@ -80,7 +81,7 @@ function installment(v:unknown,space:string,id:string):Installment{
 }
 function payment(v:unknown,space:string,id:string):Payment{
   const r=v as Payment;if(!validPay(r)||r.espacio_id!==space||r.cuota_id!==id||!currencies.includes(r.moneda))throw new Error();
-  return {id:r.id,espacio_id:space,cuota_id:id,cuenta_id:r.cuenta_id,fecha:r.fecha,moneda:r.moneda,importe:r.importe};
+  return {...savedQuote(r),id:r.id,espacio_id:space,cuota_id:id,cuenta_id:r.cuenta_id,fecha:r.fecha,moneda:r.moneda,importe:r.importe};
 }
 type MonthlyItem=Installment & {nombre:string;moneda:string;cuenta_id:string;categoria?:string|null;
   ultimo_pago?: { fecha: string; cuenta: string }};
@@ -128,7 +129,7 @@ type DueOverview = {
   resumen_mes:(DueTotal & { pagado:string })[];
   saldos:unknown;
   deudas?:DueTotal[];
-  presupuesto:{limites:unknown;gastos:{moneda:string;dia:string;mes:string;semana:string}[]};
+  presupuesto:{limites:unknown;gastos:{moneda:string;dia:string;mes:string;semana:string;fijados?:unknown}[]};
 };
 
 function dueTotals<T extends DueTotal>(value:T[]):T[]{
@@ -184,7 +185,7 @@ function dueOverview(value:unknown){
     if(!row||!currencies.includes(row.moneda)||currenciesSeen.has(row.moneda)||
        !sum(row.dia)||!sum(row.mes)||!sum(row.semana)||cents(row.dia)>cents(row.semana))throw new Error();
     currenciesSeen.add(row.moneda);
-    return {moneda:row.moneda,dia:row.dia,mes:row.mes,semana:row.semana};
+    return {moneda:row.moneda,dia:row.dia,mes:row.mes,semana:row.semana,...frozenPeriods(row)};
   });
   return {fecha:page.fecha,fin_semana:page.fin_semana,grupos:Object.fromEntries(groups),resumen_mes:month,
     saldos, ...(deudas === undefined ? {} : { deudas }), presupuesto:{limites:budget.limites,gastos}};
@@ -375,7 +376,7 @@ export class CommitmentsController{
   @HttpCode(200)
   async pay(@Param('space') space:string,@Param('id') id:string,@Body() body:unknown,@Req() req:Request,@Res({passthrough:true}) res:Response){
     res.setHeader('Cache-Control','no-store');const token=await this.token(req,res);
-    if(!validId(id)||!validPay(body)||Object.keys(body).some(k=>!['id','cuenta_id','fecha','importe'].includes(k)))throw new BadRequestException('Pago invalido');
+    if(!validId(id)||!validPay(body)||Object.keys(body).some(k=>!['id','cuenta_id','fecha','importe','cotizacion_pago'].includes(k)))throw new BadRequestException('Pago invalido');
     return this.forward(token,space,'payments',id.toLowerCase(),0,{...body,id:body.id.toLowerCase(),cuenta_id:body.cuenta_id.toLowerCase()});
   }
   private async read(space:string,kind:'commitments'|'installments'|'payments',id:string|undefined,query:Record<string,unknown>,req:Request,res:Response){

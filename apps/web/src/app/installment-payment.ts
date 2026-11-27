@@ -1,8 +1,9 @@
+import type { PaymentQuote, SavedQuote } from './payment-quote';
 import { AuthSession } from './auth-session';
 import { normalizeAmount } from './expenses';
 import { cents } from './money-reference';
 
-export type Payment = {
+export type Payment = SavedQuote & {
   id: string;
   espacio_id: string;
   cuota_id: string;
@@ -12,7 +13,7 @@ export type Payment = {
   importe: string;
 };
 
-type PaymentDetails = Pick<Payment, 'cuenta_id' | 'fecha' | 'importe'>;
+type PaymentDetails = Pick<Payment, 'cuenta_id' | 'fecha' | 'importe'> & { cotizacion_pago?: PaymentQuote };
 export type InstallmentPayment = { quota: string; body: PaymentDetails & { id: string } };
 
 export function prepareInstallmentPayment(
@@ -28,7 +29,9 @@ export function prepareInstallmentPayment(
 
   const body = { ...details, importe: amount };
   if (previous?.quota === quota && previous.body.cuenta_id === body.cuenta_id &&
-      previous.body.fecha === body.fecha && previous.body.importe === body.importe) return previous;
+      previous.body.fecha === body.fecha && previous.body.importe === body.importe &&
+      previous.body.cotizacion_pago?.fuente === body.cotizacion_pago?.fuente &&
+      previous.body.cotizacion_pago?.tasa === body.cotizacion_pago?.tasa) return previous;
   return { quota, body: { id: crypto.randomUUID(), ...body } };
 }
 

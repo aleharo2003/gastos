@@ -1,4 +1,4 @@
-export type CurrencyTotal = {moneda:string;dia:string;mes:string;semana?:string};
+export type CurrencyTotal = {moneda:string;dia:string;mes:string;semana?:string; fijados?: Record<'dia' | 'mes' | 'semana', {usd:string;ars:string}>};
 export function rateUnits(value:string): bigint | null {
   const normalized=value.trim().replace(',', '.');
   if(!/^(?:0|[1-9][0-9]{0,7})(?:\.[0-9]{1,4})?$/.test(normalized)) return null;
@@ -18,7 +18,11 @@ export function reference(rows:(Pick<CurrencyTotal, 'moneda'> & Partial<Currency
   for(const row of rows) {
     const amount=cents(row[period] ?? 'invalid');
     if(row.moneda===currency) native+=amount;
-    else if(['ARS','USD'].includes(row.moneda)) other+=amount;
+    else if(row.moneda === 'USD' && row.fijados?.[period]) {
+      const fixed = row.fijados[period];
+      native += cents(fixed.ars);
+      other += amount - cents(fixed.usd);
+    } else if(['ARS','USD'].includes(row.moneda)) other+=amount;
     else if(amount!==0n) return null;
   }
   if(other===0n) return native;

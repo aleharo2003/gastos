@@ -37,6 +37,9 @@
             <label for="due-pay-amount">Importe en {{ item.moneda }}</label>
             <input id="due-pay-amount" name="dueAmount" inputmode="decimal" [(ngModel)]="paymentAmount" required />
           }
+          @if (item.moneda === 'USD') {
+            <app-payment-quote fieldId="due-payment-quote" [disabled]="saving() || uncertain()" (quoteChange)="paymentQuote = $event" />
+          }
         </fieldset>
         <div class="payment-actions">
           <button type="submit" [disabled]="saving() || pendingCurrencyConflict(item) || (!item.cuenta_id && !account)">{{ saving() ? 'Registrando…' : uncertain() ? 'Reintentar pago' : 'Registrar pago' }}</button>
@@ -71,6 +74,7 @@
                     <div><strong>{{ item.nombre }}</strong><small>{{ item.cuenta_id ? 'Gasto pendiente' : 'Cuota ' + item.numero }} · {{ shortDate(item.vencimiento) }}</small></div>
                     <div>
                       <strong>{{ item.moneda }} {{ amount(item.pendiente) }}</strong>
+                       @if (item.moneda === 'USD' && estimatedArs(item.pendiente, rate()); as estimate) { <small>ARS {{ estimate }} estimados</small> }
                       @if (item.pendiente_ajuste) {
                         <small>Pendiente de ajuste</small>
                       } @else if (item.estimado) {

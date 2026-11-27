@@ -11,6 +11,7 @@ from pydantic import BaseModel,ConfigDict,Field,StrictInt,field_validator,model_
 from sqlalchemy import text
 from app.adjustment_indices import IndexValueInput
 from app.amortization import AmortizationSystem, amortize
+from app.payment_quote import PaymentQuote, matches_payment_quote, public_payment_quote, resolve_payment_quote
 from app.accounts import execute,require_member,NO_STORE
 from app.expenses import Category,expense_summary,require_account
 from app.incomes import IncomeInput,account_balance
@@ -95,6 +96,7 @@ class PaymentInput(BaseModel):
     cuenta_id:UUID
     fecha:date
     importe:Decimal
+    cotizacion_pago: PaymentQuote | None = None
 
     @field_validator('id','cuenta_id')
     @classmethod
@@ -247,7 +249,7 @@ def list_installments(session,user,space,identifier,offset=0):
 
 def public_payment(row):
     return {key:str(row[key]) for key in ('id','espacio_id','cuota_id','cuenta_id')}|{
-        'fecha':row['fecha'].isoformat(),'moneda':row['moneda'],'importe':format(row['importe'],'.2f')}
+        'fecha':row['fecha'].isoformat(),'moneda':row['moneda'],'importe':format(row['importe'],'.2f')} | public_payment_quote(row)
 
 
 def require_installment(session,user,space,identifier,write=False):
@@ -277,6 +279,7 @@ def pay_installment(session,user,space,identifier,body):
         JOIN public.gastos g ON g.espacio_id=p.espacio_id AND g.id=p.id WHERE p.espacio_id=:s AND p.id=:id"""),params).mappings().one_or_none()
     if existing is not None:
         if (existing['cuota_id']!=identifier or str(existing['usuario_id'])!=str(user) or
+            not matches_payment_quote(existing, body.cotizacion_pago) or
             any(existing[k]!=getattr(body,k) for k in ('cuenta_id','fecha','importe'))):
             raise HTTPException(409,'Identificador usado para otro pago',headers=NO_STORE)
         return public_payment(existing)
@@ -286,13 +289,15 @@ def pay_installment(session,user,space,identifier,body):
     if body.importe>row['importe']-paid:
         raise HTTPException(409,'El pago supera el saldo pendiente; actualiza las cuotas',headers=NO_STORE)
     params.update(d=('Cuota '+str(row['numero'])+' · '+row['nombre'])[:160],m=row['moneda'],c=row['categoria'])
+    quote = resolve_payment_quote(session, space, body.fecha, row['moneda'], body.cotizacion_pago)
+    params.update(quote)
     inserted=session.execute(text("""INSERT INTO public.gastos
-        (id,espacio_id,cuenta_id,usuario_id,fecha,descripcion,moneda,importe,categoria)
-        VALUES (:id,:s,:a,:u,:f,:d,:m,:i,:c) ON CONFLICT (id) DO NOTHING RETURNING id"""),params).scalar_one_or_none()
+        (id,espacio_id,cuenta_id,usuario_id,fecha,descripcion,moneda,importe,categoria,tasa_pago,fuente_tasa_pago)
+        VALUES (:id,:s,:a,:u,:f,:d,:m,:i,:c,:tasa_pago,:fuente_tasa_pago) ON CONFLICT (id) DO NOTHING RETURNING id"""),params).scalar_one_or_none()
     if inserted is None:raise HTTPException(409,'Identificador usado para otro gasto',headers=NO_STORE)
     session.execute(text('INSERT INTO public.pagos_cuota(id,espacio_id,cuota_id) VALUES (:id,:s,:q)'),params)
     return public_payment({'id':body.id,'espacio_id':space,'cuota_id':identifier,'cuenta_id':body.cuenta_id,
-                           'fecha':body.fecha,'moneda':row['moneda'],'importe':body.importe})
+                           'fecha':body.fecha,'moneda':row['moneda'],'importe':body.importe, **quote})
 
 
 def list_payments(session,user,space,identifier,offset=0):
