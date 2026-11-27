@@ -33,7 +33,7 @@ describe('Preferencias de recordatorios', () => {
     channel.dispatchEvent(new Event('change', { bubbles: true }));
     await fixture.whenStable();
     fixture.detectChanges();
-    expect(screen.textContent).toContain('Los avisos están desactivados.');
+    expect(screen.textContent).toContain('El envío por correo o push está desactivado.');
     screen.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     await fixture.whenStable();
     fixture.detectChanges();
