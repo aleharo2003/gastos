@@ -12,6 +12,11 @@ type Sale = {
   fecha_referencia: string | null; diferencia_pct: string | null;
 };
 type Draft = Pick<Sale, 'origen_id' | 'destino_id' | 'fecha' | 'contraparte' | 'usd' | 'ars'>;
+type Analysis = {
+  contrapartes: { contraparte: string; operaciones: number; comparadas: number; ofertas: number; diferencia: string | null }[];
+  rondas: { ronda: string; fecha: string; contraparte: string; mejor_contraparte: string; aceptada: string;
+    mejor: string; usd: string; diferencia_ars: string }[];
+};
 type SalePage = { items: Sale[]; next_offset: number | null };
 
 @Component({
@@ -27,6 +32,9 @@ export class UsdSales implements OnChanges {
   @Input() accountsLoading = false;
   @Output() loadAccounts = new EventEmitter<void>();
   @Output() changed = new EventEmitter<void>();
+  readonly analysis = signal<Analysis | null>(null);
+  readonly analysisLoading = signal(false);
+  readonly analysisError = signal('');
   readonly sales = signal<Sale[]>([]);
   readonly offset = signal<number | null>(0);
   readonly loading = signal(false);
@@ -73,8 +81,21 @@ export class UsdSales implements OnChanges {
     } finally { if (this.alive) this.loading.set(false); }
   }
 
+  async loadAnalysis(): Promise<void> {
+    if (this.analysisLoading()) return;
+    this.analysisLoading.set(true);
+    this.analysisError.set('');
+    try {
+      const result = await this.auth.accountRequest<Analysis>('GET', this.path + '/analysis');
+      if (this.alive) this.analysis.set(result);
+    } catch {
+      if (this.alive) this.analysisError.set('No pudimos cargar el análisis de contrapartes.');
+    } finally { if (this.alive) this.analysisLoading.set(false); }
+  }
+
   refreshAfterOffer(): void {
     this.changed.emit();
+      if (this.analysis()) void this.loadAnalysis();
     void this.load();
   }
 
@@ -103,6 +124,7 @@ export class UsdSales implements OnChanges {
       this.dollars = ''; this.pesos = ''; this.counterparty = '';
       this.notice.set('Venta registrada. Se actualizaron ambas cuentas.');
       this.changed.emit();
+      if (this.analysis()) void this.loadAnalysis();
       await this.load();
     } catch {
       if (this.alive) this.error.set('No pudimos confirmar la venta. Revisá los datos y reintentá.');

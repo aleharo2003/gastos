@@ -106,3 +106,52 @@ def read_sales(space: UUID, request: Request, response: Response, offset: int = 
 @router.post('/spaces/{space}/usd-sales')
 def post_sale(space: UUID, body: SaleInput, request: Request, response: Response):
     return execute(request, response, space, lambda session, user: save_sale(session, user, space, body))
+
+
+@router.get('/spaces/{space}/usd-sales/analysis')
+def read_sale_analysis(space: UUID, request: Request, response: Response):
+    return execute(request, response, space, lambda session, user: sale_analysis(session, user, space))
+
+
+def sale_analysis(session, user, space):
+    require_member(session, user, space)
+    ranking = session.execute(text("""
+        WITH sales AS (
+            SELECT lower(btrim(contraparte)) AS key, min(contraparte) AS nombre,
+                   count(*) AS operaciones, count(referencia) AS comparadas,
+                   avg((ars / usd / referencia - 1) * 100) FILTER (WHERE referencia IS NOT NULL) AS diferencia
+            FROM public.ventas_usd WHERE espacio_id=:s GROUP BY 1
+        ), offers AS (
+            SELECT lower(btrim(contraparte)) AS key, min(contraparte) AS nombre, count(*) AS ofertas
+            FROM public.ofertas_usd WHERE espacio_id=:s GROUP BY 1
+        )
+        SELECT coalesce(s.nombre,o.nombre) AS contraparte, coalesce(s.operaciones,0) AS operaciones,
+            coalesce(s.comparadas,0) AS comparadas, coalesce(o.ofertas,0) AS ofertas, s.diferencia
+        FROM sales s FULL JOIN offers o USING (key)
+        ORDER BY s.diferencia DESC NULLS LAST, operaciones DESC, lower(coalesce(s.nombre,o.nombre))
+        LIMIT 50
+    """), {'s': space}).mappings().all()
+    rounds = session.execute(text("""
+        SELECT a.ronda, a.contraparte, v.fecha, a.tasa AS aceptada, best.tasa AS mejor,
+               best.contraparte AS mejor_contraparte, v.usd,
+               greatest(round(v.usd * best.tasa,2) - v.ars,0) AS diferencia_ars
+        FROM public.ofertas_usd a
+        JOIN public.ventas_usd v ON v.espacio_id=a.espacio_id AND v.id=a.venta_id
+        JOIN LATERAL (
+            SELECT o.tasa, o.contraparte FROM public.ofertas_usd o
+            WHERE o.espacio_id=a.espacio_id AND o.ronda=a.ronda
+            ORDER BY o.tasa DESC, (o.id=a.id) DESC, o.id LIMIT 1
+        ) best ON true
+        WHERE a.espacio_id=:s AND a.estado='aceptada'
+          AND EXISTS (SELECT FROM public.ofertas_usd o WHERE o.espacio_id=a.espacio_id AND o.ronda=a.ronda AND o.id<>a.id)
+        ORDER BY v.fecha DESC,a.ronda DESC LIMIT 50
+    """), {'s': space}).mappings().all()
+    return {
+        'contrapartes': [{**row, 'diferencia': format(row['diferencia'], '.2f') if row['diferencia'] is not None else None}
+                         for row in ranking],
+        'rondas': [{'ronda': str(row['ronda']), 'fecha': row['fecha'].isoformat(),
+                    'contraparte': row['contraparte'], 'mejor_contraparte': row['mejor_contraparte'],
+                    'aceptada': format(row['aceptada'],'.4f'), 'mejor': format(row['mejor'],'.4f'),
+                    'usd': format(row['usd'],'.2f'), 'diferencia_ars': format(row['diferencia_ars'],'.2f')}
+                   for row in rounds],
+    }

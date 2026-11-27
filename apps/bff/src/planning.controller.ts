@@ -46,7 +46,7 @@ export function validPlan(v:unknown):boolean {
   return true;
 }
 
-type PlanningResource = 'spending-plan' | 'reminder-preferences' | 'spending-plan/category-limits' | 'usd-reference' | 'usd-reference/settings' | 'usd-sales' | 'usd-offers';
+type PlanningResource = 'spending-plan' | 'reminder-preferences' | 'spending-plan/category-limits' | 'usd-reference' | 'usd-reference/settings' | 'usd-sales' | 'usd-offers' | 'usd-sales/analysis';
 
 function validReminderPreferences(value: unknown): boolean {
   if (!record(value) || !keys(value, [
@@ -102,6 +102,20 @@ function validOfferWrite(value: unknown): boolean {
     && typeof value.id === 'string' && UUID.test(value.id) && typeof value.ronda === 'string' && UUID.test(value.ronda)
     && typeof value.contraparte === 'string' && value.contraparte.trim().length > 0 && [...value.contraparte].length <= 160
     && validManualRate({ fecha: '2000-01-01', tasa: value.tasa });
+}
+
+function validSaleAnalysis(value: unknown): boolean {
+  if (!record(value) || !keys(value, ['contrapartes','rondas']) || !Array.isArray(value.contrapartes)
+    || !Array.isArray(value.rondas) || value.contrapartes.length > 50 || value.rondas.length > 50) return false;
+  const money = (v: unknown) => typeof v === 'string' && /^-?\d{1,28}\.\d{2,4}$/.test(v);
+  const count = (v: unknown) => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0;
+  const name = (v: unknown) => typeof v === 'string' && v.length > 0 && v.length <= 320;
+  return value.contrapartes.every(r => record(r) && keys(r, ['contraparte','operaciones','comparadas','ofertas','diferencia'])
+    && name(r.contraparte) && count(r.operaciones) && count(r.comparadas) && count(r.ofertas)
+    && (r.diferencia === null || money(r.diferencia))) &&
+    value.rondas.every(r => record(r) && keys(r, ['ronda','fecha','contraparte','mejor_contraparte','aceptada','mejor','usd','diferencia_ars'])
+      && typeof r.ronda === 'string' && UUID.test(r.ronda) && rateDate(r.fecha)
+      && name(r.contraparte) && name(r.mejor_contraparte) && [r.aceptada,r.mejor,r.usd,r.diferencia_ars].every(money));
 }
 
 @Controller('api/spaces/:space')
@@ -190,6 +204,11 @@ export class PlanningController {
     return this.forward(space, request, response, body, true, 'usd-offers');
   }
 
+  @Get('usd-sales/analysis')
+  readUsdAnalysis(@Param('space') space: string, @Req() request: Request, @Res({ passthrough: true }) response: Response) {
+    return this.forward(space, request, response, undefined, false, 'usd-sales/analysis');
+  }
+
   private async forward(
     space: string, request: Request, response: Response, body?: unknown,
     writing = false, resource: PlanningResource = 'spending-plan', month?: unknown,
@@ -206,7 +225,7 @@ export class PlanningController {
     const market = resource === 'usd-reference/settings';
     const sale = resource === 'usd-sales';
     const offers = resource === 'usd-offers';
-    const validate = offers ? (data: unknown) => record(data) && (writing
+    const validate = resource === 'usd-sales/analysis' ? validSaleAnalysis : offers ? (data: unknown) => record(data) && (writing
       ? (keys(data, ['oferta']) && validOfferRow(data.oferta)) || (keys(data, ['venta']) && validSaleRow(data.venta))
       : keys(data, ['items','next_offset']) && Array.isArray(data.items) && data.items.length <= 100
         && data.items.every(validOfferRow) && (data.next_offset === null || data.next_offset === Number(month ?? 0) + 100))
@@ -245,7 +264,7 @@ export class PlanningController {
       });
       if([400,401,403,409,422,503].includes(result.status))throw new HttpException('No se pudo completar la operacion',result.status);
       if(!result.ok)throw new Error();
-      const data=await boundedJson(result,65536);
+      const data=await boundedJson(result, resource === 'usd-sales/analysis' ? 262144 : 65536);
       if(!validate(data))throw new Error();
       return data;
     } catch(error){if(error instanceof HttpException)throw error;throw new BadGatewayException('No se pudo consultar FastAPI');}
