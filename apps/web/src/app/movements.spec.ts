@@ -27,7 +27,7 @@ describe('Paginación de Movimientos', () => {
       fixture.detectChanges();
     };
     await refresh();
-    return { component: fixture.componentInstance, callbacks, refresh };
+    return { fixture, component: fixture.componentInstance, callbacks, refresh };
   }
 
   const page = (from: number, count: number, next_cursor: string | null) => ({
@@ -70,6 +70,26 @@ describe('Paginación de Movimientos', () => {
     await component.load(true);
     expect(component.items()).toHaveLength(51);
     expect(component.error()).toBe('');
+  });
+
+  it('muestra una compra de dólares con las dos monedas y respeta la privacidad', async () => {
+    const purchase = { ...page(7, 1, null).items[0], tipo: 'cambio', descripcion: 'Casa de cambio',
+      origen: 'Pesos', destino: 'Dólares', moneda: 'ARS', importe: '160000.00',
+      moneda_destino: 'USD', importe_destino: '100.00' };
+    const request = vi.fn().mockResolvedValue({ ...page(0, 0, null), items: [purchase] });
+    const { fixture, component, refresh } = await setup(request);
+    const row = fixture.nativeElement.querySelector('ul.movement-list li');
+    expect(row.textContent).toContain('Compra de USD');
+    expect(row.textContent).toContain('Pesos → Dólares');
+    expect(row.querySelector('strong:last-child').textContent).toContain('ARS');
+    expect(row.querySelector('strong:last-child').textContent).toContain('→ USD');
+    expect(row.querySelector('button')).toBeNull();
+    fixture.componentRef.setInput('amountsHidden', true);
+    await refresh();
+    expect(row.querySelector('strong:last-child').textContent).toContain('ARS •••• → USD ••••');
+    component.filters.tipo = 'cambio';
+    await component.load();
+    expect(request).toHaveBeenLastCalledWith('GET', '/api/spaces/test-space/movements?tipo=cambio');
   });
 
   it('anula una transferencia y vuelve a cargar el filtro que se estaba mostrando', async () => {
