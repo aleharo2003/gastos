@@ -71,6 +71,15 @@ def check_fx_sales(runtime_url, migration_url):
             ranks = {row['contraparte']: row for row in report['contrapartes']}
             assert ranks['Luis']['operaciones'] == 0 and ranks['Luis']['diferencia'] is None
             assert ranks['Ana']['operaciones'] == 1 and ranks['Ana']['comparadas'] == 1
+        with runtime_transaction(runtime, usuario_id=owner, espacio_id=owner) as s:
+            unusual = sale.model_copy(update={'id': uuid4(), 'ars': sale.ars * 2})
+            try:
+                save_sale(s, owner, owner, unusual)
+            except HTTPException as error:
+                assert error.status_code == 409 and error.detail['codigo'] == 'cotizacion_atipica'
+            else:
+                raise AssertionError('Venta atípica aceptada sin confirmar')
+            assert save_sale(s, owner, owner, unusual.model_copy(update={'confirmar_atipico': True}))['usd'] == '25.00'
         print('OK: venta USD, saldos por moneda, referencia congelada y reintento.', flush=True)
     finally:
         with migrator.begin() as c:

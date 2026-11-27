@@ -4,7 +4,7 @@ from decimal import Decimal
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
-from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, StrictBool, field_validator, model_validator
 from sqlalchemy import text
 
 from app.accounts import execute, NO_STORE, require_member
@@ -23,6 +23,7 @@ class SaleInput(BaseModel):
     contraparte: str
     usd: Decimal
     ars: Decimal
+    confirmar_atipico: StrictBool = False
 
     @field_validator('fecha', mode='before')
     @classmethod
@@ -67,7 +68,7 @@ def get_sale(session, space, identifier):
 
 def save_sale(session, user, space, body):
     require_member(session, user, space, write=True)
-    values = body.model_dump()
+    values = body.model_dump(exclude={'confirmar_atipico'})
     current = get_sale(session, space, body.id)
     if current is None:
         accounts = session.execute(text("""
@@ -78,6 +79,10 @@ def save_sale(session, user, space, body):
         if len(codes) != 2 or codes.get(body.origen_id) not in (None, 'USD') or codes.get(body.destino_id) not in (None, 'ARS'):
             raise HTTPException(422, 'Elegí una cuenta para USD y una cuenta para ARS', headers=NO_STORE)
         reference = effective_rate(session, space, body.fecha)['cotizacion']
+        if reference and not body.confirmar_atipico:
+            expected = body.usd * Decimal(reference['tasa'])
+            if abs(body.ars - expected) * 100 > expected * 30:
+                raise HTTPException(409, {'codigo': 'cotizacion_atipica'}, headers=NO_STORE)
         session.execute(text("""
             INSERT INTO public.ventas_usd (espacio_id,id,origen_id,destino_id,fecha,contraparte,usd,ars,referencia,fecha_referencia)
             VALUES (:s,:id,:origen_id,:destino_id,:fecha,:contraparte,:usd,:ars,:referencia,:fecha_referencia)

@@ -46,6 +46,7 @@ class AcceptOffer(BaseModel):
     fecha: date
     usd: Decimal
     confirmar_mejor: StrictBool = False
+    confirmar_atipico: StrictBool = False
 
     @field_validator('fecha', mode='before')
     @classmethod
@@ -120,7 +121,8 @@ def accept_offer(session, user, space, body):
     ars = format((body.usd * row['tasa']).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP), '.2f')
     try:
         sale = SaleInput(id=body.oferta_id, origen_id=body.origen_id, destino_id=body.destino_id,
-                         fecha=body.fecha.isoformat(), contraparte=row['contraparte'], usd=usd, ars=ars)
+                         fecha=body.fecha.isoformat(), contraparte=row['contraparte'], usd=usd, ars=ars,
+                         confirmar_atipico=body.confirmar_atipico)
     except ValidationError:
         raise HTTPException(422, 'Verificá la fecha, las cuentas y el importe de la venta', headers=NO_STORE) from None
     result = save_sale(session, user, space, sale)
