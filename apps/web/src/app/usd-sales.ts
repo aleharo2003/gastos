@@ -7,12 +7,15 @@ import { type AccountOption, compatibleAccounts } from './account-currency';
 import { normalizeAmount, showAmount } from './expenses';
 import { installmentLocalDate } from './installment-date';
 
+type Operation = 'venta' | 'compra';
+
 type Sale = {
+  tipo?: Operation;
   id: string; origen_id: string; destino_id: string; fecha: string; contraparte: string;
   usd: string; ars: string; tasa: string; referencia: string | null;
   fecha_referencia: string | null; diferencia_pct: string | null;
 };
-type Draft = Pick<Sale, 'origen_id' | 'destino_id' | 'fecha' | 'contraparte' | 'usd' | 'ars'>;
+type Draft = Pick<Sale, 'origen_id' | 'destino_id' | 'fecha' | 'contraparte' | 'usd' | 'ars' | 'tipo'>;
 type Analysis = {
   contrapartes: { contraparte: string; operaciones: number; comparadas: number; ofertas: number; diferencia: string | null }[];
   rondas: { ronda: string; fecha: string; contraparte: string; mejor_contraparte: string; aceptada: string;
@@ -44,6 +47,7 @@ export class UsdSales implements OnChanges {
   readonly notice = signal('');
   readonly showAmount = showAmount;
   readonly today = installmentLocalDate;
+  operation: Operation = 'venta';
   source = '';
   destination = '';
   date = this.today();
@@ -57,8 +61,13 @@ export class UsdSales implements OnChanges {
   constructor() { inject(DestroyRef).onDestroy(() => { this.alive = false; }); }
 
   protected get path() { return `/api/spaces/${encodeURIComponent(this.space)}/usd-sales`; }
-  get sources() { return compatibleAccounts(this.accounts, 'USD'); }
-  get destinations() { return compatibleAccounts(this.accounts, 'ARS').filter(c => c.id !== this.source); }
+  get sources() { return compatibleAccounts(this.accounts, this.operation === 'compra' ? 'ARS' : 'USD'); }
+  get destinations() { return compatibleAccounts(this.accounts, this.operation === 'compra' ? 'USD' : 'ARS').filter(c => c.id !== this.source); }
+  selectOperation(operation: Operation): void {
+    this.operation = operation;
+    this.source = '';
+    this.destination = '';
+  }
   accountName(id: string) { return this.accounts.find(account => account.id === id)?.nombre ?? 'Cuenta'; }
 
   ngOnChanges(changes: Record<string, unknown>): void {
@@ -78,7 +87,7 @@ export class UsdSales implements OnChanges {
         this.offset.set(page.next_offset);
       }
     } catch {
-      if (this.alive) this.error.set('No pudimos cargar las ventas.');
+      if (this.alive) this.error.set('No pudimos cargar los cambios registrados.');
     } finally { if (this.alive) this.loading.set(false); }
   }
 
@@ -96,7 +105,7 @@ export class UsdSales implements OnChanges {
 
   refreshAfterOffer(): void {
     this.changed.emit();
-      if (this.analysis()) void this.loadAnalysis();
+    if (this.analysis()) void this.loadAnalysis();
     void this.load();
   }
 
@@ -112,7 +121,7 @@ export class UsdSales implements OnChanges {
       return;
     }
     const draft: Draft = { origen_id: this.source, destino_id: this.destination,
-      fecha: this.date, contraparte, usd, ars };
+      fecha: this.date, contraparte, usd, ars, ...(this.operation === 'compra' ? { tipo: this.operation } : {}) };
     if (!this.pending || Object.entries(draft).some(([key, value]) => this.pending?.[key as keyof Draft] !== value)) {
       this.pending = { ...draft, id: crypto.randomUUID() };
     }
@@ -124,13 +133,13 @@ export class UsdSales implements OnChanges {
       if (!this.alive) return;
       this.pending = undefined;
       this.dollars = ''; this.pesos = ''; this.counterparty = '';
-      this.notice.set('Venta registrada. Se actualizaron ambas cuentas.');
+      this.notice.set(payload.tipo === 'compra' ? 'Compra registrada. Se actualizaron ambas cuentas.' : 'Venta registrada. Se actualizaron ambas cuentas.');
       this.changed.emit();
       if (this.analysis()) void this.loadAnalysis();
       await this.load();
     } catch (error) {
       if (error instanceof AnomalyCancelled) return;
-      if (this.alive) this.error.set('No pudimos confirmar la venta. Revisá los datos y reintentá.');
+      if (this.alive) this.error.set('No pudimos confirmar el cambio. Revisá los datos y reintentá.');
     } finally { if (this.alive) this.saving.set(false); }
   }
 }

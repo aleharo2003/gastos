@@ -212,6 +212,9 @@
                   }
                 </dl>
               } @else { <p>No hay saldos disponibles.</p> }
+              @if (account.moneda === 'USD' || hasUsdBalance(result)) {
+                <app-usd-holding [space]="space" [account]="account.id" [hiddenAmounts]="amountsHidden()" />
+              }
             } @else if (balanceError()) {
               <p role="alert">No pudimos cargar el saldo.</p>
               <button type="button" class="secondary" (click)="loadBalance(account.id)">Reintentar</button>

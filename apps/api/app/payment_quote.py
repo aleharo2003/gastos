@@ -38,7 +38,7 @@ def resolve_payment_quote(session, space, day, currency, choice):
         rate = choice.tasa
     elif source == 'ultima_venta':
         rate = session.execute(text("""
-            SELECT tasa FROM public.ventas_usd WHERE espacio_id=:s AND fecha<=:day AND tasa>0
+            SELECT tasa FROM public.ventas_usd WHERE espacio_id=:s AND tipo='venta' AND fecha<=:day AND tasa>0
             ORDER BY fecha DESC, registrada_en DESC NULLS LAST, id DESC LIMIT 1
         """), {'s': space, 'day': day}).scalar_one_or_none()
     else:

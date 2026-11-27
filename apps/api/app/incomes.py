@@ -139,10 +139,12 @@ def account_balance(session, user, space, account=None, *, through=None):
           SELECT moneda, 0::numeric, 0::numeric, 0::numeric, 0::numeric, importe
           FROM public.transferencias WHERE espacio_id=:s AND anulado_en IS NULL""" + outgoing + """
           UNION ALL
-          SELECT 'ARS', 0::numeric, 0::numeric, 0::numeric, ars, 0::numeric
+          SELECT CASE WHEN tipo='compra' THEN 'USD' ELSE 'ARS' END, 0::numeric, 0::numeric, 0::numeric,
+              CASE WHEN tipo='compra' THEN usd ELSE ars END, 0::numeric
           FROM public.ventas_usd WHERE espacio_id=:s""" + (cutoff + (' AND destino_id=:a' if account is not None else '')) + """
           UNION ALL
-          SELECT 'USD', 0::numeric, 0::numeric, 0::numeric, 0::numeric, usd
+          SELECT CASE WHEN tipo='compra' THEN 'ARS' ELSE 'USD' END, 0::numeric, 0::numeric, 0::numeric,
+              0::numeric, CASE WHEN tipo='compra' THEN ars ELSE usd END
           FROM public.ventas_usd WHERE espacio_id=:s""" + (cutoff + (' AND origen_id=:a' if account is not None else '')) + """
         ) movimientos GROUP BY moneda ORDER BY moneda"""), {'s':space,'a':account,'through':through}).mappings().all()
     by_currency = {row['moneda']:row for row in rows}
@@ -199,10 +201,12 @@ def savings_summary(session, user, space, month, today, offset=0):
             SELECT origen_id, moneda, -importe FROM public.transferencias
             WHERE espacio_id=:space AND anulado_en IS NULL AND fecha<=:today AND origen_id IN (SELECT id FROM pagina)
             UNION ALL
-            SELECT destino_id, 'ARS', ars FROM public.ventas_usd
+            SELECT destino_id, CASE WHEN tipo='compra' THEN 'USD' ELSE 'ARS' END,
+                CASE WHEN tipo='compra' THEN usd ELSE ars END FROM public.ventas_usd
             WHERE espacio_id=:space AND fecha<=:today AND destino_id IN (SELECT id FROM pagina)
             UNION ALL
-            SELECT origen_id, 'USD', -usd FROM public.ventas_usd
+            SELECT origen_id, CASE WHEN tipo='compra' THEN 'ARS' ELSE 'USD' END,
+                CASE WHEN tipo='compra' THEN -ars ELSE -usd END FROM public.ventas_usd
             WHERE espacio_id=:space AND fecha<=:today AND origen_id IN (SELECT id FROM pagina)
         )
         SELECT a.id,a.nombre,a.activa,s.moneda,SUM(s.neto) AS saldo
