@@ -49,16 +49,16 @@
                   @for (currency of columns(); track currency) { <td>{{ display(rows.income, currency) }}</td> }
                 </tr>
                 <tr><th scope="row">Pagos de cuotas</th>
-                  @for (currency of columns(); track currency) { <td>{{ display(rows.installments, currency) }}</td> }
+                  @for (currency of columns(); track currency) { <td>{{ display(rows.installments, currency, rows.installmentsFixed) }}</td> }
                 </tr>
                 <tr><th scope="row">Otros gastos</th>
-                  @for (currency of columns(); track currency) { <td>{{ display(rows.other, currency) }}</td> }
+                  @for (currency of columns(); track currency) { <td>{{ display(rows.other, currency, rows.otherFixed) }}</td> }
                 </tr>
                 <tr class="expense-total"><th scope="row">Total gastos</th>
-                  @for (currency of columns(); track currency) { <td>{{ display(rows.expenses, currency) }}</td> }
+                  @for (currency of columns(); track currency) { <td>{{ display(rows.expenses, currency, rows.expensesFixed) }}</td> }
                 </tr>
                 <tr class="month-net"><th scope="row">Resultado del mes</th>
-                  @for (currency of columns(); track currency) { <td>{{ display(rows.net, currency) }}</td> }
+                  @for (currency of columns(); track currency) { <td>{{ display(rows.net, currency, rows.netFixed) }}</td> }
                 </tr>
                 <tr class="annual"><th scope="row">Ingresos acumulados del año</th>
                   @for (currency of columns(); track currency) { <td>{{ display(rows.annual, currency) }}</td> }

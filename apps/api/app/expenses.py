@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Request, Response, Query
 from pydantic import BaseModel, ConfigDict, Field, field_validator, StrictBool
 from sqlalchemy import text
 from app.usd_reference import local_today
+from app.payment_quote import PaymentQuote, matches_payment_quote, public_payment_quote, resolve_payment_quote
 from app.accounts import execute, require_member, NO_STORE
 from app.expense_search import ExpenseSearch
 from app.category_suggestions import suggest_category
@@ -82,6 +83,7 @@ def iso_expense_date(value):
 
 class ExpenseInput(ExpenseDetailsInput):
     fecha: date
+    cotizacion_pago: PaymentQuote | None = None
 
     @field_validator('fecha', mode='before')
     @classmethod
@@ -96,6 +98,7 @@ class PendingExpenseInput(ExpenseDetailsInput):
 class PendingExpensePayment(BaseModel):
     model_config = ConfigDict(extra='forbid')
     fecha: date
+    cotizacion_pago: PaymentQuote | None = None
 
     @field_validator('fecha', mode='before')
     @classmethod
@@ -132,6 +135,9 @@ def edit_expense(session, user, space, account, expense_id, body):
         raise HTTPException(404, 'Gasto no disponible', headers=NO_STORE)
     if row['anulado_en'] is not None:
         raise HTTPException(409, 'El gasto está anulado', headers=NO_STORE)
+
+    if row.get('tasa_pago') is not None and body.nuevo.moneda != row['moneda']:
+        raise HTTPException(422, 'Conservá la moneda de un gasto con cotización guardada', headers=NO_STORE)
 
     def matches(value):
         return (all(row[key] == getattr(value, key) for key in ('fecha','descripcion','moneda','importe'))
@@ -200,7 +206,7 @@ def public_expense(row):
             result[key] = row[key].isoformat()
     if row.get('pago_cuota'):
         result['pago_cuota'] = True
-    return result
+    return result | public_payment_quote(row)
 
 
 class ExpenseFilters(BaseModel):
@@ -291,20 +297,24 @@ def create_expense(session, user, space, account, body, *, from_pending=False):
               **{key: getattr(body, key) for key in OPTIONAL_EXPENSE_FIELDS}}
     if body.categoria is not None and not from_pending:
         lock_catalog(session, space)
-        existing = session.execute(text('SELECT id FROM public.gastos WHERE id=:id AND espacio_id=:s AND cuenta_id=:a'),
-                                   params).scalar_one_or_none()
-        if existing is None:
+    existing = session.execute(text('SELECT * FROM public.gastos WHERE id=:id AND espacio_id=:s AND cuenta_id=:a'),
+                               params).mappings().one_or_none()
+    if existing is None:
+        if body.categoria is not None and not from_pending:
             require_active_category(session, space, 'gasto', body.categoria)
             check_expense_anomaly(session, space, body, body.fecha)
+        params.update(resolve_payment_quote(session, space, body.fecha, body.moneda, body.cotizacion_pago))
+    else:
+        params.update(tasa_pago=existing['tasa_pago'], fuente_tasa_pago=existing['fuente_tasa_pago'])
     inserted = session.execute(text('''INSERT INTO public.gastos(id,espacio_id,cuenta_id,usuario_id,fecha,descripcion,moneda,importe,
-                              categoria,nota,fecha_devengamiento,fecha_vencimiento)
-                            VALUES (:id,:s,:a,:u,:f,:d,:m,:i,:categoria,:nota,:fecha_devengamiento,:fecha_vencimiento)
+                              categoria,nota,fecha_devengamiento,fecha_vencimiento,tasa_pago,fuente_tasa_pago)
+                            VALUES (:id,:s,:a,:u,:f,:d,:m,:i,:categoria,:nota,:fecha_devengamiento,:fecha_vencimiento,:tasa_pago,:fuente_tasa_pago)
                             ON CONFLICT (id) DO NOTHING'''),params)
     if from_pending and inserted.rowcount != 1:
         raise HTTPException(409, 'Identificador usado para otro gasto', headers=NO_STORE)
     row = session.execute(text('SELECT * FROM public.gastos WHERE id=:id AND espacio_id=:s AND cuenta_id=:a'),
                           params).mappings().one_or_none()
-    if (row is None or str(row['usuario_id']) != str(user) or
+    if (row is None or str(row['usuario_id']) != str(user) or not matches_payment_quote(row, body.cotizacion_pago) or
             any(row[key] != getattr(body, key) for key in ('fecha','descripcion','moneda','importe',*OPTIONAL_EXPENSE_FIELDS))):
         raise HTTPException(409, 'Identificador usado para otro gasto', headers=NO_STORE)
     return public_expense(row)
@@ -354,7 +364,8 @@ def pay_pending_expense(session, user, space, account, expense_id, payment):
         existing = session.execute(text("""
             SELECT * FROM public.gastos WHERE id=:id AND espacio_id=:space AND cuenta_id=:account
         """), params).mappings().one()
-        if existing['fecha'] != payment.fecha or existing['anulado_en'] is not None:
+        if (existing['fecha'] != payment.fecha or existing['anulado_en'] is not None
+                or not matches_payment_quote(existing, payment.cotizacion_pago)):
             raise HTTPException(409, 'El gasto ya fue procesado', headers=NO_STORE)
         return public_expense(existing)
     body = ExpenseInput(
@@ -362,6 +373,7 @@ def pay_pending_expense(session, user, space, account, expense_id, payment):
         moneda=row['moneda'], importe=format(row['importe'], '.2f'), categoria=row['categoria'], nota=row['nota'],
         fecha_devengamiento=row['fecha_devengamiento'].isoformat() if row['fecha_devengamiento'] else None,
         fecha_vencimiento=row['fecha_vencimiento'].isoformat(),
+        cotizacion_pago=payment.cotizacion_pago,
     )
     result = create_expense(session, user, space, account, body, from_pending=True)
     linked = session.execute(text("""
@@ -467,11 +479,24 @@ def expense_summary(session, user, space, account=None, day=None):
     rows = session.execute(text("""SELECT moneda,
         COALESCE(SUM(importe) FILTER (WHERE fecha=:d),0) AS dia,
         COALESCE(SUM(importe) FILTER (WHERE fecha>=:f AND fecha<:u),0) AS mes,
-        COALESCE(SUM(importe) FILTER (WHERE fecha>=:w AND fecha<:we),0) AS semana FROM public.gastos
+        COALESCE(SUM(importe) FILTER (WHERE fecha>=:w AND fecha<:we),0) AS semana,
+        COALESCE(SUM(importe) FILTER (WHERE tasa_pago IS NOT NULL AND fecha=:d),0) AS dia_usd_fijado,
+        COALESCE(SUM(round(importe*tasa_pago,2)) FILTER (WHERE tasa_pago IS NOT NULL AND fecha=:d),0) AS dia_ars_fijado,
+        COALESCE(SUM(importe) FILTER (WHERE tasa_pago IS NOT NULL AND fecha>=:f AND fecha<:u),0) AS mes_usd_fijado,
+        COALESCE(SUM(round(importe*tasa_pago,2)) FILTER (WHERE tasa_pago IS NOT NULL AND fecha>=:f AND fecha<:u),0) AS mes_ars_fijado,
+        COALESCE(SUM(importe) FILTER (WHERE tasa_pago IS NOT NULL AND fecha>=:w AND fecha<:we),0) AS semana_usd_fijado,
+        COALESCE(SUM(round(importe*tasa_pago,2)) FILTER (WHERE tasa_pago IS NOT NULL AND fecha>=:w AND fecha<:we),0) AS semana_ars_fijado
+        FROM public.gastos
         WHERE espacio_id=:s AND anulado_en IS NULL AND fecha>=LEAST(:f,:w) AND fecha<GREATEST(:u,:we)""" + account_filter + ' GROUP BY moneda'),
         {'s':space,'a':account,'d':day,'f':first,'u':until,'w':week,'we':week_end}).mappings().all()
     return {'fecha':day.isoformat(), 'mes':day.strftime('%Y-%m'),'semana_desde':week.isoformat(),'semana_hasta':(week_end-timedelta(days=1)).isoformat(),
-            'totales':[{'moneda':r['moneda'],'dia':format(r['dia'],'.2f'),'mes':format(r['mes'],'.2f'),'semana':format(r['semana'],'.2f')} for r in rows]}
+            'totales':[{'moneda':r['moneda'],'dia':format(r['dia'],'.2f'),'mes':format(r['mes'],'.2f'),'semana':format(r['semana'],'.2f')} | {
+                'fijados': {periodo: {'usd': format(r[periodo+'_usd_fijado'],'.2f'),
+                                     'ars': format(r[periodo+'_ars_fijado'],'.2f')}
+                            for periodo in ('dia','mes','semana')}
+            } if r['moneda']=='USD' and any(r[periodo+'_usd_fijado'] for periodo in ('dia','mes','semana'))
+            else {'moneda':r['moneda'],'dia':format(r['dia'],'.2f'),'mes':format(r['mes'],'.2f'),'semana':format(r['semana'],'.2f')}
+            for r in rows]}
 
 
 @router.get('/spaces/{space}/expense-summary')

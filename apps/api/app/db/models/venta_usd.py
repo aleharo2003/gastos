@@ -1,8 +1,8 @@
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import Computed, Date, ForeignKeyConstraint, Index, Numeric, Text, UniqueConstraint, Uuid
+from sqlalchemy import Computed, Date, DateTime, ForeignKeyConstraint, Index, Numeric, Text, UniqueConstraint, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -28,3 +28,4 @@ class VentaUsd(Base):
     tasa: Mapped[Decimal | None] = mapped_column(Numeric(), Computed('round(ars / NULLIF(usd,0), 4)', persisted=True))
     referencia: Mapped[Decimal | None] = mapped_column(Numeric(12, 4))
     fecha_referencia: Mapped[date | None] = mapped_column(Date)
+    registrada_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), server_default=func.now())

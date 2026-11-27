@@ -21,7 +21,7 @@ TABLES = (
     ('cuentas', 'id nombre activa tipo moneda saldo_inicial dia_cierre dia_vencimiento fecha_vencimiento tasa_anual', 'id'),
     ('ingresos', 'id cuenta_id fecha descripcion moneda importe categoria anulado_en', 'fecha, id'),
     ('gastos', 'id cuenta_id fecha descripcion moneda importe categoria nota anulado_en '
-     'fecha_devengamiento fecha_vencimiento', 'fecha, id'),
+     'fecha_devengamiento fecha_vencimiento tasa_pago fuente_tasa_pago', 'fecha, id'),
     ('gastos_pendientes', 'id cuenta_id fecha_devengamiento fecha_vencimiento descripcion moneda importe categoria nota gasto_id',
      'fecha_vencimiento, id'),
     ('transferencias', 'id origen_id destino_id fecha descripcion moneda importe anulado_en', 'fecha, id'),

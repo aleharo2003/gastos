@@ -2,6 +2,7 @@ import { BadGatewayException, BadRequestException, Body, Controller, Get, HttpCo
 import type { Request, Response } from 'express';
 import { AuthService } from './auth.service.js';
 import { movementConflict, validConfirmation } from './movement-conflict.js';
+import { frozenPeriods, savedQuote, validPaymentQuote, type PaymentQuote, type SavedQuote } from './payment-quote.js';
 import { boundedJson } from './token-verifier.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -11,17 +12,17 @@ const MAX_CATEGORY_SUMMARY_ROWS = 3 * (100 + 1);
 const isExpenseCategory = (value: unknown): value is string =>
   typeof value === 'string' && (CATEGORIES.includes(value) || UUID.test(value));
 type ExpenseInput = { id: string; fecha: string; descripcion: string; moneda: string; importe: string;
-  confirmar_atipico?: boolean; categoria?: string | null; nota?: string | null; fecha_devengamiento?: string | null; fecha_vencimiento?: string | null };
+  cotizacion_pago?: PaymentQuote; confirmar_atipico?: boolean; categoria?: string | null; nota?: string | null; fecha_devengamiento?: string | null; fecha_vencimiento?: string | null };
 const expenseFields = ['id', 'fecha', 'descripcion', 'moneda', 'importe', 'categoria', 'nota',
   'fecha_devengamiento', 'fecha_vencimiento'];
 const isoDate = (value: unknown): value is string => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
-type Expense = ExpenseInput & { espacio_id: string; cuenta_id: string; coincidencia_aproximada?: boolean; cuenta_nombre?: string; pago_cuota?: boolean };
+type Expense = ExpenseInput & SavedQuote & { espacio_id: string; cuenta_id: string; coincidencia_aproximada?: boolean; cuenta_nombre?: string; pago_cuota?: boolean };
 type ExpenseEdit = { original: ExpenseInput; nuevo: ExpenseInput };
 type PendingExpense = Omit<ExpenseInput, 'fecha'>;
-type PendingPayment = Pick<ExpenseInput, 'fecha'>;
+type PendingPayment = Pick<ExpenseInput, 'fecha' | 'cotizacion_pago'>;
 function valid(value: unknown): value is ExpenseInput {
   const row = value as ExpenseInput;
-  return !!row && validConfirmation(row) && (row.nota == null || (typeof row.nota === 'string' && [...row.nota.trim()].length <= 500 && !/[\x00-\x1f\x7f]/.test(row.nota.trim()))) && (row.categoria == null || isExpenseCategory(row.categoria)) && typeof row.id === 'string' && UUID.test(row.id) && !/^0{8}-0{4}-0{4}-0{4}-0{12}$/.test(row.id) &&
+  return !!row && validConfirmation(row) && validPaymentQuote(row.cotizacion_pago) && (row.nota == null || (typeof row.nota === 'string' && [...row.nota.trim()].length <= 500 && !/[\x00-\x1f\x7f]/.test(row.nota.trim()))) && (row.categoria == null || isExpenseCategory(row.categoria)) && typeof row.id === 'string' && UUID.test(row.id) && !/^0{8}-0{4}-0{4}-0{4}-0{12}$/.test(row.id) &&
     isoDate(row.fecha) && (row.fecha_devengamiento == null || isoDate(row.fecha_devengamiento)) &&
     (row.fecha_vencimiento == null || isoDate(row.fecha_vencimiento)) &&
     typeof row.descripcion === 'string' && [...row.descripcion.trim()].length >= 1 && [...row.descripcion.trim()].length <= 160 &&
@@ -34,7 +35,7 @@ function expense(value: unknown, space: string, account: string | undefined): Ex
   if (row?.pago_cuota !== undefined && typeof row.pago_cuota !== 'boolean') throw new Error();
   if (row?.cuenta_nombre !== undefined && (typeof row.cuenta_nombre !== 'string' || row.cuenta_nombre.length < 1 || row.cuenta_nombre.length > 160)) throw new Error();
   if (!valid(row) || row.espacio_id !== space || (account !== undefined ? row.cuenta_id !== account : typeof row.cuenta_id !== 'string' || !UUID.test(row.cuenta_id))) throw new Error();
-  return { id: row.id, espacio_id: space, cuenta_id: row.cuenta_id, fecha: row.fecha, descripcion: row.descripcion, moneda: row.moneda, importe: row.importe, ...(row.cuenta_nombre !== undefined ? {cuenta_nombre:row.cuenta_nombre} : {}), ...(row.nota != null ? { nota: row.nota } : {}), ...(row.categoria !== undefined ? {categoria:row.categoria} : {}), ...(row.coincidencia_aproximada !== undefined ? {coincidencia_aproximada:row.coincidencia_aproximada} : {}), ...(row.pago_cuota ? { pago_cuota: true } : {}),
+  return { ...savedQuote(row), id: row.id, espacio_id: space, cuenta_id: row.cuenta_id, fecha: row.fecha, descripcion: row.descripcion, moneda: row.moneda, importe: row.importe, ...(row.cuenta_nombre !== undefined ? {cuenta_nombre:row.cuenta_nombre} : {}), ...(row.nota != null ? { nota: row.nota } : {}), ...(row.categoria !== undefined ? {categoria:row.categoria} : {}), ...(row.coincidencia_aproximada !== undefined ? {coincidencia_aproximada:row.coincidencia_aproximada} : {}), ...(row.pago_cuota ? { pago_cuota: true } : {}),
     ...(row.fecha_devengamiento != null ? { fecha_devengamiento: row.fecha_devengamiento } : {}),
     ...(row.fecha_vencimiento != null ? { fecha_vencimiento: row.fecha_vencimiento } : {}) };
 }
@@ -129,7 +130,7 @@ export class ExpensesController {
   async create(@Param('space') space: string, @Param('account') account: string, @Body() body: unknown, @Req() request: Request, @Res({ passthrough: true }) response: Response) {
     response.setHeader('Cache-Control', 'no-store');
     const token = await this.token(request, response);
-    if (!valid(body) || Object.keys(body).some(key => !expenseFields.includes(key) && key !== 'confirmar_atipico')) throw new BadRequestException('Gasto invalido');
+    if (!valid(body) || Object.keys(body).some(key => !expenseFields.includes(key) && key !== 'confirmar_atipico' && key !== 'cotizacion_pago')) throw new BadRequestException('Gasto invalido');
     return this.forward(token, space, account, { ...body, id: body.id.toLowerCase(), descripcion: body.descripcion.trim() });
   }
 
@@ -153,7 +154,7 @@ export class ExpensesController {
     @Body() body: PendingPayment, @Req() request: Request, @Res({ passthrough: true }) response: Response) {
     response.setHeader('Cache-Control', 'no-store');
     const token = await this.token(request, response);
-    if (!UUID.test(id) || !body || !isoDate(body.fecha) || Object.keys(body).length !== 1) {
+    if (!UUID.test(id) || !body || !isoDate(body.fecha) || !validPaymentQuote(body.cotizacion_pago) || Object.keys(body).some(key => !['fecha','cotizacion_pago'].includes(key))) {
       throw new BadRequestException('Pago invalido');
     }
     return this.forward(token, space, account, body, 0, undefined, new URLSearchParams(),
@@ -265,11 +266,11 @@ export class ExpensesController {
           items: value.items.map(({ moneda, categoria, total }) => ({ moneda, categoria, total })) };
       }
       if (summary === 'expense-summary') {
-        const value=data as {fecha:unknown;mes:unknown;semana_desde?:unknown;semana_hasta?:unknown;totales:{moneda:string;dia:string;mes:string;semana?:string}[]};
+        const value=data as {fecha:unknown;mes:unknown;semana_desde?:unknown;semana_hasta?:unknown;totales:{moneda:string;dia:string;mes:string;semana?:string;fijados?:unknown}[]};
         const amount=(v:unknown)=>typeof v==='string' && /^(?:0|[1-9][0-9]{0,30})\.[0-9]{2}$/.test(v);
         if(!value || typeof value.fecha!=='string' || !/^\d{4}-\d{2}-\d{2}$/.test(value.fecha) || value.mes!==value.fecha.slice(0,7) || !Array.isArray(value.totales) || value.totales.length>3 || new Set(value.totales.map(r=>r?.moneda)).size!==value.totales.length || value.totales.some(r=>!r || !['ARS','USD','EUR'].includes(r.moneda) || !amount(r.dia) || !amount(r.mes) || (r.semana!==undefined && !amount(r.semana)))) throw new Error();
         if((value.semana_desde!==undefined && (typeof value.semana_desde!=='string' || !/^\d{4}-\d{2}-\d{2}$/.test(value.semana_desde))) || (value.semana_hasta!==undefined && (typeof value.semana_hasta!=='string' || !/^\d{4}-\d{2}-\d{2}$/.test(value.semana_hasta))))throw new Error();
-        return {fecha:value.fecha,mes:value.mes,...(value.semana_desde ? {semana_desde:value.semana_desde,semana_hasta:value.semana_hasta} : {}),totales:value.totales.map(r=>({moneda:r.moneda,dia:r.dia,mes:r.mes,...(r.semana!==undefined ? {semana:r.semana} : {})}))};
+        return {fecha:value.fecha,mes:value.mes,...(value.semana_desde ? {semana_desde:value.semana_desde,semana_hasta:value.semana_hasta} : {}),totales:value.totales.map(r=>({moneda:r.moneda,dia:r.dia,mes:r.mes,...frozenPeriods(r),...(r.semana!==undefined ? {semana:r.semana} : {})}))};
       }
       if(similarId) {
         const value=data as {referencia_id:unknown;items:unknown[]};

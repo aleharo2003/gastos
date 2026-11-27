@@ -33,6 +33,8 @@ class Gasto(Base):
     fecha_vencimiento: Mapped[date | None] = mapped_column(Date)
     descripcion: Mapped[str] = mapped_column(Text, nullable=False)
     moneda: Mapped[str] = mapped_column(Text, nullable=False)
+    tasa_pago: Mapped[Decimal | None] = mapped_column(Numeric(20, 4))
+    fuente_tasa_pago: Mapped[str | None] = mapped_column(Text)
     importe: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
 
     anulado_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

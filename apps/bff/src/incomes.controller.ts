@@ -1,6 +1,7 @@
 import { BadGatewayException, BadRequestException, Body, Controller, Get, HttpCode, HttpException, Param, Post, Query, Req, Res, UnauthorizedException } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { AuthService } from './auth.service.js';
+import { frozenPair } from './payment-quote.js';
 import { boundedJson } from './token-verifier.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -53,7 +54,7 @@ export function validateBalance(value:unknown) {
 type SummaryAmount = { moneda: string; total: string };
 type SavingsSummary = {
   mes: string; hasta: string; fecha_saldos: string; next_offset: number | null;
-  actividad: (SummaryAmount & { tipo: string })[];
+  actividad: (SummaryAmount & { tipo: string; fijado?: unknown })[];
   ingresos: (SummaryAmount & { concepto: string | null })[];
   cuentas: { id: string; nombre: string; activa: boolean; saldos: SummaryAmount[] }[];
   saldo_total: SummaryAmount[];
@@ -74,7 +75,9 @@ function savingsSummary(value: unknown, month: string, offset: number) {
       !(data.next_offset === null || (data.next_offset === offset + 100 && data.cuentas.length === 100))) throw new Error();
   const actividad = data.actividad.map(row => {
     if (!amount(row) || !['ingresos_anuales', 'cuotas', 'otros_gastos'].includes(row.tipo)) throw new Error();
-    return { tipo: row.tipo, moneda: row.moneda, total: row.total };
+    if (row.fijado !== undefined && (row.moneda !== 'USD' || row.tipo === 'ingresos_anuales')) throw new Error();
+    return { tipo: row.tipo, moneda: row.moneda, total: row.total,
+      ...(row.fijado === undefined ? {} : { fijado: frozenPair(row.fijado,row.total) }) };
   });
   const ingresos = data.ingresos.map(row => {
     if (!amount(row) || (row.concepto !== null &&

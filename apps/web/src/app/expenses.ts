@@ -5,6 +5,7 @@ import { ExpenseTrend } from './expense-trend';
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { AnomalyCancelled, confirmAnomaly } from './confirm-anomaly';
+import type { SavedQuote } from './payment-quote';
 import { AuthSession } from './auth-session';
 import { ExpenseTotals } from './expense-totals';
 import { Receipts } from './receipts';
@@ -13,7 +14,7 @@ import { cents } from './money-reference';
 import { progress } from './planning-math';
 
 type ExpenseDetails = { nota?: string | null; fecha_devengamiento?: string | null; fecha_vencimiento?: string | null };
-type Expense = ExpenseDetails & { id: string; espacio_id: string; cuenta_id: string; fecha: string; descripcion: string; moneda: string; importe: string; categoria?: string | null; coincidencia_aproximada?: boolean; cuenta_nombre?: string; pago_cuota?: boolean };
+type Expense = ExpenseDetails & SavedQuote & { id: string; espacio_id: string; cuenta_id: string; fecha: string; descripcion: string; moneda: string; importe: string; categoria?: string | null; coincidencia_aproximada?: boolean; cuenta_nombre?: string; pago_cuota?: boolean };
 type CategoryTotal = { moneda: string; categoria: string | null; total: string };
 type CategoryReport = { desde: string; hasta: string; items: CategoryTotal[] };
 type CategorySuggestion = {categoria:string|null;coincidencias:number;total:number};
@@ -63,7 +64,7 @@ export class Expenses implements OnInit {
     const currency = this.editing
       ? accountCurrency(this.accounts, this.editAccount) ?? (this.account.id === this.editAccount ? this.account.moneda : null)
       : this.account.id ? this.account.moneda : accountCurrency(this.accounts, this.createAccount);
-    return currency ? this.editing?.moneda ?? currency : null;
+    return (this.editing && this.editingQuote) || (currency ? this.editing?.moneda ?? currency : null);
   }
 
   get movementCurrency(): string {
@@ -291,6 +292,7 @@ export class Expenses implements OnInit {
       || !!this.receiptPanels?.some(panel => panel.busy() || !!panel.selected());
   }
   editing: Payload | null = null;
+  private editingQuote: string | null = null;
   repeatExpense(item: Expense): void {
     if (this.saving() || this.loading() || item.espacio_id !== this.space
         || (this.account.id && item.cuenta_id !== this.account.id)) return;
@@ -321,6 +323,7 @@ export class Expenses implements OnInit {
     this.editorOpen = true;
     this.similarExpense.set(null);
     this.editAccount = item.cuenta_id;
+    this.editingQuote = item.tasa_pago ? item.moneda : null;
     this.editing = {id:item.id,fecha:item.fecha,descripcion:item.descripcion,moneda:item.moneda,importe:item.importe,categoria:item.categoria ?? null};
     this.note = item.nota ?? '';
     this.incurredDate = item.fecha_devengamiento ?? '';

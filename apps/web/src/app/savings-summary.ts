@@ -11,7 +11,7 @@ type Amount = { moneda: Currency; total: string };
 type Account = { id: string; nombre: string; activa: boolean; saldos: Amount[] };
 type Report = {
   mes: string; hasta: string; fecha_saldos: string; next_offset: number | null;
-  actividad: (Amount & { tipo: 'cuotas' | 'otros_gastos' | 'ingresos_anuales' })[];
+  actividad: (Amount & { fijado?: { usd: string; ars: string }; tipo: 'cuotas' | 'otros_gastos' | 'ingresos_anuales' })[];
   ingresos: (Amount & { concepto: string | null })[];
   cuentas: Account[]; saldo_total: Amount[];
 };
@@ -73,6 +73,13 @@ export class SavingsSummary implements OnChanges {
     const income = amounts(report.ingresos);
     const installments = amounts(report.actividad.filter(row => row.tipo === 'cuotas'));
     const other = amounts(report.actividad.filter(row => row.tipo === 'otros_gastos'));
+    const fixed = (kind: 'cuotas' | 'otros_gastos') => {
+      const pair = report.actividad.find(row => row.tipo === kind && row.moneda === 'USD')?.fijado;
+      return { usd: cents(pair?.usd ?? '0.00'), ars: cents(pair?.ars ?? '0.00') };
+    };
+    const installmentsFixed = fixed('cuotas'), otherFixed = fixed('otros_gastos');
+    const expensesFixed = { usd: installmentsFixed.usd + otherFixed.usd, ars: installmentsFixed.ars + otherFixed.ars };
+    const netFixed = { usd: -expensesFixed.usd, ars: -expensesFixed.ars };
     const annual = amounts(report.actividad.filter(row => row.tipo === 'ingresos_anuales'));
     const expenses = zero();
     const net = zero();
@@ -82,7 +89,7 @@ export class SavingsSummary implements OnChanges {
     }
     return {
       sources: [...sources].map(([concept, rows]) => ({ concept, totals: amounts(rows) })),
-      income, installments, other, annual, expenses, net,
+      income, installments, other, annual, expenses, net, installmentsFixed, otherFixed, expensesFixed, netFixed,
     };
   });
 
@@ -149,11 +156,14 @@ export class SavingsSummary implements OnChanges {
 
   readonly toTotals = amounts;
 
-  display(totals: Totals, currency: Currency): string {
+  display(totals: Totals, currency: Currency, fixed = { usd: 0n, ars: 0n }): string {
     if (this.hidden()) return '••••';
     const rate = this.equivalents() ? rateUnits(this.rate()) : null;
     let value = totals[currency];
-    if (rate && currency === 'ARS') value += rounded(totals.USD * rate, 10000n);
+    if (currency === 'ARS' && this.equivalents()) {
+      value += fixed.ars;
+      if (rate) value += rounded((totals.USD - fixed.usd) * rate, 10000n);
+    }
     if (rate && currency === 'USD') value += rounded(totals.ARS * 10000n, rate);
     return value < 0n ? '−' + money(-value) : money(value);
   }

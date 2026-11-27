@@ -5,6 +5,8 @@ import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { watchInstallmentDay } from './installment-date';
 import { accountCurrency, compatibleAccounts, type AccountOption } from './account-currency';
+import { estimatedArs, PaymentQuoteEditor, type PaymentQuote } from './payment-quote';
+import { UsdReference } from './usd-reference';
 import { AuthSession } from './auth-session';
 import { installmentLocalDate as today, prepareInstallmentPayment, submitInstallmentPayment, type InstallmentPayment, type Payment } from './installment-payment';
 import { Receipts } from './receipts';
@@ -22,7 +24,7 @@ export type MonthlyTotal={no_aplican?:number;borradores?:number;estimado?:string
 export type MonthlyPage={mes:string;items:MonthlyItem[];totales:MonthlyTotal[];next_offset:number|null};
 type Create={sistema_amortizacion?:LoanSystem;tna?:string;indice_ajuste?:string;variable:boolean;id:string;cuenta_id:string;nombre:string;moneda:string;importe:string;categoria:string|null;primer_vencimiento:string;total_cuotas:number|null};
 export type InstallmentReminder = { month: string } & ({ action: 'importe' | 'ajuste' } | { action: 'pago'; quota: string });
-@Component({selector:'app-commitments',imports:[FormsModule,Receipts,AdjustmentIndices,CommitmentPaymentTrend],templateUrl:'./commitments.html',styleUrl:'./commitments.css'})
+@Component({selector:'app-commitments',imports:[FormsModule, PaymentQuoteEditor,Receipts,AdjustmentIndices,CommitmentPaymentTrend],templateUrl:'./commitments.html',styleUrl:'./commitments.css'})
 export class Commitments implements OnChanges{
   @Input({required:true}) space='';
   @Input() active = true;
@@ -341,9 +343,14 @@ export class Commitments implements OnChanges{
     }catch{if(this.alive&&version===this.detailVersion)this.error.set('No pudimos cargar las cuotas.');}
     finally{if(this.alive&&version===this.detailVersion)this.detailLoading.set(false);}
   }
+  private readonly usdReference = inject(UsdReference);
+  paymentQuote?: PaymentQuote;
+
+  estimatePayment(amount: string) { return estimatedArs(amount, this.usdReference.current(this.space)?.rate ?? ''); }
+
   async selectQuota(item:Installment){
     if(!this.canLeave()||this.saving())return;
-    this.cancelPayment();this.quota.set(item);
+    this.cancelPayment();this.quota.set(item);this.paymentQuote = undefined;
     const preferred = this.selected()?.cuenta_id;
     this.payAccount = this.paymentAccounts().find(account => account.id === preferred)?.id ?? '';
     this.payDate=today();this.payAmount=item.pendiente==='0.00'?'':item.pendiente;await this.loadPayments();
@@ -499,7 +506,8 @@ export class Commitments implements OnChanges{
   async pay(){
     if (this.correcting()) return;
     const quota=this.quota();if(quota?.estado==='no_aplica')return;if(quota?.pendiente_ajuste){this.error.set('Esperá el ajuste del índice antes de pagar.');return;}if(quota?.estimado){this.error.set('Confirmá el monto estimado antes de registrar pagos.');return;}if(!quota||this.paying()||this.detailLoading()||this.saving()||this.receiptBusy())return;
-    const pending=prepareInstallmentPayment(quota.id,{cuenta_id:this.payAccount,fecha:this.payDate,importe:this.payAmount},
+    const pending=prepareInstallmentPayment(quota.id,{cuenta_id:this.payAccount,fecha:this.payDate,importe:this.payAmount,
+      ...(this.selected()?.moneda === 'USD' && this.paymentQuote ? { cotizacion_pago: this.paymentQuote } : {})},
       quota.pendiente,this.paymentAccounts(),this.payPending);
     if(!pending){this.error.set('Elegí una cuenta y un importe positivo que no supere el saldo de la cuota.');return;}
     this.payPending=pending;

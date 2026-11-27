@@ -225,6 +225,10 @@
           @if (!paymentAccounts().length) { <p>Necesitás una cuenta que opere en {{ debt.moneda }}.</p> }
           <label for="payment-date">Fecha de pago</label><input id="payment-date" name="paymentDate" type="date" [(ngModel)]="payDate" (ngModelChange)="payDirty=true" required [disabled]="paying()">
           <label for="payment-amount">Importe pagado en {{ debt.moneda }}</label><input id="payment-amount" name="paymentAmount" inputmode="decimal" [(ngModel)]="payAmount" (ngModelChange)="payDirty=true" required [disabled]="paying()">
+          @if (debt.moneda === 'USD') {
+            @if (estimatePayment(installment.pendiente); as estimate) { <p>ARS {{ estimate }} estimados según la referencia.</p> }
+            <app-payment-quote fieldId="debt-payment-quote" [disabled]="paying()" (quoteChange)="paymentQuote = $event; payDirty = true" />
+          }
           <small>El pago crea un gasto y descuenta saldo. No cargues ese mismo pago otra vez desde Gastos. No se convierte moneda.</small>
           <button type="submit" [disabled]="paymentForm.invalid||!paymentAccounts().length||paying()||saving()||detailLoading()">{{ paying()?'Registrando…':'Registrar pago' }}</button>
         </form>
@@ -232,7 +236,7 @@
       <button type="button" class="secondary" (click)="cancelPayment()" [disabled]="paying()">Cerrar / cancelar formulario de pago</button>
       @if(historyLoading()){<p role="status">Cargando pagos…</p>}
       @if(!historyLoading()&&!payments().length){<p>Todavía no hay pagos registrados en esta cuota.</p>}
-      <ul>@for(p of payments();track p.id){<li><strong>{{ p.fecha.split('-').reverse().join('/') }}</strong><p>{{ accountName(p.cuenta_id) }} · {{ p.moneda }} {{ hidden()?'••••':showAmount(p.importe) }}</p><button type="button" class="secondary" (click)="receipts(p)" [disabled]="paying()">Comprobantes de este pago</button></li>}</ul>
+      <ul>@for(p of payments();track p.id){<li><strong>{{ p.fecha.split('-').reverse().join('/') }}</strong><p>{{ accountName(p.cuenta_id) }} · {{ p.moneda }} {{ hidden()?'••••':showAmount(p.importe) }}</p>@if (p.importe_ars_pago && !hidden()) { <p>ARS {{ showAmount(p.importe_ars_pago) }} al pagar · {{ p.tasa_pago }} ARS por USD</p> }<button type="button" class="secondary" (click)="receipts(p)" [disabled]="paying()">Comprobantes de este pago</button></li>}</ul>
       <button type="button" class="secondary" (click)="loadPayments()" [disabled]="historyLoading()||paying()">Actualizar pagos</button>
       @if(nextPayment()!==null){<button type="button" class="secondary" (click)="loadPayments(true)" [disabled]="historyLoading()||paying()">Ver más pagos</button>}
     }
