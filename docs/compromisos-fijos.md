@@ -64,8 +64,8 @@ La migración 0016 debe ejecutarse antes de desplegar los servicios.
 
 ## Marcado diario de vencimientos
 
-En test, GitHub Actions ejecuta **Marcar cuotas vencidas test** a las 01:29 de
-Buenos Aires. La tarea usa `JOBS_DATABASE_URL` del rol dedicado, guarda la
+En test, GitHub Actions ejecuta el [proceso diario](proceso-diario.md) a las
+01:29 de Buenos Aires. La tarea usa `JOBS_DATABASE_URL` del rol dedicado, guarda la
 fecha del primer marcado para cada cuota confirmada con saldo pendiente y
 se puede ejecutar manualmente desde Actions. La migración 0051 concede el
 permiso al rol de tareas ya habilitado para generar cuotas.

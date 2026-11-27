@@ -51,13 +51,13 @@ Owner/editor escriben, lector consulta; no se habilita editar importe ni cuenta.
 
 Se propone GitHub Actions como ejecutor de esta primera tarea, reutilizando la
 infraestructura del repositorio. Workflow separado del despliegue, diario a las
-01:17 de Buenos Aires y con ejecucion manual en main. No llama a API ni BFF.
+01:29 de Buenos Aires y con ejecución manual en main. No llama a API ni BFF.
 Los limites, retrasos y notificaciones dependen de la configuracion de GitHub Actions;
 el cron no garantiza una hora exacta. Habilitar avisos de fallos para quien opere
-el workflow. No se afirma entrega de alertas o recordatorios de producto.
+el workflow. El [proceso diario](proceso-diario.md) puede avisar al responsable por correo si se configura el destinatario.
 
 El usuario app_jobs es LOGIN, NOINHERIT y NOBYPASSRLS, sin membresias, DDL ni
-permisos directos sobre tablas. Solo ejecuta public.generar_cuotas_mes(), sin
+permisos directos sobre tablas. Para la generación ejecuta public.generar_cuotas_mes(), sin
 parametros ni resultados financieros: devuelve cantidad de cuotas creadas.
 La funcion SECURITY DEFINER pertenece a app_migrator y usa search_path=pg_catalog,
 tablas public calificadas y la policy explicita del migrador bajo FORCE RLS.
@@ -82,7 +82,7 @@ No se usan conexiones de administrador o migrador en el workflow.
 5. Guardar en el entorno GitHub test el secreto JOBS_DATABASE_URL, URL PostgreSQL
    del usuario app_jobs (o su usuario de pooler), con TLS para el destino remoto.
    Es distinta de DATABASE_URL y MIGRATION_DATABASE_URL; nunca usar service_role.
-6. Con el workflow en main, ejecutar Generar cuotas mensuales test manualmente.
+6. Con el workflow en main, ejecutar **Proceso diario de Piggo** con el modo **cuotas**.
    Revisar resultado y repetir: la segunda ejecucion debe crear cero cuotas.
 7. Confirmar que Actions programadas y avisos de fallo estan habilitados. Consultar
    sus ejecuciones para el registro de errores y reintentos diarios.
