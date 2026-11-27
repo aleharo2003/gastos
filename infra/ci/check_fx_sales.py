@@ -7,6 +7,7 @@ from sqlalchemy import text
 from app.db.connection import create_migration_engine, create_runtime_engine
 from app.db.unit_of_work import runtime_transaction
 from app.incomes import account_balance
+from app.usd_holdings import usd_holding
 from app.usd_reference import ManualRate, save_rate
 from app.usd_offers import AcceptOffer, OfferInput, accept_offer, save_offer
 from app.usd_sales import SaleInput, list_sales, local_today, sale_analysis, save_sale
@@ -80,10 +81,39 @@ def check_fx_sales(runtime_url, migration_url):
             else:
                 raise AssertionError('Venta atípica aceptada sin confirmar')
             assert save_sale(s, owner, owner, unusual.model_copy(update={'confirmar_atipico': True}))['usd'] == '25.00'
-        print('OK: venta USD, saldos por moneda, referencia congelada y reintento.', flush=True)
+        with runtime_transaction(runtime, usuario_id=owner, espacio_id=owner) as s:
+            purchased, receiving = uuid4(), uuid4()
+            s.execute(text("""INSERT INTO public.cuentas(id,espacio_id,nombre,tipo,moneda,saldo_inicial)
+                VALUES (:a,:s,'Compras USD','efectivo','USD',0),(:b,:s,'Destino USD','efectivo','USD',0)"""),
+                {'a': purchased, 'b': receiving, 's': owner})
+            buy = SaleInput(id=uuid4(), origen_id=destination, destino_id=purchased, tipo='compra',
+                            fecha=day.isoformat(), contraparte='Compra prueba', usd='100.00', ars='160000.00')
+            saved = save_sale(s, owner, owner, buy)
+            assert saved['tipo'] == 'compra' and save_sale(s, owner, owner, buy) == saved
+            assert usd_holding(s, owner, purchased)['costo_promedio'] == '1600.0000'
+            save_sale(s, owner, owner, buy.model_copy(update={'id': uuid4(), 'usd': buy.usd / 2, 'ars': buy.ars * 9 / 16}))
+            holding = usd_holding(s, owner, purchased)
+            assert holding == {
+                'usd': '150.00', 'costo_promedio': '1666.6667', 'valor_ars': '262500.00',
+                'resultado_ars': '12500.00', 'resultado_pct': '5.00', 'fecha_referencia': day.isoformat(),
+            }
+            sell = sale.model_copy(update={'id': uuid4(), 'origen_id': purchased})
+            save_sale(s, owner, owner, sell)
+            usd = account_balance(s, owner, owner, purchased)['totales'][1]
+            assert usd['saldo'] == '125.00' and usd['transferencias_entrada'] == '150.00'
+            assert account_balance(s, owner, owner, destination)['totales'][0]['transferencias_salida'] == '250000.00'
+            s.execute(text("""INSERT INTO public.transferencias
+                (id,espacio_id,usuario_id,origen_id,destino_id,fecha,descripcion,moneda,importe)
+                VALUES (:id,:s,:s,:a,:b,:day,'Mover USD','USD',25)"""),
+                {'id': uuid4(), 's': owner, 'a': purchased, 'b': receiving, 'day': day})
+            assert usd_holding(s, owner, purchased)['usd'] == '100.00'
+            assert usd_holding(s, owner, receiving)['costo_promedio'] == '1666.6667'
+            assert usd_holding(s, owner, origin)['resultado_ars'] is None
+            assert 'Compra prueba' not in {row['contraparte'] for row in sale_analysis(s, owner, owner)['contrapartes']}
+        print('OK: cambios USD, saldos por moneda, referencia congelada, reintentos y costo promedio.', flush=True)
     finally:
         with migrator.begin() as c:
-            for table,column in (('ofertas_usd','espacio_id'), ('ventas_usd','espacio_id'), ('cuentas','espacio_id'), ('miembros_espacio','espacio_id'),
+            for table,column in (('ofertas_usd','espacio_id'), ('ventas_usd','espacio_id'), ('transferencias','espacio_id'), ('cuentas','espacio_id'), ('miembros_espacio','espacio_id'),
                                  ('espacios','id'), ('perfiles','usuario_id')):
                 c.execute(text(f'DELETE FROM public.{table} WHERE {column}=:u'), {'u': owner})
         runtime.dispose()

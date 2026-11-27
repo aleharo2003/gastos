@@ -18,6 +18,7 @@ import { ChangeDetectorRef, Component, computed, DestroyRef, effect, inject, Inp
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { DOCUMENT } from '@angular/common';
+import { UsdHolding } from './usd-holding';
 import { UsdSales } from './usd-sales';
 import { UsdReference } from './usd-reference';
 import { AuthSession } from './auth-session';
@@ -36,7 +37,7 @@ type Page = { items: Account[]; next_offset: number | null };
 type AccountBalance = { totales: { moneda: string; saldo: string }[] };
 
 @Component({
-  selector: 'app-accounts', imports: [FormsModule, CategorySettings, SpaceExport, ExpenseImport, TodayCategoryReport, Movements, Expenses, Planning, Incomes, Transfers, SavingsGoals, SavingsSummary, Commitments, DueOverview, ReminderPreferences, UsdSales],
+  selector: 'app-accounts', imports: [FormsModule, CategorySettings, SpaceExport, ExpenseImport, TodayCategoryReport, Movements, Expenses, Planning, Incomes, Transfers, SavingsGoals, SavingsSummary, Commitments, DueOverview, ReminderPreferences, UsdSales, UsdHolding],
   providers: [UsdReference],
   templateUrl: './accounts.html', styleUrl: './accounts.css',
 })
@@ -269,6 +270,10 @@ export class Accounts implements OnInit {
     this.expandedBalance.set(null);
     this.balance.set(null);
     this.balanceError.set(false);
+  }
+
+  hasUsdBalance(result: AccountBalance): boolean {
+    return result.totales.some(total => total.moneda === 'USD' && Number(total.saldo) > 0);
   }
 
   balanceAmount(value: string): string {

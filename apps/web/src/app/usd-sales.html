@@ -1,17 +1,22 @@
 <section aria-labelledby="usd-sales-title">
-  <h3 id="usd-sales-title">Venta de dólares</h3>
+  <h3 id="usd-sales-title">Compra y venta de dólares</h3>
   @if (error()) { <p role="alert">{{ error() }}</p> }
   @if (notice()) { <p role="status">{{ notice() }}</p> }
   @if (moreAccounts) {
     <button type="button" class="secondary" [disabled]="accountsLoading" (click)="loadAccounts.emit()">Cargar más cuentas</button>
   }
   <form #form="ngForm" (ngSubmit)="save()">
-    <label for="sale-source">Cuenta de la que salieron los USD</label>
+    <label for="fx-operation">Operación</label>
+    <select id="fx-operation" name="operation" [ngModel]="operation" (ngModelChange)="selectOperation($event)" [disabled]="saving()">
+      <option value="venta">Vender dólares</option>
+      <option value="compra">Comprar dólares</option>
+    </select>
+    <label for="sale-source">{{ operation === 'compra' ? 'Cuenta de la que salieron los pesos' : 'Cuenta de la que salieron los USD' }}</label>
     <select id="sale-source" name="source" [(ngModel)]="source" required [disabled]="saving()">
       <option value="">Elegí la cuenta de origen</option>
       @for (a of sources; track a.id) { <option [value]="a.id">{{ a.nombre }}</option> }
     </select>
-    <label for="sale-destination">Cuenta que recibió los pesos</label>
+    <label for="sale-destination">{{ operation === 'compra' ? 'Cuenta que recibió los USD' : 'Cuenta que recibió los pesos' }}</label>
     <select id="sale-destination" name="destination" [(ngModel)]="destination" required [disabled]="saving()">
       <option value="">Elegí la cuenta de destino</option>
       @for (a of destinations; track a.id) { <option [value]="a.id">{{ a.nombre }}</option> }
@@ -20,11 +25,11 @@
     <input id="sale-date" name="date" type="date" [max]="today()" [(ngModel)]="date" required [disabled]="saving()">
     <label for="sale-counterparty">Contraparte</label>
     <input id="sale-counterparty" name="counterparty" [(ngModel)]="counterparty" maxlength="160" required [disabled]="saving()">
-    <label for="sale-usd">USD entregados</label>
+    <label for="sale-usd">{{ operation === 'compra' ? 'USD recibidos' : 'USD entregados' }}</label>
     <input id="sale-usd" name="usd" [(ngModel)]="dollars" inputmode="decimal" required [disabled]="saving()">
-    <label for="sale-ars">ARS recibidos</label>
+    <label for="sale-ars">{{ operation === 'compra' ? 'ARS pagados' : 'ARS recibidos' }}</label>
     <input id="sale-ars" name="ars" [(ngModel)]="pesos" inputmode="decimal" required [disabled]="saving()">
-    <button type="submit" [disabled]="form.invalid || saving()">{{ saving() ? 'Registrando…' : 'Registrar venta' }}</button>
+    <button type="submit" [disabled]="form.invalid || saving()">{{ saving() ? 'Registrando…' : operation === 'compra' ? 'Registrar compra' : 'Registrar venta' }}</button>
   </form>
   <app-usd-offers [space]="space" [accounts]="accounts" (sold)="refreshAfterOffer()" />
   <details #analysisPanel (toggle)="analysisPanel.open && loadAnalysis()">
@@ -55,14 +60,18 @@
       }</ul>
     }
   </details>
-  <h4>Ventas registradas</h4>
-  @if (loading()) { <p role="status">Cargando ventas…</p> }
-  @else if (!sales().length) { <p>Todavía no hay ventas registradas.</p> }
+  <h4>Cambios registrados</h4>
+  @if (loading()) { <p role="status">Cargando cambios…</p> }
+  @else if (!sales().length) { <p>Todavía no hay compras ni ventas registradas.</p> }
   <ul>
     @for (sale of sales(); track sale.id) {
       <li>
-        <strong>{{ sale.fecha }} · {{ sale.contraparte }}</strong>
-        <p>USD {{ showAmount(sale.usd) }} de {{ accountName(sale.origen_id) }} → ARS {{ showAmount(sale.ars) }} a {{ accountName(sale.destino_id) }}</p>
+        <strong>{{ sale.tipo === 'compra' ? 'Compra' : 'Venta' }} · {{ sale.fecha }} · {{ sale.contraparte }}</strong>
+        @if (sale.tipo === 'compra') {
+          <p>ARS {{ showAmount(sale.ars) }} de {{ accountName(sale.origen_id) }} → USD {{ showAmount(sale.usd) }} a {{ accountName(sale.destino_id) }}</p>
+        } @else {
+          <p>USD {{ showAmount(sale.usd) }} de {{ accountName(sale.origen_id) }} → ARS {{ showAmount(sale.ars) }} a {{ accountName(sale.destino_id) }}</p>
+        }
         <p>Tipo de cambio · {{ sale.tasa }} ARS por USD</p>
         @if (sale.referencia) { <p>Referencia {{ sale.referencia }} del {{ sale.fecha_referencia }} · Diferencia {{ sale.diferencia_pct }} %</p> }
       </li>

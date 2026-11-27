@@ -2,7 +2,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import Computed, Date, DateTime, ForeignKeyConstraint, Index, Numeric, Text, UniqueConstraint, Uuid, func
+from sqlalchemy import CheckConstraint, Computed, Date, DateTime, ForeignKeyConstraint, Index, Numeric, Text, UniqueConstraint, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -11,6 +11,7 @@ from app.db.base import Base
 class VentaUsd(Base):
     __tablename__ = 'ventas_usd'
     __table_args__ = (
+        CheckConstraint("tipo IN ('venta','compra')", name='ck_ventas_usd_tipo'),
         UniqueConstraint('espacio_id','id', name='uq_ventas_usd_espacio_id'),
         ForeignKeyConstraint(['espacio_id','origen_id'], ['public.cuentas.espacio_id','public.cuentas.id'], name='fk_ventas_usd_origen_cuentas'),
         ForeignKeyConstraint(['espacio_id','destino_id'], ['public.cuentas.espacio_id','public.cuentas.id'], name='fk_ventas_usd_destino_cuentas'),
@@ -22,6 +23,7 @@ class VentaUsd(Base):
     origen_id: Mapped[UUID] = mapped_column(Uuid)
     destino_id: Mapped[UUID] = mapped_column(Uuid)
     fecha: Mapped[date] = mapped_column(Date)
+    tipo: Mapped[str] = mapped_column(Text, server_default='venta')
     contraparte: Mapped[str] = mapped_column(Text)
     usd: Mapped[Decimal] = mapped_column(Numeric(14, 2))
     ars: Mapped[Decimal] = mapped_column(Numeric(14, 2))

@@ -33,7 +33,7 @@ TABLES = (
     ('variaciones_indice', 'indice periodo variacion', 'indice, periodo'),
     ('metas_ahorro', 'id cuenta_id nombre moneda objetivo fecha_objetivo archivada version', 'id'),
     ('ofertas_usd', 'id ronda fecha contraparte tasa referencia fecha_referencia estado venta_id', 'fecha,id'),
-    ('ventas_usd', 'id fecha contraparte origen_id destino_id usd ars tasa referencia fecha_referencia', 'fecha,id'),
+    ('ventas_usd', 'id fecha contraparte origen_id destino_id usd ars tasa referencia fecha_referencia tipo', 'fecha,id'),
     ('preferencias_cotizacion', 'tipo', 'tipo'),
     ('cotizaciones_manuales', 'fecha tasa', 'fecha'),
     ('planes_gasto', 'version datos historial_categoria', 'version'),
@@ -56,7 +56,7 @@ Piggo antepone un apóstrofo al texto que Excel podría interpretar como fórmul
 Comprobantes incluye los metadatos, sin el contenido de los adjuntos.
 El archivo cubre datos del espacio y preferencias del titular. Quedan fuera
 las credenciales, los datos técnicos de notificaciones y los ajustes guardados
-solamente en el navegador. Las ventas de USD se incluyen en ventas_usd.csv.
+solamente en el navegador. Las compras y ventas de USD se incluyen en ventas_usd.csv.
 """.lstrip()
 
 

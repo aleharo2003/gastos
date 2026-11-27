@@ -1,0 +1,30 @@
+@if (!holding()) {
+  <button type="button" class="secondary" [disabled]="busy()" (click)="load()">
+    {{ busy() ? 'Consultando costo…' : 'Ver costo de mis dólares' }}
+  </button>
+}
+@if (error()) { <p role="alert">No pudimos consultar el costo de los dólares.</p> }
+@if (holding(); as row) {
+  <h5>Tenencia de dólares</h5>
+  @if (hiddenAmounts()) {
+    <p>Importes ocultos</p>
+  } @else if (+row.usd <= 0) {
+    <p>No hay dólares disponibles para valuar.</p>
+  } @else {
+    <dl>
+      <div><dt>Saldo al día de hoy</dt><dd>USD {{ amount(row.usd) }}</dd></div>
+      @if (row.costo_promedio !== null) {
+        <div><dt>Costo promedio por USD</dt><dd>ARS {{ rate(row.costo_promedio) }}</dd></div>
+      }
+      @if (row.valor_ars !== null) {
+        <div><dt>Valor de referencia</dt><dd>ARS {{ amount(row.valor_ars) }}</dd></div>
+      }
+      @if (row.resultado_ars !== null && row.resultado_pct !== null) {
+        <div><dt>Ganancia o pérdida estimada</dt><dd>ARS {{ amount(row.resultado_ars) }} ({{ rate(row.resultado_pct) }} %)</dd></div>
+      }
+    </dl>
+    @if (row.fecha_referencia) { <p>Cotización del {{ row.fecha_referencia }}</p> }
+    @else { <p>Falta una cotización de referencia para valuar el saldo.</p> }
+    @if (row.costo_promedio === null) { <p>El saldo incluye dólares sin costo de compra registrado.</p> }
+  }
+}

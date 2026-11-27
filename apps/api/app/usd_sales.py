@@ -2,13 +2,16 @@
 from datetime import date
 from decimal import Decimal
 from uuid import UUID
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, StrictBool, field_validator, model_validator
 from sqlalchemy import text
 
 from app.accounts import execute, NO_STORE, require_member
+from app.expenses import require_account
 from app.incomes import IncomeInput
+from app.usd_holdings import usd_holding
 from app.usd_reference import effective_rate, local_today
 
 router = APIRouter()
@@ -23,6 +26,7 @@ class SaleInput(BaseModel):
     contraparte: str
     usd: Decimal
     ars: Decimal
+    tipo: Literal['venta', 'compra'] = 'venta'
     confirmar_atipico: StrictBool = False
 
     @field_validator('fecha', mode='before')
@@ -45,13 +49,14 @@ class SaleInput(BaseModel):
         if not all(key.int for key in (self.id, self.origen_id, self.destino_id)) or self.origen_id == self.destino_id:
             raise ValueError('Elegí dos cuentas distintas')
         if self.fecha > local_today():
-            raise ValueError('La fecha de una venta registrada no puede ser futura')
+            raise ValueError('La fecha de una operación registrada no puede ser futura')
         return self
 
 
 def public_sale(row):
     ref = row['referencia']
     return {
+        **({'tipo': 'compra'} if row['tipo'] == 'compra' else {}),
         'id': str(row['id']), 'origen_id': str(row['origen_id']), 'destino_id': str(row['destino_id']),
         'fecha': row['fecha'].isoformat(), 'contraparte': row['contraparte'],
         'usd': format(row['usd'], '.2f'), 'ars': format(row['ars'], '.2f'), 'tasa': format(row['tasa'], '.4f'),
@@ -76,7 +81,8 @@ def save_sale(session, user, space, body):
             AND id IN (:origin,:destination) ORDER BY id FOR SHARE
         """), {'s': space, 'origin': body.origen_id, 'destination': body.destino_id}).all()
         codes = {row.id: row.moneda for row in accounts}
-        if len(codes) != 2 or codes.get(body.origen_id) not in (None, 'USD') or codes.get(body.destino_id) not in (None, 'ARS'):
+        source, destination = ('ARS', 'USD') if body.tipo == 'compra' else ('USD', 'ARS')
+        if len(codes) != 2 or codes.get(body.origen_id) not in (None, source) or codes.get(body.destino_id) not in (None, destination):
             raise HTTPException(422, 'Elegí una cuenta para USD y una cuenta para ARS', headers=NO_STORE)
         reference = effective_rate(session, space, body.fecha)['cotizacion']
         if reference and not body.confirmar_atipico:
@@ -84,14 +90,14 @@ def save_sale(session, user, space, body):
             if abs(body.ars - expected) * 100 > expected * 30:
                 raise HTTPException(409, {'codigo': 'cotizacion_atipica'}, headers=NO_STORE)
         session.execute(text("""
-            INSERT INTO public.ventas_usd (espacio_id,id,origen_id,destino_id,fecha,contraparte,usd,ars,referencia,fecha_referencia)
-            VALUES (:s,:id,:origen_id,:destino_id,:fecha,:contraparte,:usd,:ars,:referencia,:fecha_referencia)
+            INSERT INTO public.ventas_usd (espacio_id,id,origen_id,destino_id,fecha,contraparte,usd,ars,referencia,fecha_referencia,tipo,registrada_en)
+            VALUES (:s,:id,:origen_id,:destino_id,:fecha,:contraparte,:usd,:ars,:referencia,:fecha_referencia,:tipo,clock_timestamp())
             ON CONFLICT (id) DO NOTHING
         """), values | {'s': space, 'referencia': Decimal(reference['tasa']) if reference else None,
                         'fecha_referencia': date.fromisoformat(reference['fecha']) if reference else None})
         current = get_sale(session, space, body.id)
     if current is None or any(current[key] != value for key, value in values.items()):
-        raise HTTPException(409, 'El identificador le corresponde a otra venta', headers=NO_STORE)
+        raise HTTPException(409, 'El identificador le corresponde a otra operación', headers=NO_STORE)
     return public_sale(current)
 
 
@@ -118,6 +124,15 @@ def read_sale_analysis(space: UUID, request: Request, response: Response):
     return execute(request, response, space, lambda session, user: sale_analysis(session, user, space))
 
 
+@router.get('/spaces/{space}/usd-sales/holding')
+def read_usd_holding(space: UUID, account: UUID, request: Request, response: Response):
+    def read(session, user):
+        require_account(session, user, space, account)
+        return usd_holding(session, space, account)
+
+    return execute(request, response, space, read)
+
+
 def sale_analysis(session, user, space):
     require_member(session, user, space)
     ranking = session.execute(text("""
@@ -125,7 +140,7 @@ def sale_analysis(session, user, space):
             SELECT lower(btrim(contraparte)) AS key, min(contraparte) AS nombre,
                    count(*) AS operaciones, count(referencia) AS comparadas,
                    avg((ars / usd / referencia - 1) * 100) FILTER (WHERE referencia IS NOT NULL) AS diferencia
-            FROM public.ventas_usd WHERE espacio_id=:s GROUP BY 1
+            FROM public.ventas_usd WHERE espacio_id=:s AND tipo='venta' GROUP BY 1
         ), offers AS (
             SELECT lower(btrim(contraparte)) AS key, min(contraparte) AS nombre, count(*) AS ofertas
             FROM public.ofertas_usd WHERE espacio_id=:s GROUP BY 1

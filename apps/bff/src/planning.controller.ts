@@ -47,7 +47,7 @@ export function validPlan(v:unknown):boolean {
   return true;
 }
 
-type PlanningResource = 'spending-plan' | 'reminder-preferences' | 'spending-plan/category-limits' | 'usd-reference' | 'usd-reference/settings' | 'usd-sales' | 'usd-offers' | 'usd-sales/analysis';
+type PlanningResource = 'spending-plan' | 'reminder-preferences' | 'spending-plan/category-limits' | 'usd-reference' | 'usd-reference/settings' | 'usd-sales' | 'usd-offers' | 'usd-sales/analysis' | 'usd-sales/holding';
 
 function validReminderPreferences(value: unknown): boolean {
   if (!record(value) || !keys(value, [
@@ -68,11 +68,12 @@ function validManualRate(value: unknown): boolean {
     && /[1-9]/.test(value.tasa);
 }
 
-const saleFields = ['id','origen_id','destino_id','fecha','contraparte','usd','ars'];
+const saleFields = ['id','origen_id','destino_id','fecha','contraparte','usd','ars','tipo'];
 const saleMoney = (value: unknown) => typeof value === 'string' && /^(?:0|[1-9][0-9]{0,11})\.[0-9]{2}$/.test(value) && value !== '0.00';
 function validSaleFields(data: Record<string, unknown>): boolean {
   return [data.id,data.origen_id,data.destino_id].every(id => typeof id === 'string' && UUID.test(id))
     && data.origen_id !== data.destino_id && rateDate(data.fecha)
+    && (data.tipo === undefined || data.tipo === 'venta' || data.tipo === 'compra')
     && typeof data.contraparte === 'string' && data.contraparte.trim().length >= 1 && [...data.contraparte].length <= 160
     && !/[\x00-\x1f\x7f]/.test(data.contraparte) && saleMoney(data.usd) && saleMoney(data.ars);
 }
@@ -103,6 +104,14 @@ function validOfferWrite(value: unknown): boolean {
     && typeof value.id === 'string' && UUID.test(value.id) && typeof value.ronda === 'string' && UUID.test(value.ronda)
     && typeof value.contraparte === 'string' && value.contraparte.trim().length > 0 && [...value.contraparte].length <= 160
     && validManualRate({ fecha: '2000-01-01', tasa: value.tasa });
+}
+
+function validUsdHolding(value: unknown): boolean {
+  const money = (v: unknown) => typeof v === 'string' && /^-?\d{1,32}\.\d{2,4}$/.test(v);
+  return record(value) && keys(value, ['usd', 'costo_promedio', 'valor_ars', 'resultado_ars', 'resultado_pct', 'fecha_referencia'])
+    && money(value.usd)
+    && [value.costo_promedio, value.valor_ars, value.resultado_ars, value.resultado_pct].every(v => v === null || money(v))
+    && (value.fecha_referencia === null || rateDate(value.fecha_referencia));
 }
 
 function validSaleAnalysis(value: unknown): boolean {
@@ -210,6 +219,12 @@ export class PlanningController {
     return this.forward(space, request, response, undefined, false, 'usd-sales/analysis');
   }
 
+  @Get('usd-sales/holding')
+  readUsdHolding(@Param('space') space: string, @Query('account') account: unknown,
+    @Req() request: Request, @Res({ passthrough: true }) response: Response) {
+    return this.forward(space, request, response, undefined, false, 'usd-sales/holding', account);
+  }
+
   private async forward(
     space: string, request: Request, response: Response, body?: unknown,
     writing = false, resource: PlanningResource = 'spending-plan', month?: unknown,
@@ -225,8 +240,9 @@ export class PlanningController {
     const usd = resource === 'usd-reference';
     const market = resource === 'usd-reference/settings';
     const sale = resource === 'usd-sales';
+    const holding = resource === 'usd-sales/holding';
     const offers = resource === 'usd-offers';
-    const validate = resource === 'usd-sales/analysis' ? validSaleAnalysis : offers ? (data: unknown) => record(data) && (writing
+    const validate = holding ? validUsdHolding : resource === 'usd-sales/analysis' ? validSaleAnalysis : offers ? (data: unknown) => record(data) && (writing
       ? (keys(data, ['oferta']) && validOfferRow(data.oferta)) || (keys(data, ['venta']) && validSaleRow(data.venta))
       : keys(data, ['items','next_offset']) && Array.isArray(data.items) && data.items.length <= 100
         && data.items.every(validOfferRow) && (data.next_offset === null || data.next_offset === Number(month ?? 0) + 100))
@@ -243,9 +259,10 @@ export class PlanningController {
         : resource === 'spending-plan' ? validPlan : validReminderPreferences;
     if (!UUID.test(space) || (writing && !(offers ? validOfferWrite(body) : sale ? record(body) && keys(body, [...saleFields,'confirmar_atipico']) && validConfirmation(body) && validSaleFields(body) : usd ? validManualRate(body) : validate(body))) ||
         ((sale || offers) && month !== undefined && (typeof month !== 'string' || !/^\d{1,6}$/.test(month) || Number(month) > 100000)) ||
+        (holding && (typeof month !== 'string' || !UUID.test(month))) ||
         (usd && month !== undefined && !rateDate(month)) ||
         (history && (typeof month !== 'string' || !/^(19[0-9]{2}|20[0-9]{2})-(0[1-9]|1[0-2])$/.test(month)))) {
-      throw new BadRequestException(sale ? 'Venta inválida' : history ? 'Mes o espacio invalido'
+      throw new BadRequestException(holding ? 'Cuenta inválida' : sale ? 'Venta inválida' : history ? 'Mes o espacio invalido'
         : usd ? 'Cotización inválida' : resource === 'spending-plan' ? 'Presupuesto invalido' : 'Preferencias invalidas');
     }
     try {
@@ -255,6 +272,7 @@ export class PlanningController {
       const raw=process.env.API_TIMEOUT_MS??'5000',timeout=Number(raw);
       if(!/^\d+$/.test(raw)||!Number.isSafeInteger(timeout)||timeout<1||timeout>2147483647)throw new Error();
       const url = new URL(`/spaces/${space.toLowerCase()}/${resource}`, base);
+      if (holding) url.searchParams.set('account', String(month));
       if (history) url.searchParams.set('mes', String(month));
       if ((sale || offers) && month !== undefined) url.searchParams.set('offset', String(month));
       if (usd && month !== undefined) url.searchParams.set('fecha', String(month));
@@ -264,7 +282,7 @@ export class PlanningController {
         ...(writing?{body:JSON.stringify(body)}:{}),
       });
       if (result.status === 409) await movementConflict(result);
-      if([400,401,403,409,422,503].includes(result.status))throw new HttpException('No se pudo completar la operacion',result.status);
+      if([400,401,403,...(holding ? [404] : []),409,422,503].includes(result.status))throw new HttpException('No se pudo completar la operacion',result.status);
       if(!result.ok)throw new Error();
       const data=await boundedJson(result, resource === 'usd-sales/analysis' ? 262144 : 65536);
       if(!validate(data))throw new Error();
