@@ -33,7 +33,9 @@ BEGIN
             AND NOT EXISTS (SELECT FROM unnest(ARRAY[
                 to_regprocedure('public.generar_cuotas_mes()'),
                 to_regprocedure('public.guardar_cotizaciones_mercado(jsonb)'),
-                to_regprocedure('public.marcar_cuotas_vencidas()')
+                to_regprocedure('public.marcar_cuotas_vencidas()'),
+                to_regprocedure('public.reservar_aviso_push()'),
+                to_regprocedure('public.resolver_aviso_push(uuid,text,text,text,text)')
             ]) AS permitida(funcion) WHERE permitida.funcion=pg_proc.oid)
             AND has_function_privilege('app_jobs',oid,'EXECUTE'))
     THEN RAISE EXCEPTION 'app_jobs tiene permisos de datos o DDL incompatibles.'; END IF;
