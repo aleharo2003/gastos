@@ -6,10 +6,18 @@ import { Accounts } from './accounts';
 import { AuthSession } from './auth-session';
 
 describe('Navegación del espacio', () => {
-  async function setup(withCategoryAlerts = false) {
+  async function setup(withCategoryAlerts = false, withBudgetNotice = false) {
+    let budgetNotice = withBudgetNotice;
     const accounts = [{id:'one',espacio_id:'s',nombre:'Efectivo'}, {id:'two',espacio_id:'s',nombre:'Banco'}];
     TestBed.configureTestingModule({imports:[Accounts],providers:[{provide:AuthSession,useValue:{
-      accountRequest: async (_method:string,path:string) => withCategoryAlerts && path.endsWith('/spending-plan') ? ({
+      accountRequest: async (method:string,path:string) => {
+        if (path.endsWith('/spending-plan/alerts')) {
+          if (method === 'POST') budgetNotice = false;
+          return { items: budgetNotice ? [
+            { id: 'one-notice', periodo: 'semanal', desde: '2026-11-23', categoria: '', moneda: 'ARS', exceso: '25.00' },
+          ] : [] };
+        }
+        return withCategoryAlerts && path.endsWith('/spending-plan') ? ({
         version: 1, datos: { limites: { diario: null, semanal: null }, conceptos: [],
           limites_categoria: ['alimentos', 'ocio', 'salud'].map(categoria => ({ categoria, moneda: 'ARS', importe: '100.00' })) },
       }) : withCategoryAlerts && path.endsWith('/expense-category-summary') ? ({
@@ -18,7 +26,8 @@ describe('Navegación del espacio', () => {
           { categoria: 'ocio', moneda: 'ARS', total: '125.00' },
           { categoria: 'salud', moneda: 'ARS', total: '50.00' },
         ],
-      }) : path.endsWith('/due-overview') ? ({fecha:'2026-11-17',fin_semana:'2026-11-22',grupos:{hoy:{cantidad:0,totales:[],items:[]},semana:{cantidad:0,totales:[],items:[]},vencidas:{cantidad:0,totales:[],items:[]}},resumen_mes:[],saldos:[],presupuesto:{limites:{diario:null,semanal:null},gastos:[]}}) : path.includes('/installment-drafts?') ? ({borradores:0,items:[],next_offset:null}) : path.includes('/installments?month=') ? ({mes:new URL('https://local'+path).searchParams.get('month'),totales:[],items:[],next_offset:null}) : ({items:(path.includes('/expenses') || path.includes('/incomes') || path.includes('/transfers') || path.includes('/savings-goals') || path.includes('/commitments')) ? [] : accounts,next_offset:null}),
+      }) : path.endsWith('/due-overview') ? ({fecha:'2026-11-17',fin_semana:'2026-11-22',grupos:{hoy:{cantidad:0,totales:[],items:[]},semana:{cantidad:0,totales:[],items:[]},vencidas:{cantidad:0,totales:[],items:[]}},resumen_mes:[],saldos:[],presupuesto:{limites:{diario:null,semanal:null},gastos:[]}}) : path.includes('/installment-drafts?') ? ({borradores:0,items:[],next_offset:null}) : path.includes('/installments?month=') ? ({mes:new URL('https://local'+path).searchParams.get('month'),totales:[],items:[],next_offset:null}) : ({items:(path.includes('/expenses') || path.includes('/incomes') || path.includes('/transfers') || path.includes('/savings-goals') || path.includes('/commitments')) ? [] : accounts,next_offset:null});
+      },
     }}]});
     const fixture=TestBed.createComponent(Accounts);
     fixture.componentRef.setInput('space','s'); fixture.detectChanges();
@@ -93,6 +102,22 @@ describe('Navegación del espacio', () => {
     fixture.detectChanges();
     fixture.nativeElement.querySelector('.budget-alerts button').click();
     expect(component.tab()).toBe('plan');
+  });
+  it('muestra el exceso bajo la navegación y permite cerrar el aviso', async () => {
+    const { fixture } = await setup(false, true);
+    window.dispatchEvent(new CustomEvent('gastos-privacy', { detail: false }));
+    fixture.detectChanges();
+    const notices: HTMLElement = fixture.nativeElement.querySelector('app-budget-alerts');
+    expect(notices.textContent).toContain('Superaste el límite por ARS 25,00');
+    window.dispatchEvent(new CustomEvent('gastos-privacy', { detail: true }));
+    fixture.detectChanges();
+    expect(notices.querySelector('section')).toBeNull();
+    window.dispatchEvent(new CustomEvent('gastos-privacy', { detail: false }));
+    fixture.detectChanges();
+    notices.querySelector('button')!.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(notices.querySelector('section')).toBeNull();
   });
   it('enfoca el importe de la carga rápida desde Hoy y puede volver a la sección anterior', async () => {
     const { fixture, component } = await setup();

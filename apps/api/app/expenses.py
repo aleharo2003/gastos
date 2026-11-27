@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Request, Response, Query
 from pydantic import BaseModel, ConfigDict, Field, field_validator, StrictBool
 from sqlalchemy import text
 from app.usd_reference import local_today
+from app.budget_alerts import record_budget_alerts
 from app.payment_quote import PaymentQuote, matches_payment_quote, public_payment_quote, resolve_payment_quote
 from app.accounts import execute, require_member, NO_STORE
 from app.expense_search import ExpenseSearch
@@ -317,6 +318,8 @@ def create_expense(session, user, space, account, body, *, from_pending=False):
     if (row is None or str(row['usuario_id']) != str(user) or not matches_payment_quote(row, body.cotizacion_pago) or
             any(row[key] != getattr(body, key) for key in ('fecha','descripcion','moneda','importe',*OPTIONAL_EXPENSE_FIELDS))):
         raise HTTPException(409, 'Identificador usado para otro gasto', headers=NO_STORE)
+    if inserted.rowcount == 1:
+        record_budget_alerts(session, user, space, body.id, body.fecha, body.categoria)
     return public_expense(row)
 
 

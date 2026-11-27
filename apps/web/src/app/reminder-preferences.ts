@@ -1,4 +1,4 @@
-import { Component, DestroyRef, inject, Input, OnChanges, signal, SimpleChanges } from '@angular/core';
+import { Component, DestroyRef, inject, Input, OnChanges, output, signal, SimpleChanges } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { AuthSession } from './auth-session';
 
@@ -9,6 +9,7 @@ type Preferences = {
   vencimientos: boolean;
   vencidas: boolean;
   resumen_semanal: boolean;
+  exceso_presupuesto?: boolean;
 };
 
 @Component({
@@ -20,6 +21,7 @@ type Preferences = {
 export class ReminderPreferences implements OnChanges {
   @Input({ required: true }) space = '';
   @Input() active = false;
+  readonly changed = output<void>();
   private readonly auth = inject(AuthSession);
   private readonly destroy = inject(DestroyRef);
   private generation = 0;
@@ -81,6 +83,7 @@ export class ReminderPreferences implements OnChanges {
       if (!this.current(generation)) return;
       this.draft = { ...data };
       this.notice.set('Preferencias guardadas.');
+      this.changed.emit();
     } catch {
       if (this.current(generation)) this.error.set('No pudimos guardar tus preferencias. Tus cambios siguen en el formulario.');
     } finally {

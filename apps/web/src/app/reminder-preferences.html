@@ -14,7 +14,7 @@
           <option value="email">Correo electrónico</option>
           <option value="push">Notificaciones push</option>
         </select>
-        @if (value.canal === 'ninguno') { <p>Los avisos están desactivados. Podés guardar el resto de tus preferencias.</p> }
+        @if (value.canal === 'ninguno') { <p>El envío por correo o push está desactivado.</p> }
         <div class="limit-grid">
           <div>
             <label for="reminder-days">Días de anticipación (0 a 30)</label>
@@ -33,6 +33,7 @@
           <label><input name="overdue" type="checkbox" [(ngModel)]="value.vencidas"> Cuotas vencidas</label>
           <label><input name="weekly" type="checkbox" [(ngModel)]="value.resumen_semanal"> Resumen semanal</label>
         </fieldset>
+        <label><input name="budget-alert" type="checkbox" [(ngModel)]="value.exceso_presupuesto"> Avisarme en Piggo si supero un presupuesto</label>
         <button class="primary" type="submit" [disabled]="preferencesForm.invalid || saving()">
           {{ saving() ? 'Guardando…' : 'Guardar preferencias' }}
         </button>
