@@ -28,3 +28,4 @@ class PreferenciaAviso(Base):
     vencimientos: Mapped[bool] = mapped_column(Boolean)
     vencidas: Mapped[bool] = mapped_column(Boolean)
     resumen_semanal: Mapped[bool] = mapped_column(Boolean)
+    exceso_presupuesto: Mapped[bool] = mapped_column(Boolean, server_default='false')

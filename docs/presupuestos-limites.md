@@ -13,7 +13,7 @@ gastos, pagos, vencimientos ni movimientos de saldo.
   Se usa la fecha del gasto. El resumen incluye todos los gastos registrados
   dentro del período, incluso fechas futuras de esa semana o mes.
 - Desde el 80% aparece un aviso; superar el 100% muestra cuánto se excedió.
-  Los avisos no impiden registrar gastos. No son notificaciones externas.
+  Los indicadores de consumo se actualizan al consultar el presupuesto.
 - La proyección semanal suma los conceptos semanales. El promedio mensual es
   `semanales × 52 ÷ 12 + mensuales`. Por ejemplo, ARS 470.000 semanales equivalen
   a ARS 2.036.666,67 mensuales en promedio, no a cuatro semanas exactas.
@@ -22,6 +22,15 @@ gastos, pagos, vencimientos ni movimientos de saldo.
   El gráfico de gastos reales por categoría corresponde a otra entrega.
 - El plan es el actual, sin historial mensual de versiones. Modificarlo cambia
   la referencia mostrada; no cambia los gastos registrados.
+
+## Avisos de exceso
+
+En **Avisos**, activá **Avisarme en Piggo si supero un presupuesto**. Al
+registrar un gasto o pagar una cuota, si ese movimiento supera un límite
+vigente, Piggo muestra cuánto se excedió. Se guarda un aviso por usuario,
+espacio y período para cada límite. Los límites por categoría son mensuales.
+El exceso mostrado corresponde al gasto que cruzó el límite. **Entendido**
+cierra el aviso también en otros dispositivos.
 
 ## Monedas y privacidad
 

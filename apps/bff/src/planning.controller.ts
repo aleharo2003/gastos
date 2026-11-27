@@ -47,21 +47,37 @@ export function validPlan(v:unknown):boolean {
   return true;
 }
 
-type PlanningResource = 'spending-plan' | 'reminder-preferences' | 'spending-plan/category-limits' | 'usd-reference' | 'usd-reference/settings' | 'usd-sales' | 'usd-offers' | 'usd-sales/analysis' | 'usd-sales/holding';
+type PlanningResource = 'spending-plan' | 'reminder-preferences' | 'spending-plan/category-limits' | 'usd-reference' | 'usd-reference/settings' | 'usd-sales' | 'usd-offers' | 'usd-sales/analysis' | 'usd-sales/holding' | 'spending-plan/alerts';
 
 function validReminderPreferences(value: unknown): boolean {
   if (!record(value) || !keys(value, [
-    'canal', 'dias_anticipacion', 'hora_local', 'vencimientos', 'vencidas', 'resumen_semanal',
+    'canal', 'dias_anticipacion', 'hora_local', 'vencimientos', 'vencidas', 'resumen_semanal', 'exceso_presupuesto',
   ])) return false;
   return (value.canal === 'ninguno' || value.canal === 'email' || value.canal === 'push') &&
     typeof value.dias_anticipacion === 'number' && Number.isInteger(value.dias_anticipacion) &&
     value.dias_anticipacion >= 0 && value.dias_anticipacion <= 30 &&
     typeof value.hora_local === 'string' && /^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(value.hora_local) &&
     typeof value.vencimientos === 'boolean' && typeof value.vencidas === 'boolean' &&
-    typeof value.resumen_semanal === 'boolean';
+    typeof value.resumen_semanal === 'boolean' &&
+    (value.exceso_presupuesto === undefined || typeof value.exceso_presupuesto === 'boolean');
 }
 
 const rateDate = (value: unknown) => typeof value === 'string' && /^(?!0000)\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$/.test(value);
+function validBudgetAlerts(value: unknown): boolean {
+  return record(value) && keys(value, ['items']) && Array.isArray(value.items) && value.items.length <= 10 &&
+    value.items.every(row => record(row) &&
+      keys(row, ['id', 'periodo', 'desde', 'categoria', 'moneda', 'exceso']) &&
+      typeof row.id === 'string' && UUID.test(row.id) &&
+      ['diario', 'semanal', 'mensual'].includes(row.periodo as string) && rateDate(row.desde) &&
+      typeof row.categoria === 'string' && (row.categoria === '' || CATEGORIES.includes(row.categoria)) &&
+      ['ARS', 'USD'].includes(row.moneda as string) &&
+      typeof row.exceso === 'string' && /^(?:0|[1-9][0-9]{0,26})\.\d{2}$/.test(row.exceso) && row.exceso !== '0.00');
+}
+
+function validDismissBudgetAlert(value: unknown): boolean {
+  return record(value) && keys(value, ['id']) && typeof value.id === 'string' && UUID.test(value.id);
+}
+
 function validManualRate(value: unknown): boolean {
   return record(value) && keys(value, ['fecha', 'tasa']) && rateDate(value.fecha)
     && typeof value.tasa === 'string' && /^(?:0|[1-9][0-9]{0,7})(?:\.[0-9]{1,4})?$/.test(value.tasa)
@@ -225,6 +241,18 @@ export class PlanningController {
     return this.forward(space, request, response, undefined, false, 'usd-sales/holding', account);
   }
 
+  @Get('spending-plan/alerts')
+  listBudgetAlerts(@Param('space') space: string, @Req() request: Request, @Res({ passthrough: true }) response: Response) {
+    return this.forward(space, request, response, undefined, false, 'spending-plan/alerts');
+  }
+
+  @Post('spending-plan/alerts')
+  @HttpCode(200)
+  dismissBudgetAlert(@Param('space') space: string, @Body() body: unknown,
+    @Req() request: Request, @Res({ passthrough: true }) response: Response) {
+    return this.forward(space, request, response, body, true, 'spending-plan/alerts');
+  }
+
   private async forward(
     space: string, request: Request, response: Response, body?: unknown,
     writing = false, resource: PlanningResource = 'spending-plan', month?: unknown,
@@ -242,7 +270,8 @@ export class PlanningController {
     const sale = resource === 'usd-sales';
     const holding = resource === 'usd-sales/holding';
     const offers = resource === 'usd-offers';
-    const validate = holding ? validUsdHolding : resource === 'usd-sales/analysis' ? validSaleAnalysis : offers ? (data: unknown) => record(data) && (writing
+    const alerts = resource === 'spending-plan/alerts';
+    const validate = alerts ? validBudgetAlerts : holding ? validUsdHolding : resource === 'usd-sales/analysis' ? validSaleAnalysis : offers ? (data: unknown) => record(data) && (writing
       ? (keys(data, ['oferta']) && validOfferRow(data.oferta)) || (keys(data, ['venta']) && validSaleRow(data.venta))
       : keys(data, ['items','next_offset']) && Array.isArray(data.items) && data.items.length <= 100
         && data.items.every(validOfferRow) && (data.next_offset === null || data.next_offset === Number(month ?? 0) + 100))
@@ -257,7 +286,7 @@ export class PlanningController {
       : usd ? (data: unknown) => record(data) && keys(data, ['cotizacion']) &&
           (data.cotizacion === null || validManualRate(data.cotizacion))
         : resource === 'spending-plan' ? validPlan : validReminderPreferences;
-    if (!UUID.test(space) || (writing && !(offers ? validOfferWrite(body) : sale ? record(body) && keys(body, [...saleFields,'confirmar_atipico']) && validConfirmation(body) && validSaleFields(body) : usd ? validManualRate(body) : validate(body))) ||
+    if (!UUID.test(space) || (writing && !(alerts ? validDismissBudgetAlert(body) : offers ? validOfferWrite(body) : sale ? record(body) && keys(body, [...saleFields,'confirmar_atipico']) && validConfirmation(body) && validSaleFields(body) : usd ? validManualRate(body) : validate(body))) ||
         ((sale || offers) && month !== undefined && (typeof month !== 'string' || !/^\d{1,6}$/.test(month) || Number(month) > 100000)) ||
         (holding && (typeof month !== 'string' || !UUID.test(month))) ||
         (usd && month !== undefined && !rateDate(month)) ||

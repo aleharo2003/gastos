@@ -10,6 +10,7 @@ from fastapi import APIRouter,HTTPException,Request,Response,Query
 from pydantic import BaseModel,ConfigDict,Field,StrictInt,field_validator,model_validator
 from sqlalchemy import text
 from app.adjustment_indices import IndexValueInput
+from app.budget_alerts import record_budget_alerts
 from app.amortization import AmortizationSystem, amortize
 from app.payment_quote import PaymentQuote, matches_payment_quote, public_payment_quote, resolve_payment_quote
 from app.accounts import execute,require_member,NO_STORE
@@ -296,6 +297,7 @@ def pay_installment(session,user,space,identifier,body):
         VALUES (:id,:s,:a,:u,:f,:d,:m,:i,:c,:tasa_pago,:fuente_tasa_pago) ON CONFLICT (id) DO NOTHING RETURNING id"""),params).scalar_one_or_none()
     if inserted is None:raise HTTPException(409,'Identificador usado para otro gasto',headers=NO_STORE)
     session.execute(text('INSERT INTO public.pagos_cuota(id,espacio_id,cuota_id) VALUES (:id,:s,:q)'),params)
+    record_budget_alerts(session, user, space, body.id, body.fecha, row['categoria'])
     return public_payment({'id':body.id,'espacio_id':space,'cuota_id':identifier,'cuenta_id':body.cuenta_id,
                            'fecha':body.fecha,'moneda':row['moneda'],'importe':body.importe, **quote})
 

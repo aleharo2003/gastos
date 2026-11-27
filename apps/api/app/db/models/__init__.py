@@ -1,3 +1,4 @@
+from app.db.models.aviso_presupuesto import AvisoPresupuesto
 from app.db.models.oferta_usd import OfertaUsd
 from app.db.models.venta_usd import VentaUsd
 from app.db.models.cotizacion_mercado import CotizacionMercado, PreferenciaCotizacion

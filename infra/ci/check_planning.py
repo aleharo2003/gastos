@@ -5,7 +5,11 @@ from uuid import uuid4
 from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
-from app.usd_reference import ManualRate, MarketPreference, read_rate, save_market_type, save_rate
+from app.accounts import AccountInput, create_account
+from app.budget_alerts import dismiss_budget_alert, list_budget_alerts
+from app.expenses import ExpenseInput, create_expense
+from app.reminder_preferences import DEFAULTS, ReminderPreferences, save_preferences
+from app.usd_reference import local_today, ManualRate, MarketPreference, read_rate, save_market_type, save_rate
 from app.planning import PlanUpdate,get_category_limit_history,get_plan,save_plan,EMPTY
 from app.db.connection import create_runtime_engine,create_migration_engine
 from app.db.unit_of_work import runtime_transaction
@@ -128,10 +132,52 @@ def check_planning(runtime_url,migration_url):
             assert c.execute(text('UPDATE public.planes_gasto SET version=version+1 WHERE espacio_id=:s'),{'s':owner}).rowcount==1
             c.execute(text('DELETE FROM public.miembros_espacio WHERE usuario_id=:u AND espacio_id=:s'),{'u':editor,'s':owner})
         denied(lambda:read(editor),403)
+        today = local_today()
+        account = uuid4()
+        caps = {'limites': {'diario': None, 'semanal': {'moneda': 'ARS', 'importe': '100.00'}},
+                'conceptos': [], 'limites_categoria': [{'categoria': 'alimentos', 'moneda': 'ARS', 'importe': '100.00'}]}
+        save({'version': 9, 'datos': caps})
+
+        def expense(amount):
+            return ExpenseInput(id=uuid4(), fecha=today.isoformat(), descripcion='Alimentos de prueba',
+                                moneda='ARS', importe=amount, categoria='alimentos')
+
+        def pay(body):
+            with runtime_transaction(runtime, usuario_id=owner, espacio_id=owner) as s:
+                return create_expense(s, owner, owner, account, body)
+
+        with runtime_transaction(runtime, usuario_id=owner, espacio_id=owner) as s:
+            create_account(s, owner, owner, AccountInput(id=account, nombre='Prueba de avisos'))
+        pay(expense('70.00'))
+        with runtime_transaction(runtime, usuario_id=owner, espacio_id=owner) as s:
+            assert list_budget_alerts(s, owner, owner) == {'items': []}
+            save_preferences(s, owner, owner, ReminderPreferences(**DEFAULTS, exceso_presupuesto=True))
+            legacy = save_preferences(s, owner, owner, ReminderPreferences(**DEFAULTS))
+            assert legacy['exceso_presupuesto'] is True
+        purchases = [expense('20.00'), expense('25.00')]
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            list(pool.map(pay, purchases))
+        pay(purchases[0])
+        pay(expense('5.00'))
+        with runtime_transaction(runtime, usuario_id=owner, espacio_id=owner) as s:
+            notices = list_budget_alerts(s, owner, owner)['items']
+            assert {(row['periodo'], row['categoria'], row['exceso']) for row in notices} == {
+                ('semanal', '', '15.00'), ('mensual', 'alimentos', '15.00'),
+            }
+        with runtime_transaction(runtime, usuario_id=reader, espacio_id=owner) as s:
+            assert list_budget_alerts(s, reader, owner) == {'items': []}
+            assert dismiss_budget_alert(s, reader, owner, notices[0]['id']) == {'items': []}
+        with runtime_transaction(runtime, usuario_id=owner, espacio_id=owner) as s:
+            assert len(list_budget_alerts(s, owner, owner)['items']) == 2
+            assert len(dismiss_budget_alert(s, owner, owner, notices[0]['id'])['items']) == 1
+            assert len(dismiss_budget_alert(s, owner, owner, notices[0]['id'])['items']) == 1
+        print('OK: exceso de presupuesto por período, concurrencia, privacidad y lectura persistente.', flush=True)
         print('OK: planes compartidos, lector, aislamiento, conflictos concurrentes, reintento, revocacion y sin gastos creados.',flush=True)
     finally:
         with migrator.begin() as c:
-            for user in users:c.execute(text('DELETE FROM public.planes_gasto WHERE espacio_id=:u'),{'u':user})
+            for table in ('gastos', 'cuentas', 'planes_gasto'):
+                for user in users:
+                    c.execute(text(f'DELETE FROM public.{table} WHERE espacio_id=:u'), {'u':user})
             for user in users:c.execute(text('DELETE FROM public.miembros_espacio WHERE usuario_id=:u OR espacio_id=:u'),{'u':user})
             for user in users:
                 c.execute(text('DELETE FROM public.espacios WHERE id=:u'),{'u':user});c.execute(text('DELETE FROM public.perfiles WHERE usuario_id=:u'),{'u':user})

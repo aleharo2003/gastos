@@ -11,6 +11,7 @@ import { Transfers } from './transfers';
 import { Incomes } from './incomes';
 import { SavingsSummary } from './savings-summary';
 import { ReminderPreferences } from './reminder-preferences';
+import { BudgetAlerts } from './budget-alerts';
 import { Planning } from './planning';
 import { Expenses, normalizeAmount, showAmount } from './expenses';
 import { money, rateUnits, reference } from './money-reference';
@@ -37,7 +38,7 @@ type Page = { items: Account[]; next_offset: number | null };
 type AccountBalance = { totales: { moneda: string; saldo: string }[] };
 
 @Component({
-  selector: 'app-accounts', imports: [FormsModule, CategorySettings, SpaceExport, ExpenseImport, TodayCategoryReport, Movements, Expenses, Planning, Incomes, Transfers, SavingsGoals, SavingsSummary, Commitments, DueOverview, ReminderPreferences, UsdSales, UsdHolding],
+  selector: 'app-accounts', imports: [FormsModule, CategorySettings, SpaceExport, ExpenseImport, TodayCategoryReport, Movements, Expenses, Planning, Incomes, Transfers, SavingsGoals, SavingsSummary, Commitments, DueOverview, ReminderPreferences, BudgetAlerts, UsdSales, UsdHolding],
   providers: [UsdReference],
   templateUrl: './accounts.html', styleUrl: './accounts.css',
 })

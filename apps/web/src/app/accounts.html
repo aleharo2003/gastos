@@ -10,6 +10,7 @@
   <button type="button" (click)="tab.set('reminders')" [attr.aria-current]="tab() === 'reminders' ? 'page' : null">Avisos</button>
   <button type="button" (click)="tab.set('usd')" [attr.aria-current]="tab() === 'usd' ? 'page' : null">Cambio</button>
 </nav>
+<app-budget-alerts class="budget-notices" [space]="space" [revision]="planRevision()" [hiddenAmounts]="amountsHidden()" />
 @if (items().length) {
   <button type="button" class="quick-expense-action" (click)="openQuickExpense()"
     [disabled]="expenses?.saving() || !!expenses?.editing">+ Gasto rápido</button>
@@ -62,7 +63,7 @@
     [space]="space" [revision]="planRevision()" (openCategory)="openCategoryHistory($event)" />
 }
 <app-reminder-preferences class="workspace-panel reminders-panel" [space]="space"
-  [active]="tab() === 'reminders'" [hidden]="tab() !== 'reminders'" />
+  [active]="tab() === 'reminders'" [hidden]="tab() !== 'reminders'" (changed)="planRevision.update(incrementPlan)" />
 <section class="workspace-panel accounts-panel" [hidden]="tab() !== 'accounts' && items().length > 0"
   aria-labelledby="accounts-title">
   <h3 id="accounts-title">Tus cuentas</h3>
