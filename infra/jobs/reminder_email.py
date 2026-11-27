@@ -30,6 +30,15 @@ def format_rate(rate: Decimal) -> str:
     return whole + (',' + fraction if fraction else '')
 
 
+def reminder_link(app_url: str):
+    target = urlsplit(app_url)
+    if (not app_url or any(char.isspace() or ord(char) < 32 for char in app_url)
+            or target.scheme != 'https' or not target.hostname or target.username is not None
+            or target.password is not None or target.query or target.fragment):
+        raise ValueError('La URL de Piggo debe ser HTTPS y sin credenciales')
+    return target
+
+
 def prepare_reminder_emails(
     connection: Connection,
     instant: datetime,
@@ -40,11 +49,7 @@ def prepare_reminder_emails(
     """Devuelve un mensaje por usuario y espacio para la fecha local consultada."""
     if instant.utcoffset() is None:
         raise ValueError('El instante debe incluir zona horaria')
-    target = urlsplit(app_url)
-    if (not app_url or any(char.isspace() or ord(char) < 32 for char in app_url)
-            or target.scheme != 'https' or not target.hostname or target.username is not None
-            or target.password is not None or target.query or target.fragment):
-        raise ValueError('La URL de Piggo debe ser HTTPS y sin credenciales')
+    target = reminder_link(app_url)
 
     with connection.cursor(row_factory=dict_row) as cursor:
         query = 'SELECT * FROM public.avisos_email_para_preparar(%s)'

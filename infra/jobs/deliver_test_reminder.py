@@ -10,6 +10,7 @@ from psycopg import Connection, connect
 
 from deliver_reminder_email import DeliveryOutcome, ResendSender, deliver_reminder_email
 from verified_reminder_recipient import verified_reminder_recipient
+from weekly_summary_email import read_weekly_summary, send_weekly_summary
 
 
 def deliver_test_reminder(
@@ -34,7 +35,7 @@ def deliver_test_reminder(
 
 def main() -> int:
     mode = os.environ.get('PILOT_MODE', 'preview')
-    if mode not in ('preview', 'send'):
+    if mode not in ('preview', 'send', 'preview-weekly', 'send-weekly'):
         print('ERROR: modo del piloto inválido.', file=sys.stderr)
         return 1
     try:
@@ -51,6 +52,21 @@ def main() -> int:
                 raise RuntimeError('Rol del piloto inválido')
             connection.execute("SET statement_timeout = '30s'")
             instant = datetime.now(UTC)
+            if mode in ('preview-weekly', 'send-weekly'):
+                address = verified_reminder_recipient(expected_user=scope[0], **auth)
+                if address is None:
+                    raise RuntimeError('Cuenta de prueba sin correo confirmado')
+                if mode == 'preview-weekly':
+                    report = read_weekly_summary(connection, instant, scope)
+                    print('Vista previa: resumen semanal preparado.' if report else 'Resumen semanal desactivado.')
+                    return 0
+                sender = ResendSender(os.environ['RESEND_API_KEY'], os.environ['PILOT_FROM_EMAIL'])
+                outcome = send_weekly_summary(connection, instant, scope, address, os.environ['PILOT_APP_URL'], sender)
+                if outcome is None:
+                    print('Sin envío: revisá la preferencia, la hora de envío o si ya se procesó esta semana.')
+                    return 0
+                print(f'Estado del resumen semanal: {outcome.estado}.')
+                return 0 if outcome.estado == 'aceptada' else 1
             if mode == 'preview':
                 if verified_reminder_recipient(expected_user=scope[0], **auth) is None:
                     raise RuntimeError('Cuenta de prueba sin correo confirmado')

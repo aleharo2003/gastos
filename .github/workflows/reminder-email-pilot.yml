@@ -9,6 +9,8 @@ on:
         options:
           - preview
           - send
+          - preview-weekly
+          - send-weekly
         default: preview
 
 permissions:

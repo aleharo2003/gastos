@@ -35,6 +35,13 @@ BEGIN
                 'public.preparar_avisos_email_piloto(uuid,uuid,timestamptz)'::regprocedure,
                 'public.reservar_entrega_aviso_email_piloto(uuid,uuid,timestamptz)'::regprocedure,
                 'public.resolver_entrega_aviso_email_piloto(uuid,text,text)'::regprocedure)
+            AND NOT EXISTS (
+                SELECT FROM unnest(ARRAY[
+                    to_regprocedure('public.resumen_semanal_piloto(uuid,uuid,timestamptz)'),
+                    to_regprocedure('public.reservar_resumen_semanal_piloto(uuid,uuid,timestamptz,uuid)'),
+                    to_regprocedure('public.resolver_resumen_semanal_piloto(uuid,text)')
+                ]) AS permitida(funcion) WHERE permitida.funcion=pg_proc.oid
+            )
             AND has_function_privilege('app_email_jobs',oid,'EXECUTE'))
     THEN RAISE EXCEPTION 'app_email_jobs tiene permisos de datos o DDL incompatibles.'; END IF;
     EXECUTE format('GRANT CONNECT ON DATABASE %I TO app_email_jobs',current_database());
