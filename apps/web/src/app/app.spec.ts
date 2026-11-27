@@ -40,6 +40,8 @@ describe('Login web', () => {
     const { fixture, auth } = setup();
     [...fixture.nativeElement.querySelectorAll('button')].find(button => button.textContent.trim() === 'Crear cuenta').click();
     fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
     const fill = async (field: string, value: string) => {
       const input = fixture.nativeElement.querySelector('#register-' + field);
       input.value = value;
@@ -53,7 +55,7 @@ describe('Login web', () => {
     expect(submit.disabled).toBe(true);
     await fill('password', 'example-password');
     expect(submit.disabled).toBe(false);
-    submit.click();
+    fixture.nativeElement.querySelector('form').dispatchEvent(new Event('submit', { cancelable: true }));
     await fixture.whenStable();
     fixture.detectChanges();
     expect(auth.register).toHaveBeenCalledWith('test@example.com', 'example-password', expect.stringContaining('?registro=1'));
