@@ -171,9 +171,6 @@ def check_incomes(runtime_url, migration_url):
         assert totals()['ARS']['saldo'] == before_import
         assert call(list_incomes, reader, owner, account)['items'][0]['id'] == str(categorized.id)
 
-        with migrator.begin() as c:
-            c.execute(text('DELETE FROM public.miembros_espacio WHERE usuario_id=:u AND espacio_id=:s'),{'u':editor,'s':owner})
-        denied(lambda:call(create_income,editor,owner,account,payload()),403)
         manual = payload(descripcion='Ingreso manual a anular', importe='17.00')
         before = totals()['ARS']['saldo']
         call(create_income, owner, owner, account, manual)
@@ -196,6 +193,10 @@ def check_incomes(runtime_url, migration_url):
             audit = list_movements(session, owner, owner, search | {'anulados': True}, None)
             assert [(row['id'], row['anulado']) for row in audit['items']] == [(str(manual.id), True)]
             assert audit['totales'] == []
+
+        with migrator.begin() as c:
+            c.execute(text('DELETE FROM public.miembros_espacio WHERE usuario_id=:u AND espacio_id=:s'),{'u':editor,'s':owner})
+        denied(lambda:call(create_income,editor,owner,account,payload()),403)
         print('OK: ingresos concurrentes sin duplicar, saldos exactos >100 filas, edicion de gastos, monedas, roles y aislamiento SQL.',flush=True)
     finally:
         with migrator.begin() as c:

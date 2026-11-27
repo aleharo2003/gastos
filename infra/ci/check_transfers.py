@@ -186,9 +186,6 @@ def check_transfers(runtime_url,migration_url):
         assert Decimal(balance(savings)['ARS']['saldo']) == destination_before
         assert all(row['id'] != audit['items'][0]['id'] for row in page(account=source)['items'])
 
-        with migrator.begin() as c:
-            c.execute(text('DELETE FROM public.miembros_espacio WHERE usuario_id=:u AND espacio_id=:s'),{'u':editor,'s':owner})
-        denied(lambda:transfer(editor,owner,body()),403)
         manual = body(descripcion='Transferencia manual a anular', importe='12.00')
         before = balance(source), balance(savings), balance()
         transfer(owner, owner, manual)
@@ -202,6 +199,10 @@ def check_transfers(runtime_url,migration_url):
             assert [(row['id'], row['anulado']) for row in audit['items']] == [(str(manual.id), True)]
             assert audit['totales'] == []
         assert (balance(source), balance(savings), balance()) == before
+
+        with migrator.begin() as c:
+            c.execute(text('DELETE FROM public.miembros_espacio WHERE usuario_id=:u AND espacio_id=:s'),{'u':editor,'s':owner})
+        denied(lambda:transfer(editor,owner,body()),403)
         print('OK: transferencias atomicas, conservacion por moneda, retiro de ahorros, >100 filas, concurrencia, rollback, roles y ambas FK.',flush=True)
     finally:
         with migrator.begin() as c:
