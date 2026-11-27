@@ -1,6 +1,7 @@
 """Cuotas elegibles por fecha argentina, configuración, saldo y espacio."""
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, date, datetime
+from zoneinfo import ZoneInfo
 from threading import Barrier
 from decimal import Decimal
 from uuid import uuid4
@@ -13,6 +14,7 @@ from app.commitments import CommitmentInput, PaymentInput, create_commitment, li
 from app.db.connection import create_migration_engine, create_runtime_engine
 from app.db.unit_of_work import runtime_transaction
 from app.planning import PlanUpdate, save_plan
+from app.push_subscriptions import DevicePush, save_push
 from app.reminder_preferences import DEFAULTS, ReminderPreferences, save_preferences
 
 
@@ -288,6 +290,44 @@ def check_reminder_candidates(runtime_url, migration_url, jobs_url, email_jobs_u
             assert error.orig.sqlstate == '42501'
         else:
             raise AssertionError('El rol piloto pudo consultar otro espacio')
+        today = datetime.now(ZoneInfo('America/Argentina/Buenos_Aires')).date()
+        make_quota(today.isoformat(), 'Prueba de entrega push')
+        preferences(owner, canal='push', hora_local='00:00')
+        keys = {'p256dh': 'B' + 'A' * 86, 'auth': 'A' * 22}
+        endpoint = 'https://fcm.googleapis.com/fcm/send/weekly-ci'
+        def register(device):
+            body = DevicePush(device_id=device, subscription={'endpoint': endpoint, 'keys': keys})
+            return run(lambda s,u,w: save_push(s,u,w,body))
+
+        device = uuid4()
+        register(device)
+        reserve_push = text('SELECT * FROM public.reservar_aviso_push()')
+        resolve_push = text('SELECT public.resolver_aviso_push(:attempt,:result,:endpoint,:public_key,:auth)')
+        with jobs.begin() as connection:
+            attempt, dest, public_key, auth = connection.execute(reserve_push).one()
+            assert dest == endpoint
+            assert connection.execute(reserve_push).one_or_none() is None
+            payload = {'attempt': attempt, 'endpoint': dest, 'public_key': public_key, 'auth': auth}
+            assert connection.execute(resolve_push, payload | {'result': 'vencido', 'auth': 'otro'}).scalar_one() is False
+            assert connection.execute(resolve_push, payload | {'result': 'vencido'}).scalar_one()
+            assert connection.execute(reserve_push).one_or_none() is None
+
+        register(device)
+        preferences(owner, canal='ninguno')
+        with jobs.begin() as connection:
+            assert connection.execute(reserve_push).one_or_none() is None
+        preferences(owner, canal='push', hora_local='00:00')
+        with jobs.begin() as connection:
+            attempt, dest, public_key, auth = connection.execute(reserve_push).one()
+            payload = {'attempt': attempt, 'endpoint': dest, 'public_key': public_key, 'auth': auth}
+            assert connection.execute(resolve_push, payload | {'result': 'aceptado'}).scalar_one()
+            assert connection.execute(reserve_push).one_or_none() is None
+
+        with runtime.begin() as connection:
+            assert not connection.execute(text("""
+                SELECT has_function_privilege(current_user, 'public.reservar_aviso_push()', 'EXECUTE')
+            """)).scalar_one()
+        print('OK: aviso push elegible, deduplicación, canal desactivado y baja de endpoint vencido.', flush=True)
     finally:
         pilot.dispose()
         runtime.dispose()

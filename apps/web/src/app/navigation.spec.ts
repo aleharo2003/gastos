@@ -139,6 +139,19 @@ describe('Navegación del espacio', () => {
     expect(expenses.description).toBe('Compra pendiente');
     expect(expenses.filterText).toBe('café');
   });
+  it('abre Hoy al tocar un aviso push en el celular', async () => {
+    const previous = location.pathname + location.search + location.hash;
+    vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(max-width: 767px)' }));
+    try {
+      history.replaceState(null, '', '?vista=hoy');
+      const { component } = await setup();
+      expect(component.tab()).toBe('today');
+    } finally {
+      history.replaceState(null, '', previous);
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('abre el registro en pantallas chicas con el importe como primer campo', async () => {
     vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(max-width: 767px)' }));
     try {

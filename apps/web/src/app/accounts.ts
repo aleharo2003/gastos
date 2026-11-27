@@ -295,6 +295,7 @@ export class Accounts implements OnInit {
       }
       if (this.installmentReminder()) this.tab.set('debts');
     }
+    if (query.get('vista') === 'hoy') this.tab.set('today');
     this.categoryCatalog.ensure(this.space);
     this.referenceRate.set(this.usdReference.current(this.space)?.rate ?? '');
     void this.usdReference.refresh(this.space).catch(() => {});

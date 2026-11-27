@@ -12,6 +12,10 @@ BEGIN
         RAISE EXCEPTION 'Preparar primero el rol restringido app_jobs.';
     END IF;
     GRANT EXECUTE ON FUNCTION public.generar_cuotas_mes() TO app_jobs;
+    IF to_regprocedure('public.reservar_aviso_push()') IS NOT NULL THEN
+        GRANT EXECUTE ON FUNCTION public.reservar_aviso_push() TO app_jobs;
+        GRANT EXECUTE ON FUNCTION public.resolver_aviso_push(uuid,text,text,text,text) TO app_jobs;
+    END IF;
     IF to_regprocedure('public.marcar_cuotas_vencidas()') IS NOT NULL THEN
         GRANT EXECUTE ON FUNCTION public.marcar_cuotas_vencidas() TO app_jobs;
     END IF;
