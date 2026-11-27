@@ -16,5 +16,10 @@ BEGIN
     GRANT EXECUTE ON FUNCTION public.preparar_avisos_email_piloto(uuid,uuid,timestamptz) TO app_email_jobs;
     GRANT EXECUTE ON FUNCTION public.reservar_entrega_aviso_email_piloto(uuid,uuid,timestamptz) TO app_email_jobs;
     GRANT EXECUTE ON FUNCTION public.resolver_entrega_aviso_email_piloto(uuid,text,text) TO app_email_jobs;
+    IF to_regprocedure('public.resumen_semanal_piloto(uuid,uuid,timestamptz)') IS NOT NULL THEN
+        GRANT EXECUTE ON FUNCTION public.resumen_semanal_piloto(uuid,uuid,timestamptz) TO app_email_jobs;
+        GRANT EXECUTE ON FUNCTION public.reservar_resumen_semanal_piloto(uuid,uuid,timestamptz,uuid) TO app_email_jobs;
+        GRANT EXECUTE ON FUNCTION public.resolver_resumen_semanal_piloto(uuid,text) TO app_email_jobs;
+    END IF;
 END
 $guard$;

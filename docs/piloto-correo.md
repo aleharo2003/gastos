@@ -16,3 +16,16 @@ La migración 0028 agrega un ejecutor limitado a una membresía de prueba. El wo
 4. En Piggo test, configurá correo como canal en **Avisos** y comprobá que haya una cuota elegible según los días de anticipación y el horario argentino. Ejecutá primero `preview` para ver la cantidad. Cuando quieras enviar un único recordatorio de prueba, ejecutá `send`.
 
 La vista previa no crea registros ni contacta a Resend. El resultado `aceptada` confirma que Resend recibió el pedido. Comprobá la llegada en la bandeja del correo configurado.
+
+## Resumen semanal
+
+Aplicá la migración 0053. En **Avisos**, elegí correo y activá **Resumen semanal**.
+`preview-weekly` comprueba que el resumen se puede preparar y registra el estado
+sin publicar importes en Actions. `send-weekly` usa la hora argentina que guardaste
+en **Avisos** y permite probar el envío para la misma cuenta y espacio del piloto.
+
+El correo reúne los gastos de lunes a domingo de la última semana cerrada,
+compara con el límite semanal vigente y lista los próximos siete días. Se
+reserva un envío por semana. Una respuesta definitiva de límite de solicitudes
+permite reintentar. Una respuesta incierta conserva la reserva para evitar
+duplicados. El envío programado queda pendiente de la validación del piloto.

@@ -12,6 +12,7 @@ from app.accounts import AccountInput, create_account
 from app.commitments import CommitmentInput, PaymentInput, create_commitment, list_installments, pay_installment
 from app.db.connection import create_migration_engine, create_runtime_engine
 from app.db.unit_of_work import runtime_transaction
+from app.planning import PlanUpdate, save_plan
 from app.reminder_preferences import DEFAULTS, ReminderPreferences, save_preferences
 
 
@@ -224,6 +225,50 @@ def check_reminder_candidates(runtime_url, migration_url, jobs_url, email_jobs_u
                 SELECT public.resolver_entrega_aviso_email_piloto(:claim,'aceptada','piloto-ci')
             """), {'claim': claim}).scalar_one() is True
             assert connection.execute(reserve_sql, args).scalar_one() is None
+
+        weekly = args | {'now': datetime(2026, 2, 16, 12, tzinfo=UTC)}
+        weekly_sql = text('SELECT public.resumen_semanal_piloto(:actor,:space,:now)')
+        claim_weekly = text('SELECT public.reservar_resumen_semanal_piloto(:actor,:space,:now,:attempt)')
+        resolve_weekly = text('SELECT public.resolver_resumen_semanal_piloto(:attempt,:state)')
+        with pilot.begin() as connection:
+            assert connection.execute(weekly_sql, weekly).scalar_one() is None
+        preferences(owner, canal='email', resumen_semanal=True)
+        make_quota('2026-02-20', 'Próximo pago del resumen')
+        make_quota('2026-02-23', 'Siguiente ventana')
+        make_quota('2026-02-20', 'Vencimiento privado', other, other_wallet)
+        run(lambda s, u, w: save_plan(s, u, w, PlanUpdate(version=0, datos={
+            'limites': {'diario': None, 'semanal': {'moneda': 'ARS', 'importe': '150.00'}}, 'conceptos': [],
+        })))
+        with pilot.begin() as connection:
+            before_midnight = weekly | {'now': datetime(2026, 2, 16, 2, 59, tzinfo=UTC)}
+            assert connection.execute(weekly_sql, before_midnight).scalar_one()['hasta'] == '2026-02-08'
+            report = connection.execute(weekly_sql, weekly).scalar_one()
+            assert (report['desde'], report['hasta']) == ('2026-02-09', '2026-02-15')
+            spent = {row['moneda']: Decimal(row['total']) for row in report['gastos']}
+            assert spent == {'ARS': Decimal(100), 'USD': Decimal(100)}
+            assert [row['nombre'] for row in report['proximos']] == ['Próximo pago del resumen']
+            assert report['limite'] == {'moneda': 'ARS', 'importe': '150.00'}
+            early = weekly | {'now': datetime(2026, 2, 16, 11, 59, tzinfo=UTC), 'attempt': uuid4()}
+            assert not connection.execute(claim_weekly, early).scalar_one()
+            first_weekly = uuid4()
+            assert connection.execute(claim_weekly, weekly | {'attempt': first_weekly}).scalar_one()
+            assert not connection.execute(claim_weekly, weekly | {'attempt': uuid4()}).scalar_one()
+            assert connection.execute(resolve_weekly, {'attempt': first_weekly, 'state': 'reintento'}).scalar_one()
+            second_weekly = uuid4()
+            assert connection.execute(claim_weekly, weekly | {'attempt': second_weekly}).scalar_one()
+            assert not connection.execute(resolve_weekly, {'attempt': first_weekly, 'state': 'aceptada'}).scalar_one()
+            assert connection.execute(resolve_weekly, {'attempt': second_weekly, 'state': 'incierta'}).scalar_one()
+            assert not connection.execute(claim_weekly, weekly | {'attempt': uuid4()}).scalar_one()
+            following = weekly | {'now': datetime(2026, 2, 23, 12, tzinfo=UTC), 'attempt': uuid4()}
+            assert connection.execute(claim_weekly, following).scalar_one()
+        try:
+            with pilot.begin() as connection:
+                connection.execute(weekly_sql, weekly | {'space': other})
+        except DBAPIError as error:
+            assert error.orig.sqlstate == '42501'
+        else:
+            raise AssertionError('El piloto pudo consultar el resumen de otro espacio')
+        print('OK: resumen semanal, Buenos Aires, gastos por moneda, vencimientos, aislamiento y envío único.', flush=True)
 
         try:
             with pilot.begin() as connection:
