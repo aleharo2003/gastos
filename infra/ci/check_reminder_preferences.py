@@ -35,7 +35,7 @@ def check_reminder_preferences(runtime_url, migration_url):
 
         assert run(read_preferences) == DEFAULTS
         assert run(read_preferences, reader) == DEFAULTS
-        custom = DEFAULTS | {'canal': 'email', 'hora_local': '18:45', 'dias_anticipacion': 5, 'vencidas': True}
+        custom = DEFAULTS | {'canal': 'email', 'hora_local': '18:45', 'dias_anticipacion': 5, 'vencidas': True, 'dia_resumen_semanal': 4}
         assert save(custom) == custom
         reader_values = DEFAULTS | {'canal': 'push', 'vencimientos': False, 'resumen_semanal': True}
         assert save(reader_values, reader) == reader_values
@@ -44,7 +44,8 @@ def check_reminder_preferences(runtime_url, migration_url):
 
         disabled = custom | {'canal': 'ninguno'}
         assert save(disabled) == disabled
-        assert save(disabled) == disabled
+        old_client = {key: value for key, value in disabled.items() if key != 'dia_resumen_semanal'}
+        assert save(old_client) == disabled
         assert run(read_preferences) == disabled
         assert run(read_preferences, reader) == reader_values
 
@@ -60,7 +61,9 @@ def check_reminder_preferences(runtime_url, migration_url):
             raise AssertionError('Un tercero pudo consultar preferencias')
         try:
             run(lambda session, user, space: session.execute(text("""
-                INSERT INTO public.preferencias_avisos VALUES (:other, :space, 'ninguno', 0, '00:00', true, false, false)
+                INSERT INTO public.preferencias_avisos
+                    (usuario_id, espacio_id, canal, dias_anticipacion, hora_local, vencimientos, vencidas, resumen_semanal)
+                VALUES (:other, :space, 'ninguno', 0, '00:00', true, false, false)
             """), {'other': reader, 'space': space}))
         except DBAPIError as error:
             assert error.orig.sqlstate == '42501'

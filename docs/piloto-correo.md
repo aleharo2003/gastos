@@ -19,9 +19,9 @@ La vista previa no crea registros ni contacta a Resend. El resultado `aceptada` 
 
 ## Resumen semanal
 
-Aplicá la migración 0053. En **Avisos**, elegí correo y activá **Resumen semanal**.
+Aplicá las migraciones 0053 y 0054. En **Avisos**, elegí correo, activá **Resumen semanal** y elegí el día. El día inicial es lunes.
 `preview-weekly` comprueba que el resumen se puede preparar y registra el estado
-sin publicar importes en Actions. `send-weekly` usa la hora argentina que guardaste
+sin publicar importes en Actions. `send-weekly` usa el día y la hora argentinos que guardaste
 en **Avisos** y permite probar el envío para la misma cuenta y espacio del piloto.
 
 El correo reúne los gastos de lunes a domingo de la última semana cerrada,

@@ -261,6 +261,17 @@ def check_reminder_candidates(runtime_url, migration_url, jobs_url, email_jobs_u
             assert not connection.execute(claim_weekly, weekly | {'attempt': uuid4()}).scalar_one()
             following = weekly | {'now': datetime(2026, 2, 23, 12, tzinfo=UTC), 'attempt': uuid4()}
             assert connection.execute(claim_weekly, following).scalar_one()
+        preferences(owner, canal='email', resumen_semanal=True, dia_resumen_semanal=2)
+        with pilot.begin() as connection:
+            retry = weekly | {'attempt': uuid4()}
+            monday = retry | {'now': datetime(2026, 3, 2, 12, tzinfo=UTC)}
+            assert not connection.execute(claim_weekly, monday).scalar_one()
+            tuesday_early = retry | {'now': datetime(2026, 3, 3, 11, 59, tzinfo=UTC)}
+            assert not connection.execute(claim_weekly, tuesday_early).scalar_one()
+            # Miércoles UTC, todavía martes en Buenos Aires.
+            tuesday_late = retry | {'now': datetime(2026, 3, 4, 2, 59, tzinfo=UTC)}
+            assert connection.execute(claim_weekly, tuesday_late).scalar_one()
+            assert not connection.execute(claim_weekly, tuesday_late | {'attempt': uuid4()}).scalar_one()
         try:
             with pilot.begin() as connection:
                 connection.execute(weekly_sql, weekly | {'space': other})

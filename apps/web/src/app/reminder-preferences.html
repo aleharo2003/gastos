@@ -32,6 +32,15 @@
           <label><input name="upcoming" type="checkbox" [(ngModel)]="value.vencimientos"> Próximos vencimientos</label>
           <label><input name="overdue" type="checkbox" [(ngModel)]="value.vencidas"> Cuotas vencidas</label>
           <label><input name="weekly" type="checkbox" [(ngModel)]="value.resumen_semanal"> Resumen semanal</label>
+          @if (value.resumen_semanal) {
+            <label for="weekly-summary-day">Día del resumen semanal</label>
+            <select id="weekly-summary-day" name="weeklySummaryDay" [ngModel]="value.dia_resumen_semanal ?? 1"
+                    (ngModelChange)="value.dia_resumen_semanal = $event">
+              @for (day of weekdays; track day; let index = $index) {
+                <option [ngValue]="index + 1">{{ day }}</option>
+              }
+            </select>
+          }
         </fieldset>
         <label><input name="budget-alert" type="checkbox" [(ngModel)]="value.exceso_presupuesto"> Avisarme en Piggo si supero un presupuesto</label>
         <button class="primary" type="submit" [disabled]="preferencesForm.invalid || saving()">

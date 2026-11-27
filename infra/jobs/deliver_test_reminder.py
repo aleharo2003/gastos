@@ -63,7 +63,7 @@ def main() -> int:
                 sender = ResendSender(os.environ['RESEND_API_KEY'], os.environ['PILOT_FROM_EMAIL'])
                 outcome = send_weekly_summary(connection, instant, scope, address, os.environ['PILOT_APP_URL'], sender)
                 if outcome is None:
-                    print('Sin envío: revisá la preferencia, la hora de envío o si ya se procesó esta semana.')
+                    print('Sin envío: revisá la preferencia, el día y la hora de envío o si ya se procesó esta semana.')
                     return 0
                 print(f'Estado del resumen semanal: {outcome.estado}.')
                 return 0 if outcome.estado == 'aceptada' else 1
