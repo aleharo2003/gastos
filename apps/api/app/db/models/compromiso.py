@@ -52,6 +52,7 @@ class Cuota(Base):
         ForeignKeyConstraint(['espacio_id','compromiso_id'],['public.compromisos.espacio_id','public.compromisos.id'],name='fk_cuotas_espacio_id_compromiso_id_compromisos'),
         CheckConstraint('numero BETWEEN 1 AND 119988',name='ck_cuotas_numero'),
         CheckConstraint('version >= 1',name='ck_cuotas_version'),
+        CheckConstraint('marcada_vencida_el > vencimiento',name='ck_cuotas_marcada_vencida'),
         CheckConstraint('importe > 0 AND importe < 1000000000000',name='ck_cuotas_importe'),
         CheckConstraint("(capital IS NULL AND interes IS NULL AND saldo_capital IS NULL) OR (capital IS NOT NULL AND interes IS NOT NULL AND saldo_capital IS NOT NULL AND capital > 0 AND interes >= 0 AND saldo_capital >= 0 AND importe = capital + interes AND NOT no_aplica AND NOT estimado AND NOT pendiente_ajuste)",name='ck_cuotas_amortizacion'),
         Index('ix_cuotas_espacio_vencimiento','espacio_id','vencimiento'),
@@ -65,6 +66,7 @@ class Cuota(Base):
     version:Mapped[int]=mapped_column(Integer,nullable=False,server_default='1')
     numero:Mapped[int]=mapped_column(Integer,nullable=False)
     vencimiento:Mapped[date]=mapped_column(Date,nullable=False)
+    marcada_vencida_el:Mapped[date|None]=mapped_column(Date,nullable=True)
     capital:Mapped[Decimal|None]=mapped_column(Numeric(14,2),nullable=True)
     interes:Mapped[Decimal|None]=mapped_column(Numeric(14,2),nullable=True)
     saldo_capital:Mapped[Decimal|None]=mapped_column(Numeric(14,2),nullable=True)

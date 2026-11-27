@@ -1,7 +1,7 @@
 """Contrato real de recurrencia fija y del rol de generacion sin acceso a datos."""
 from calendar import monthrange
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 from sqlalchemy import create_engine,text
@@ -9,7 +9,7 @@ from sqlalchemy.exc import DBAPIError
 from fastapi import HTTPException
 from app.accounts import AccountInput,create_account
 from app.commitments import (CommitmentInput,CommitmentPause,PaymentInput,create_commitment,
-    pause_commitment,list_commitments,list_installments,pay_installment)
+    pause_commitment,list_commitments,list_installments,pay_installment,installment_detail)
 from app.db.connection import create_runtime_engine,create_migration_engine
 from app.db.unit_of_work import runtime_transaction
 
@@ -105,6 +105,45 @@ def check_recurrences(runtime_url,migration_url,jobs_url):
             function=c.execute(text("""SELECT proconfig,prosecdef,pg_get_userbyid(proowner) FROM pg_proc
                 WHERE oid='public.generar_cuotas_mes()'::regprocedure""")).one()
             assert function==( ['search_path=pg_catalog'],True,'app_migrator')
+        yesterday = today - timedelta(days=1)
+        sample = {}
+        for label, due in (
+            ('pendiente', yesterday), ('parcial', yesterday), ('pagada', yesterday),
+            ('no_aplica', yesterday), ('estimada', yesterday), ('hoy', today),
+        ):
+            debt = create(plan(primer_vencimiento=due.isoformat(), total_cuotas=1))
+            sample[label] = quotas(debt['id'])[0]['id']
+        for label, amount in [('parcial', '40'), ('pagada', '100')]:
+            payment = PaymentInput(id=uuid4(), cuenta_id=account, fecha=today.isoformat(), importe=amount)
+            call(lambda s,u,w: pay_installment(s,u,w,sample[label],payment))
+        with migrator.begin() as c:
+            for label, column in [('no_aplica', 'no_aplica'), ('estimada', 'estimado')]:
+                c.execute(text(f'UPDATE public.cuotas SET {column}=true WHERE id=:id'), {'id':sample[label]})
+
+        def mark():
+            with jobs.begin() as c:
+                # Un CURRENT_DATE de la sesión distinto del día argentino no adelanta ni retrasa el marcado.
+                c.execute(text("SET LOCAL TIME ZONE 'Pacific/Kiritimati'"))
+                if c.execute(text('SELECT CURRENT_DATE')).scalar_one() == today:
+                    c.execute(text("SET LOCAL TIME ZONE 'Etc/GMT+12'"))
+                assert c.execute(text('SELECT CURRENT_DATE')).scalar_one() != today
+                return c.execute(text('SELECT public.marcar_cuotas_vencidas()')).scalar_one()
+
+        sql_denied(runtime, 'SELECT public.marcar_cuotas_vencidas()')
+        sql_denied(jobs, 'UPDATE public.cuotas SET marcada_vencida_el=CURRENT_DATE')
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            marks = list(pool.map(lambda _:mark(), range(2)))
+        assert max(marks) >= 2 and min(marks) == 0 and mark() == 0
+        with migrator.begin() as c:
+            for label, identifier in sample.items():
+                stored = c.execute(text('SELECT marcada_vencida_el FROM public.cuotas WHERE id=:id'),
+                                   {'id': identifier}).scalar_one()
+                assert stored == (today if label in ('pendiente', 'parcial') else None)
+        payment = PaymentInput(id=uuid4(), cuenta_id=account, fecha=today.isoformat(), importe='60')
+        call(lambda s,u,w: pay_installment(s,u,w,sample['parcial'],payment))
+        detail = call(lambda s,u,w: installment_detail(s,u,w,sample['parcial']))
+        assert detail['estado'] == 'pagada' and not detail['vencida']
+        print('OK: marcado diario de cuotas vencidas por fecha argentina y saldo pendiente.', flush=True)
         print('OK: gastos indefinidos, pausa versionada, reactivacion, pagos conservados, periodo unico, generacion concurrente independiente y rol jobs restringido.',flush=True)
     finally:
         with migrator.begin() as c:

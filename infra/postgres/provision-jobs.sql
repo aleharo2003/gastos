@@ -30,7 +30,11 @@ BEGIN
             AND (has_table_privilege('app_jobs',oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
                 OR has_any_column_privilege('app_jobs',oid,'SELECT,INSERT,UPDATE,REFERENCES')))
         OR EXISTS (SELECT FROM pg_proc WHERE proowner='app_migrator'::regrole
-            AND oid<>'public.generar_cuotas_mes()'::regprocedure
+            AND NOT EXISTS (SELECT FROM unnest(ARRAY[
+                to_regprocedure('public.generar_cuotas_mes()'),
+                to_regprocedure('public.guardar_cotizaciones_mercado(jsonb)'),
+                to_regprocedure('public.marcar_cuotas_vencidas()')
+            ]) AS permitida(funcion) WHERE permitida.funcion=pg_proc.oid)
             AND has_function_privilege('app_jobs',oid,'EXECUTE'))
     THEN RAISE EXCEPTION 'app_jobs tiene permisos de datos o DDL incompatibles.'; END IF;
     EXECUTE format('GRANT CONNECT ON DATABASE %I TO app_jobs',current_database());
